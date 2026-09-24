@@ -63,21 +63,32 @@ export async function updateUser(
   actorId: string,
   input: { name?: string; role?: Role; password?: string }
 ) {
-  const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
-  if (input.role && input.role !== "ADMIN" && user.role === "ADMIN") {
-    await assertNotLastAdmin(id, actorId);
-  }
-  const updated = await prisma.user.update({
-    where: { id },
-    data: {
-      name: input.name,
-      role: input.role,
-      passwordHash: input.password ? await hashPassword(input.password) : undefined,
-      authSource: input.password ? "LOCAL" : undefined,
-      ldapDn: input.password ? null : undefined,
-    },
-    select: publicSelect,
+  const passwordHash = input.password ? await hashPassword(input.password) : undefined;
+  const { user, updated } = await serializable(async (tx) => {
+    const before = await tx.user.findUnique({ where: { id } });
+    if (!before) throw new HttpError(404, "Benutzer nicht gefunden");
+    if (input.role && input.role !== "ADMIN" && before.role === "ADMIN") {
+      await assertNotLastAdmin(tx, id, actorId);
+    }
+    const after = await tx.user.update({
+      where: { id },
+      data: {
+        name: input.name,
+        role: input.role,
+        passwordHash,
+        authSource: passwordHash ? "LOCAL" : undefined,
+        ldapDn: passwordHash ? null : undefined,
+      },
+      select: publicSelect,
+    });
+    // A reset password usually means the account was compromised: end its sessions too.
+    if (passwordHash) {
+      await tx.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+    return { user: before, updated: after };
   });
   const roleChanged = user.role !== updated.role;
   await recordAudit({
@@ -110,16 +121,19 @@ export async function updateUser(
 
 export async function deleteUser(id: string, actorId: string) {
   if (id === actorId) throw new HttpError(409, "Das eigene Konto kann nicht gelöscht werden");
-  const user = await prisma.user.findUnique({
-    where: { id },
-    include: { _count: { select: { requests: true } } },
+  const user = await serializable(async (tx) => {
+    const found = await tx.user.findUnique({
+      where: { id },
+      include: { _count: { select: { requests: true } } },
+    });
+    if (!found) throw new HttpError(404, "Benutzer nicht gefunden");
+    if (found.role === "ADMIN") await assertNotLastAdmin(tx, id, actorId);
+    if (found._count.requests > 0) {
+      throw new HttpError(409, "Benutzer hat Anfragen und kann nicht gelöscht werden");
+    }
+    await tx.user.delete({ where: { id } });
+    return found;
   });
-  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
-  if (user.role === "ADMIN") await assertNotLastAdmin(id, actorId);
-  if (user._count.requests > 0) {
-    throw new HttpError(409, "Benutzer hat Anfragen und kann nicht gelöscht werden");
-  }
-  await prisma.user.delete({ where: { id } });
   await recordAudit({
     actorId,
     action: "USER_DELETED",
@@ -134,11 +148,31 @@ function roleLabel(role: Role): string {
   return role === "ADMIN" ? "Verwaltung" : "Nutzer";
 }
 
-async function assertNotLastAdmin(id: string, actorId: string) {
+async function assertNotLastAdmin(tx: Prisma.TransactionClient, id: string, actorId: string) {
   if (id === actorId)
     throw new HttpError(409, "Die eigene Administratorrolle kann nicht entzogen werden");
-  const admins = await prisma.user.count({ where: { role: "ADMIN" } });
+  const admins = await tx.user.count({ where: { role: "ADMIN" } });
   if (admins <= 1) throw new HttpError(409, "Der letzte Administrator kann nicht entfernt werden");
+}
+
+/**
+ * Runs the admin-count check and the change it guards as one unit: two admins demoting each other
+ * at the same moment would otherwise both see a second admin and leave none.
+ */
+async function serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  try {
+    return await prisma.$transaction(work, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      throw new HttpError(
+        409,
+        "Der Benutzer wurde gerade anderweitig geändert. Bitte erneut versuchen."
+      );
+    }
+    throw error;
+  }
 }
 
 /**

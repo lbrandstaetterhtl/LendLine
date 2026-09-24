@@ -21,6 +21,13 @@ export function createApp() {
   // The API only listens on loopback; a proxy there (Vite in development, a reverse proxy in
   // production) forwards the real client address in X-Forwarded-For.
   app.set("trust proxy", "loopback");
+  app.disable("x-powered-by");
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    next();
+  });
   app.use(requestContext);
   app.use(cors({ origin: config.frontendOrigin, credentials: true }));
   app.use(express.json());

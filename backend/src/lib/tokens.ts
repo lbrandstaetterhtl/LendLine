@@ -12,12 +12,13 @@ export type AccessPayload = {
 
 export function signAccessToken(payload: AccessPayload): string {
   return jwt.sign(payload, config.jwtAccessSecret, {
+    algorithm: "HS256",
     expiresIn: config.jwtAccessTtlSeconds,
   });
 }
 
 export function verifyAccessToken(token: string): AccessPayload {
-  const decoded = jwt.verify(token, config.jwtAccessSecret);
+  const decoded = jwt.verify(token, config.jwtAccessSecret, { algorithms: ["HS256"] });
   if (
     typeof decoded === "string" ||
     !decoded.sub ||

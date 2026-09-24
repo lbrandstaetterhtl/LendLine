@@ -3,10 +3,12 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: lendline
-      POSTGRES_PASSWORD: lendline
+      # Set POSTGRES_PASSWORD (and DATABASE_URL to match) for anything but local development.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lendline}
       POSTGRES_DB: lendline
     ports:
-      - "5432:5432"
+      # Loopback only: the database must not be reachable from the network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - lendline_pg:/var/lib/postgresql/data
 

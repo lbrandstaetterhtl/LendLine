@@ -13,20 +13,21 @@ import {
   revokeUserSessions,
   updateUser,
 } from "../services/userAdminService.js";
+import { newPassword } from "../validators/auth.js";
 
 const role = z.enum(["USER", "ADMIN"]);
 
 const createSchema = z.object({
   name: z.string().trim().min(2, "Name muss mindestens 2 Zeichen haben").max(120),
   email: z.string().trim().email("Ungültige E-Mail-Adresse").max(200),
-  password: z.string().min(8, "Passwort muss mindestens 8 Zeichen haben").max(200),
+  password: newPassword,
   role: role.default("USER"),
 });
 
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   role: role.optional(),
-  password: z.string().min(8, "Passwort muss mindestens 8 Zeichen haben").max(200).optional(),
+  password: newPassword.optional(),
 });
 
 export const userRouter = Router();

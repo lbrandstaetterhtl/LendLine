@@ -20,6 +20,10 @@ const publicUserSelect = {
   createdAt: true,
 } as const;
 
+// bcrypt hash of a random string (cost 12, like real hashes): compared against when the account
+// does not exist, so a missing account takes as long as a wrong password.
+const DUMMY_HASH = "$2b$12$O8kaLVjFtBul44boJ5k3B.cPsObVK2h0zy/KPgqgRYPWdzD5B1lb.";
+
 export type PublicUser = {
   id: string;
   name: string;
@@ -118,6 +122,15 @@ async function upsertLdapUser(profile: LdapProfile): Promise<PublicUser> {
     });
     return created;
   }
+  // The account changes hands when it was local (possibly registered by someone else with this
+  // e-mail) or belonged to another DN: its existing sessions must not carry over. A DN change
+  // is also what a move between OUs looks like, so it is not refused.
+  if (existing.authSource === "LOCAL" || existing.ldapDn !== profile.dn) {
+    await prisma.refreshToken.updateMany({
+      where: { userId: existing.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
   const nextRole: Role =
     config.ldap.adminGroups.length > 0 ? (profile.isAdmin ? "ADMIN" : "USER") : existing.role;
   const updated = await prisma.user.update({
@@ -212,11 +225,10 @@ async function authenticate(
   }
 
   const user = await prisma.user.findUnique({ where: { email: identifier.toLowerCase() } });
-  if (
-    !user?.passwordHash ||
-    user.authSource === "LDAP" ||
-    !(await verifyPassword(password, user.passwordHash))
-  ) {
+  const localHash = user?.authSource === "LOCAL" ? user.passwordHash : null;
+  // Always run bcrypt, so the response time does not reveal whether the account exists.
+  const valid = await verifyPassword(password, localHash ?? DUMMY_HASH);
+  if (!user || !localHash || !valid) {
     throw new HttpError(401, "Benutzername oder Passwort ist falsch");
   }
   return {
@@ -244,10 +256,14 @@ export async function refresh(rawToken: string | undefined): Promise<AuthResult>
   }
   // Checked before rotating: the session stays valid and simply continues after maintenance.
   await assertAccessDuringMaintenance(existing.user.role);
-  await prisma.refreshToken.update({
-    where: { id: existing.id },
+  // Atomic: of two requests presenting the same token, only one gets a new pair.
+  const claimed = await prisma.refreshToken.updateMany({
+    where: { id: existing.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+  if (claimed.count !== 1) {
+    throw new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
+  }
   return issueTokens(existing.user);
 }
 

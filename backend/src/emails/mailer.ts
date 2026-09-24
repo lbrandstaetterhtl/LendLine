@@ -1,6 +1,6 @@
 import type { MailMessage } from "./format.js";
 
-import nodemailer from "nodemailer";
+import { createTransport } from "nodemailer";
 
 import { config } from "../config.js";
 
@@ -16,7 +16,7 @@ export async function sendMail(to: string, message: MailMessage): Promise<void> 
     return;
   }
 
-  const transporter = nodemailer.createTransport({
+  const transporter = createTransport({
     host: config.smtp.host,
     port: config.smtp.port,
     secure: config.smtp.secure,

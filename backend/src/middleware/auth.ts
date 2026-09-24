@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { HttpError } from "../lib/errors.js";
+import { prisma } from "../lib/prisma.js";
 import { verifyAccessToken } from "../lib/tokens.js";
 import { assertAccessDuringMaintenance } from "../services/maintenanceService.js";
 
@@ -20,7 +21,9 @@ declare global {
 }
 
 /**
- * Valid access token required; during maintenance only admins get through (503 otherwise).
+ * Valid access token required; during maintenance only admins get through (503 otherwise). The role
+ * comes from the database, not the token: a deleted or demoted account loses access at once instead
+ * of when its token expires.
  */
 export const requireAuth = asyncHandler(async (req, _res, next) => {
   const header = req.header("authorization");
@@ -33,8 +36,13 @@ export const requireAuth = asyncHandler(async (req, _res, next) => {
   } catch {
     throw new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
   }
-  await assertAccessDuringMaintenance(payload.role);
-  req.user = { id: payload.sub, role: payload.role };
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: { id: true, role: true },
+  });
+  if (!user) throw new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
+  await assertAccessDuringMaintenance(user.role);
+  req.user = { id: user.id, role: user.role };
   next();
 });
 

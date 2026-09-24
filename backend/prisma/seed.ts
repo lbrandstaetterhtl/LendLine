@@ -4,6 +4,11 @@ import bcrypt from "bcrypt";
 const prisma = new PrismaClient();
 
 async function main() {
+  // The demo accounts have passwords published in the README: never in a real installation.
+  // oxlint-disable-next-line node/no-process-env -- standalone script, outside the app's config
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Der Demo-Seed ist in Produktion (NODE_ENV=production) nicht erlaubt.");
+  }
   const adminPassword = await bcrypt.hash("Admin123!", 12);
   const userPassword = await bcrypt.hash("User12345!", 12);
 

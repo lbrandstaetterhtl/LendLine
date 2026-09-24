@@ -28,12 +28,25 @@ function required(name: string): string {
   return value;
 }
 
+/**
+ * HMAC secrets must be long and not the placeholder from .env.example, which is public: anyone
+ * knowing it could sign admin tokens. Production refuses to start; development only warns.
+ */
+function secret(name: string): string {
+  const value = required(name);
+  if (value.length >= 32 && !value.startsWith("change-me")) return value;
+  const problem = `${name} ist zu schwach (mindestens 32 zufällige Zeichen, nicht der Platzhalter aus .env.example).`;
+  if (env("NODE_ENV") === "production") throw new Error(problem);
+  console.warn(`WARNUNG: ${problem} Nur für die Entwicklung zulässig.`);
+  return value;
+}
+
 export const config = {
   port: Number(env("PORT") ?? 3001),
   nodeEnv: env("NODE_ENV") ?? "development",
   frontendOrigin: env("FRONTEND_ORIGIN") ?? "http://localhost:5173",
   databaseUrl: required("DATABASE_URL"),
-  jwtAccessSecret: required("JWT_ACCESS_SECRET"),
+  jwtAccessSecret: secret("JWT_ACCESS_SECRET"),
   jwtRefreshSecret: required("JWT_REFRESH_SECRET"),
   jwtAccessTtlSeconds: parseTtlSeconds(env("JWT_ACCESS_TTL"), 15 * 60),
   jwtRefreshTtlDays: Number(env("JWT_REFRESH_TTL_DAYS") ?? 7),
