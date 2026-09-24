@@ -29,13 +29,18 @@ function required(name: string): string {
 }
 
 /**
- * HMAC secrets must be long and not the placeholder from .env.example, which is public: anyone
- * knowing it could sign admin tokens. Production refuses to start; development only warns.
+ * HMAC secrets must not be the placeholder from .env.example: it is public, so anyone could sign
+ * admin tokens with it. That is refused everywhere, because NODE_ENV is easily left unset on a real
+ * installation. A merely short secret aborts in production and only warns in development.
  */
 function secret(name: string): string {
   const value = required(name);
-  if (value.length >= 32 && !value.startsWith("change-me")) return value;
-  const problem = `${name} ist zu schwach (mindestens 32 zufällige Zeichen, nicht der Platzhalter aus .env.example).`;
+  const hint = `Zufälligen Wert erzeugen: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`;
+  if (value.startsWith("change-me")) {
+    throw new Error(`${name} ist noch der Platzhalter aus .env.example. ${hint}`);
+  }
+  if (value.length >= 32) return value;
+  const problem = `${name} ist zu kurz (mindestens 32 zufällige Zeichen). ${hint}`;
   if (env("NODE_ENV") === "production") throw new Error(problem);
   console.warn(`WARNUNG: ${problem} Nur für die Entwicklung zulässig.`);
   return value;

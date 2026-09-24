@@ -204,7 +204,7 @@ Adopted from a shared lint bundle and adapted to this project (2026-09-24). Run 
 
 All read in `backend/src/config.ts`. `DATABASE_URL`, `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are required — the process throws on startup if they are missing.
 
-`JWT_ACCESS_SECRET` must be at least 32 characters and must not start with `change-me` (the placeholder in `.env.example`, which is public). With `NODE_ENV=production` a weak secret aborts the start; otherwise the API only prints a warning. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
+`JWT_ACCESS_SECRET` must not start with `change-me` (the placeholder in `.env.example`, which is public): that aborts the start in every environment, because `NODE_ENV` is easily left unset. It must also be at least 32 characters; a shorter value aborts with `NODE_ENV=production` and only prints a warning otherwise. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 
 | Variable                              | Default                                                                  | Meaning                                                                  |
 | ------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
@@ -214,7 +214,7 @@ All read in `backend/src/config.ts`. `DATABASE_URL`, `JWT_ACCESS_SECRET` and `JW
 | `JWT_ACCESS_TTL`                      | `15m`                                                                    | Access token lifetime; format `<n>[s                                     | m   | h   | d]`, invalid → 15 min |
 | `JWT_REFRESH_TTL_DAYS`                | `7`                                                                      | Refresh token/cookie lifetime in days                                    |
 | `PORT`                                | `3001`                                                                   | API port (always bound to `127.0.0.1`)                                   |
-| `NODE_ENV`                            | `development`                                                            | `production`: refresh cookie `secure`, weak secret aborts, seed refused  |
+| `NODE_ENV`                            | `development`                                                            | `production`: refresh cookie `secure`, short secret aborts, seed refused |
 | `FRONTEND_ORIGIN`                     | `http://localhost:5173`                                                  | CORS origin (credentials allowed)                                        |
 | `SMTP_HOST`                           | empty                                                                    | Empty → e-mails are only logged to the console                           |
 | `SMTP_PORT` / `SMTP_SECURE`           | `587` / `false`                                                          |                                                                          |
@@ -846,7 +846,7 @@ check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 
 ### Security / operational notes
 
-- **`NODE_ENV` matters:** the weak-secret abort and the seed guard only apply with `NODE_ENV=production`, and it defaults to `development`. Always set it on real installations (open finding, Medium).
+- **`NODE_ENV` matters:** it defaults to `development`. The placeholder secret is refused everywhere, but the short-secret abort, the `Secure` cookie flag and the seed guard only apply with `NODE_ENV=production`. Always set it on real installations, and never run the demo seed there.
 - Ending sessions or resetting a password leaves an already issued access token valid for up to `JWT_ACCESS_TTL` (needs a `sessionVersion` column).
 - LDAP: accounts are still matched by e-mail as a fallback; a second directory entry with the same `mail` takes over the account's data and role (sessions are revoked). `ldap://` without TLS and `LDAP_TLS_REJECT_UNAUTHORIZED=false` are accepted without warning.
 - Rate limits are in memory and per process (§8); no reuse detection for refresh tokens.

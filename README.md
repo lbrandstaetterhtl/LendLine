@@ -15,8 +15,15 @@ cd backend
 copy .env.example .env
 npm install
 npx prisma migrate deploy
-npm run prisma:seed
+npx prisma db seed
 npm run dev
+```
+
+Vor dem ersten Start in `backend/.env` den Wert `JWT_ACCESS_SECRET` durch einen zufälligen Wert
+ersetzen, mit dem Platzhalter startet die API nicht:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
 In einem zweiten Terminal:

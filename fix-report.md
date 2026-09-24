@@ -30,10 +30,17 @@ Typecheck und Code-Review geprüft.
 
 **Summe:** 13 Fixed, 2 Partially Fixed, 3 Won't Fix (von 18).
 
+**Nachtrag (nach Audit 2):** Finding 1 aus `security-audit-2.md` (Medium, Schutz nur mit
+`NODE_ENV=production`) ist für das Secret behoben: Der Platzhalter `change-me…` wird jetzt in
+jeder Umgebung abgelehnt, nur ein kurzes Secret führt in der Entwicklung weiterhin bloß zu einer
+Warnung (`backend/src/config.ts`, `backend/.env.example`, `README.md`). Der Seed-Schutz hängt
+weiterhin an `NODE_ENV=production` (Rest-Risiko Low, dokumentiert in `doc/LendLine.md` §15).
+
 **Hinweise zum Betrieb nach dem Update**
 
 - `npm install` im Backend ausführen (nodemailer 10).
-- Produktionsinstallationen mit einem Platzhalter-/Kurz-Secret starten nicht mehr. Vorher
+- Installationen mit dem Platzhalter-Secret starten nicht mehr (auch in der Entwicklung),
+  Produktionsinstallationen außerdem nicht mit einem kurzen Secret. Vorher
   `JWT_ACCESS_SECRET` auf einen zufälligen Wert mit mindestens 32 Zeichen setzen. Dadurch werden
   alle Access-Tokens ungültig; die Nutzer werden über den Refresh-Token automatisch neu angemeldet.
 - `docker-compose.yml`: Wer die Datenbank bisher von einem anderen Rechner aus nutzte, muss das
