@@ -69,7 +69,7 @@ export function AdminRoomsPage() {
         title="Räume"
         description="Jede Ausleihe wird für einen Raum angefragt."
         actions={
-          <button type="button" onClick={() => open()}>
+          <button type="button" onClick={() => open()} data-shortcut="new" title="Tastenkürzel: n">
             <Icon name="plus" /> Raum anlegen
           </button>
         }

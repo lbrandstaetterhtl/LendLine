@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { useBranding } from "../branding/BrandingContext";
+import { goKeyFor, goShortcuts, isTyping } from "../shortcuts";
 import { Icon, type IconName } from "./icons";
 import { BrandLogo, LogoMark, Wordmark } from "./Logo";
 import { ThemeSwitch } from "./ThemeSwitch";
@@ -42,6 +43,73 @@ const adminSystemLinks: NavItem[] = [
   { to: "/admin/wartung", label: "Wartung", icon: "tool" },
 ];
 
+const helpLinks: NavItem[] = [{ to: "/hilfe", label: "Bedienung", icon: "keyboard" }];
+
+/**
+ * Global keys: "?" help, "/" search field, "n" create, "g" + letter to jump to a page. Dialogs
+ * handle their own keys; while one is open (or a field has focus) nothing fires here.
+ */
+function useShortcuts(isAdmin: boolean) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    let goPending = 0;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isTyping(event.target) || document.querySelector("dialog[open]")) return;
+      const main = document.getElementById("inhalt");
+      if (goPending && Date.now() - goPending < 1500) {
+        goPending = 0;
+        const target = goShortcuts.find(
+          (shortcut) => shortcut.key === event.key.toLowerCase() && (isAdmin || !shortcut.admin)
+        );
+        if (target) {
+          event.preventDefault();
+          void navigate(target.to);
+        }
+        return;
+      }
+      if (event.key === "g") {
+        goPending = Date.now();
+      } else if (event.key === "?") {
+        event.preventDefault();
+        void navigate("/hilfe");
+      } else if (event.key === "/") {
+        const field = main?.querySelector<HTMLElement>('[data-shortcut="search"]');
+        if (field) {
+          event.preventDefault();
+          field.focus();
+        }
+      } else if (event.key === "n") {
+        const create = main?.querySelector<HTMLElement>('[data-shortcut="new"]');
+        if (create) {
+          event.preventDefault();
+          if (create instanceof HTMLButtonElement) create.click();
+          else create.focus();
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isAdmin, navigate]);
+}
+
+/**
+ * After a page change the keyboard continues at the page heading, not at the top of the sidebar.
+ */
+function useFocusOnNavigation() {
+  const { pathname } = useLocation();
+  const previous = useRef(pathname);
+  useEffect(() => {
+    if (previous.current === pathname) return;
+    previous.current = pathname;
+    const heading = document.querySelector<HTMLElement>("#inhalt h1");
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+    window.scrollTo({ top: 0 });
+  }, [pathname]);
+}
+
 type Counts = { openRequests: number; activeLoans: number; maintenance: boolean };
 
 function initials(name = "") {
@@ -72,6 +140,20 @@ export function Layout() {
   const { user, logout } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const [menuOpen, setMenuOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  useShortcuts(isAdmin);
+  useFocusOnNavigation();
+
+  // Mobile menu: focus moves into it, Escape closes it again.
+  useEffect(() => {
+    if (!menuOpen) return;
+    sidebarRef.current?.querySelector<HTMLElement>("nav a")?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
   const { data: counts, reload: reloadCounts } = useApi<Counts>(
     isAdmin ? "/api/admin/summary" : null
   );
@@ -91,9 +173,15 @@ export function Layout() {
       <ul>
         {items.map((item) => {
           const count = item.count && counts ? counts[item.count] : 0;
+          const key = goKeyFor(item.to);
           return (
             <li key={item.to}>
-              <NavLink to={item.to} end={item.end} onClick={onNavigate}>
+              <NavLink
+                to={item.to}
+                end={item.end}
+                onClick={onNavigate}
+                title={key ? `Tastenkürzel: g, dann ${key}` : undefined}
+              >
                 <Icon name={item.icon} />
                 {item.label}
                 {count > 0 && (
@@ -138,7 +226,7 @@ export function Layout() {
         />
       )}
 
-      <aside className="sidebar" data-open={menuOpen}>
+      <aside className="sidebar" data-open={menuOpen} ref={sidebarRef}>
         <div className="sidebar-brand">
           <Brand />
         </div>
@@ -155,6 +243,8 @@ export function Layout() {
               {renderLinks(adminSystemLinks)}
             </>
           )}
+          <p className="nav-label">Hilfe</p>
+          {renderLinks(helpLinks)}
         </nav>
         <div className="sidebar-theme">
           <span>Darstellung</span>

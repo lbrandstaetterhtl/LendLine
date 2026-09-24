@@ -78,6 +78,8 @@ export function AdminAuditPage() {
         <Field label="Suche" htmlFor="audit-search" className="grow">
           <input
             id="audit-search"
+            data-shortcut="search"
+            title="Tastenkürzel: /"
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}

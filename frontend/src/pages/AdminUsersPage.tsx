@@ -88,7 +88,7 @@ export function AdminUsersPage() {
         title="Benutzer"
         description="Lokale Konten anlegen, Rollen vergeben und Passwörter zurücksetzen."
         actions={
-          <button type="button" onClick={() => open()}>
+          <button type="button" onClick={() => open()} data-shortcut="new" title="Tastenkürzel: n">
             <Icon name="plus" /> Benutzer anlegen
           </button>
         }

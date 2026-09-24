@@ -122,6 +122,12 @@ const paths = {
       <circle cx="15" cy="8" r="1" />
     </>
   ),
+  keyboard: (
+    <>
+      <rect x="2.5" y="6" width="19" height="12" rx="1.5" />
+      <path d="M6.5 10h1M10.5 10h1M14.5 10h1M18 10h-.5M6.5 14h1M9.5 14h5M17.5 14h-1" />
+    </>
+  ),
   upload: <path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />,
 } as const;
 

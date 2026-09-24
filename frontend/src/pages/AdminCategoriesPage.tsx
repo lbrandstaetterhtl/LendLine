@@ -74,6 +74,8 @@ export function AdminCategoriesPage() {
           >
             <input
               id="category-name"
+              data-shortcut="new"
+              title="Tastenkürzel: n"
               value={name}
               onChange={(event) => setName(event.target.value)}
               required

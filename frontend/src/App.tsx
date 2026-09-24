@@ -13,6 +13,7 @@ import { AdminRequestsPage } from "./pages/AdminRequestsPage";
 import { AdminRoomsPage } from "./pages/AdminRoomsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DevicesPage } from "./pages/DevicesPage";
+import { HelpPage } from "./pages/HelpPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MyRequestsPage } from "./pages/MyRequestsPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -77,6 +78,7 @@ export function App() {
         <Route path="/search" element={<SearchPage />} />
         <Route path="/devices" element={<DevicesPage />} />
         <Route path="/my-requests" element={<MyRequestsPage />} />
+        <Route path="/hilfe" element={<HelpPage />} />
         <Route
           path="/admin"
           element={

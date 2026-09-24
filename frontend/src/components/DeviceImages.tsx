@@ -1,10 +1,11 @@
-import type { DeviceStatus, Period } from "../types";
+import type { BorrowRequest, DeviceStatus, Period } from "../types";
 
-import { useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
-import { toLocalInput } from "../types";
+import { requestStatusLabel, toLocalInput } from "../types";
 import { Icon } from "./icons";
 import { DeviceBadge } from "./StatusBadge";
 import { Alert, Field, Modal } from "./ui";
@@ -48,6 +49,64 @@ export function DeviceImages({
 type Booking = { id: string; startsAt: string; endsAt: string; state: string; borrower?: string };
 type CalendarUnit = { id: string; serialNumber: string; status: DeviceStatus; bookings: Booking[] };
 
+type OwnPeriod = Period & {
+  key: string;
+  /**
+   * Short text for the chip, e.g. "28.09. 11:00 – 12.10. 21:00".
+   */
+  label: string;
+  /**
+   * Devices and status, e.g. "ThinkPad T14 (offen)".
+   */
+  detail: string;
+  roomId: string | null;
+};
+
+/**
+ * The periods of the user's open and approved requests that have not ended yet, one entry per
+ * period (several devices booked for the same time share it), soonest first.
+ */
+function ownPeriods(requests: BorrowRequest[] | null): OwnPeriod[] {
+  const now = Date.now();
+  const byPeriod = new Map<string, OwnPeriod & { devices: string[]; statuses: Set<string> }>();
+  for (const request of requests ?? []) {
+    if (request.status !== "OPEN" && request.status !== "APPROVED") continue;
+    if (new Date(request.desiredUntil).getTime() <= now) continue;
+    const startsAt = toLocalInput(new Date(request.startsAt));
+    const desiredUntil = toLocalInput(new Date(request.desiredUntil));
+    const key = `${startsAt}|${desiredUntil}`;
+    const entry = byPeriod.get(key) ?? {
+      key,
+      startsAt,
+      desiredUntil,
+      label: "",
+      detail: "",
+      roomId: request.room?.id ?? null,
+      devices: [],
+      statuses: new Set<string>(),
+    };
+    entry.devices.push(request.device.name);
+    entry.statuses.add(requestStatusLabel[request.status].toLowerCase());
+    byPeriod.set(key, entry);
+  }
+  return [...byPeriod.values()]
+    .toSorted((a, b) => a.startsAt.localeCompare(b.startsAt))
+    .map(({ devices, statuses, ...entry }) => ({
+      ...entry,
+      label: `${shortDateTime(entry.startsAt)} – ${shortDateTime(entry.desiredUntil)}`,
+      detail: `${devices.join(", ")} (${[...statuses].join(", ")})`,
+    }));
+}
+
+function shortDateTime(value: string) {
+  return new Date(value).toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function monthDays(year: number, month: number) {
   const first = new Date(year, month, 1);
   const start = new Date(first);
@@ -88,6 +147,21 @@ const stateLabel: Record<string, string> = {
   APPROVED: "Bestätigt",
 };
 
+/**
+ * True when the unit already has an open or approved booking overlapping the period, the same rule
+ * the server applies when the request is sent.
+ */
+function unitBusy(unit: CalendarUnit, period: Period) {
+  const start = new Date(period.startsAt).getTime();
+  const end = new Date(period.desiredUntil).getTime();
+  return unit.bookings.some(
+    (booking) =>
+      (booking.state === "OPEN" || booking.state === "APPROVED") &&
+      new Date(booking.startsAt).getTime() < end &&
+      new Date(booking.endsAt).getTime() > start
+  );
+}
+
 function overlapsDay(day: Date, period: Period) {
   const start = new Date(day);
   start.setHours(0, 0, 0, 0);
@@ -127,6 +201,11 @@ export function PieceCalendarDialog({
   const [requestOpen, setRequestOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const { data: allRooms, error: roomsError } = useApi<Room[]>("/api/rooms");
+  const { data: myRequests, reload: reloadMyRequests } =
+    useApi<BorrowRequest[]>("/api/requests/mine");
+  const periods = useMemo(() => ownPeriods(myRequests), [myRequests]);
+  // A period of one of the user's own requests, picked above the calendar.
+  const [chosen, setChosen] = useState<OwnPeriod | null>(null);
   const {
     data: calendar,
     error: calendarError,
@@ -134,10 +213,63 @@ export function PieceCalendarDialog({
   } = useApi<{ units: CalendarUnit[] }>(`/api/devices/${deviceId}/calendar`);
   // `unit` is what the opener knew; the calendar response adds the bookings.
   const current = calendar?.units.find((item) => item.id === unit.id) ?? unit;
+  const highlight: Period | undefined = chosen ?? period;
   const rooms = (allRooms ?? []).filter((room) => room.id !== "room-unassigned");
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const days = useMemo(() => monthDays(year, month), [year, month]);
+  const weeks = useMemo(
+    () => Array.from({ length: 6 }, (_, week) => days.slice(week * 7, week * 7 + 7)),
+    [days]
+  );
+  // Roving focus: the grid is one Tab stop, the arrow keys move between days.
+  const [focused, setFocused] = useState(() => cursor);
+  const gridRef = useRef<HTMLTableElement>(null);
+  const tabDay = days.some((day) => day.toDateString() === focused.toDateString())
+    ? focused.toDateString()
+    : new Date(year, month, 1).toDateString();
+
+  function onGridKeyDown(event: KeyboardEvent<HTMLTableElement>) {
+    const next = new Date(focused);
+    const weekday = (next.getDay() + 6) % 7;
+    switch (event.key) {
+      case "ArrowLeft":
+        next.setDate(next.getDate() - 1);
+        break;
+      case "ArrowRight":
+        next.setDate(next.getDate() + 1);
+        break;
+      case "ArrowUp":
+        next.setDate(next.getDate() - 7);
+        break;
+      case "ArrowDown":
+        next.setDate(next.getDate() + 7);
+        break;
+      case "Home":
+        next.setDate(next.getDate() - weekday);
+        break;
+      case "End":
+        next.setDate(next.getDate() + 6 - weekday);
+        break;
+      case "PageUp":
+        next.setMonth(next.getMonth() - 1);
+        break;
+      case "PageDown":
+        next.setMonth(next.getMonth() + 1);
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    setFocused(next);
+    if (next.getMonth() !== month || next.getFullYear() !== year) {
+      setCursor(new Date(next.getFullYear(), next.getMonth(), 1));
+    }
+    // A key press commits synchronously, so the new day's button exists by the next frame.
+    requestAnimationFrame(() => {
+      gridRef.current?.querySelector<HTMLButtonElement>('button[tabindex="0"]')?.focus();
+    });
+  }
 
   function pickDay(day: Date, kind: string) {
     if (kind !== "free" || current.status === "DEFECTIVE") return;
@@ -148,7 +280,20 @@ export function PieceCalendarDialog({
     openRequest({ startsAt: toLocalInput(start), desiredUntil: toLocalInput(end) });
   }
 
-  function openRequest(next: Period) {
+  function choosePeriod(entry: OwnPeriod) {
+    if (chosen?.key === entry.key) {
+      setChosen(null);
+      return;
+    }
+    setChosen(entry);
+    const start = new Date(entry.startsAt);
+    setCursor(new Date(start.getFullYear(), start.getMonth(), 1));
+    setFocused(start);
+  }
+
+  function openRequest(next: Period, suggestedRoom?: string | null) {
+    // Same appointment, usually the same room; only preset it while none is chosen yet.
+    if (!roomId && suggestedRoom && suggestedRoom !== "room-unassigned") setRoomId(suggestedRoom);
     setStartsAt(next.startsAt);
     setDesiredUntil(next.desiredUntil);
     setFormError("");
@@ -169,6 +314,7 @@ export function PieceCalendarDialog({
         body: JSON.stringify({ unitId: current.id, roomId, startsAt, desiredUntil, comment }),
       });
       reloadCalendar();
+      reloadMyRequests();
       onRequested?.();
       setInfo(
         "Anfrage gesendet. Die Verwaltung prüft sie. Den Stand sehen Sie unter „Meine Anfragen“."
@@ -197,20 +343,43 @@ export function PieceCalendarDialog({
     >
       <Alert>{calendarError || roomsError}</Alert>
       <Alert tone="ok">{info}</Alert>
-      {period ? (
+      {highlight ? (
         <div className="period-bar">
           <div>
-            <span className="muted small">Zeitraum aus der Suche</span>
+            <span className="muted small">
+              {chosen ? `Zeitraum Ihrer Anfrage · ${chosen.detail}` : "Zeitraum aus der Suche"}
+            </span>
             <strong>
-              {dateTime(period.startsAt)} – {dateTime(period.desiredUntil)}
+              {dateTime(highlight.startsAt)} – {dateTime(highlight.desiredUntil)}
             </strong>
           </div>
-          <button type="button" onClick={() => openRequest(period)}>
-            Für diesen Zeitraum anfragen
-          </button>
+          {unitBusy(current, highlight) ? (
+            <span className="muted small">Dieses Stück ist in diesem Zeitraum schon belegt.</span>
+          ) : (
+            <button type="button" onClick={() => openRequest(highlight, chosen?.roomId)}>
+              Für diesen Zeitraum anfragen
+            </button>
+          )}
         </div>
       ) : (
         <p className="muted small">Wählen Sie einen freien Tag, um eine Anfrage zu stellen.</p>
+      )}
+      {periods.length > 0 && (
+        <fieldset className="chips own-periods">
+          <legend>Zeitraum aus meinen Anfragen</legend>
+          {periods.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              className="chip"
+              aria-pressed={chosen?.key === entry.key}
+              title={entry.detail}
+              onClick={() => choosePeriod(entry)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </fieldset>
       )}
       <div className="cal-toolbar">
         <button
@@ -231,40 +400,63 @@ export function PieceCalendarDialog({
           <Icon name="right" />
         </button>
       </div>
-      <div className="cal-grid" role="grid" aria-label={`Kalender ${monthLabel}`}>
-        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((label) => (
-          <div key={label} className="cal-head">
-            {label}
-          </div>
-        ))}
-        {days.map((day) => {
-          const kind = dayKind(day, current);
-          const label =
-            kind === "borrowed"
-              ? "belegt"
-              : kind === "open"
-                ? "angefragt"
-                : kind === "defective"
-                  ? "defekt"
-                  : "frei";
-          return (
-            <button
-              type="button"
-              key={day.toISOString()}
-              className={`cal-day cal-${kind}${day.getMonth() === month ? "" : " cal-out"}${
-                period && overlapsDay(day, period) ? " cal-selected" : ""
-              }`}
-              title={`${day.toLocaleDateString("de-DE")}: ${label}`}
-              aria-label={`${day.toLocaleDateString("de-DE")}, ${label}`}
-              disabled={kind !== "free"}
-              onClick={() => pickDay(day, kind)}
-            >
-              <span>{day.getDate()}</span>
-              <span className="cal-label">{label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* The WAI-ARIA date picker pattern: a table with role="grid" and arrow-key navigation. */}
+      <table
+        ref={gridRef}
+        className="cal-grid"
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
+        role="grid"
+        tabIndex={-1}
+        aria-label={`Kalender ${monthLabel}. Pfeiltasten wechseln den Tag, Bild auf/ab den Monat.`}
+        onKeyDown={onGridKeyDown}
+      >
+        <thead>
+          <tr>
+            {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((label) => (
+              <th key={label} scope="col" className="cal-head">
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {weeks.map((week) => (
+            <tr key={week[0]?.toISOString()}>
+              {week.map((day) => {
+                const kind = dayKind(day, current);
+                const label =
+                  kind === "borrowed"
+                    ? "belegt"
+                    : kind === "open"
+                      ? "angefragt"
+                      : kind === "defective"
+                        ? "defekt"
+                        : "frei";
+                return (
+                  <td key={day.toISOString()}>
+                    <button
+                      type="button"
+                      className={`cal-day cal-${kind}${day.getMonth() === month ? "" : " cal-out"}${
+                        highlight && overlapsDay(day, highlight) ? " cal-selected" : ""
+                      }`}
+                      title={`${day.toLocaleDateString("de-DE")}: ${label}`}
+                      aria-label={`${day.toLocaleDateString("de-DE")}, ${label}`}
+                      // Not `disabled`: taken days stay reachable, so their status can be read out.
+                      aria-disabled={kind !== "free"}
+                      tabIndex={day.toDateString() === tabDay ? 0 : -1}
+                      onFocus={() => setFocused(day)}
+                      onClick={() => pickDay(day, kind)}
+                    >
+                      <span>{day.getDate()}</span>
+                      <span className="cal-label">{label}</span>
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <div className="legend" aria-hidden="true">
         <span>
           <i /> frei
@@ -469,11 +661,19 @@ export function ImagePopup({
   const image = images[index] ?? images[0];
   if (!image) return null;
 
+  // Arrow keys page through the images, wherever the focus is inside the dialog.
+  function onKeyDown(event: KeyboardEvent<HTMLDialogElement>) {
+    if (images.length < 2) return;
+    if (event.key === "ArrowLeft") onIndex((index + images.length - 1) % images.length);
+    else if (event.key === "ArrowRight") onIndex((index + 1) % images.length);
+  }
+
   return (
     <Modal
       title={alt}
       description={images.length > 1 ? `Bild ${index + 1} von ${images.length}` : undefined}
       onClose={onClose}
+      onKeyDown={onKeyDown}
       size="lg"
       footer={
         images.length > 1 ? (

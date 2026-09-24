@@ -32,10 +32,10 @@
   --bad-bg: #fef2f2;
   --bad-line: #fecaca;
 
-  --radius: 8px;
-  --radius-sm: 6px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 12px 32px -8px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --radius: 4px;
+  --radius-sm: 3px;
+  --shadow-sm: none;
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.14);
   --sidebar-w: 248px;
 
   color: var(--text);
@@ -93,8 +93,8 @@
     --bad: #f87171;
     --bad-bg: rgba(239, 68, 68, 0.12);
     --bad-line: rgba(239, 68, 68, 0.36);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
+    --shadow-sm: none;
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
     color-scheme: dark;
   }
 }
@@ -129,8 +129,8 @@
   --bad: #f87171;
   --bad-bg: rgba(239, 68, 68, 0.12);
   --bad-line: rgba(239, 68, 68, 0.36);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-sm: none;
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
   color-scheme: dark;
 }
 
@@ -138,6 +138,10 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+html {
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -157,9 +161,14 @@ a:hover {
 }
 
 :focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+/* Headings get focus after a page change (Layout); that is for the keyboard, not a control. */
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring);
-  border-color: var(--focus) !important;
 }
 
 h1 {
@@ -289,13 +298,16 @@ button.ghost:hover {
 
 button.sm,
 .btn.sm {
-  height: 30px;
+  height: 32px;
   padding: 0 10px;
   font-size: 13px;
 }
 button.icon {
-  width: 34px;
+  width: 36px;
   padding: 0;
+}
+button.sm.icon {
+  width: 32px;
 }
 button.block {
   width: 100%;
@@ -321,7 +333,7 @@ button.linkish:hover {
 
 .actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -330,7 +342,7 @@ button.linkish:hover {
 }
 .actions input {
   width: 200px;
-  height: 30px;
+  height: 32px;
 }
 
 svg.i {
@@ -426,7 +438,7 @@ svg.i {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 34px;
+  height: 36px;
   padding: 0 10px;
   border-radius: var(--radius-sm);
   color: var(--text-2);
@@ -453,7 +465,7 @@ svg.i {
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   display: grid;
   place-items: center;
   background: var(--accent);
@@ -484,12 +496,12 @@ fieldset.theme-switch {
   border-radius: var(--radius-sm);
 }
 .theme-switch button {
-  width: 28px;
-  height: 26px;
+  width: 32px;
+  height: 30px;
   padding: 0;
   background: transparent;
   border-color: transparent;
-  border-radius: 4px;
+  border-radius: 2px;
   color: var(--muted);
 }
 .theme-switch button:hover {
@@ -520,7 +532,7 @@ fieldset.theme-switch {
   flex: none;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius);
   background: var(--subtle);
   border: 1px solid var(--border);
   font-size: 12px;
@@ -553,8 +565,7 @@ fieldset.theme-switch {
   padding: 0 12px 0 16px;
   align-items: center;
   justify-content: space-between;
-  background: var(--topbar-bg);
-  backdrop-filter: blur(8px);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 .topbar .brand-inline {
@@ -809,9 +820,9 @@ textarea:hover {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: none;
+  outline: 1px solid var(--focus);
+  outline-offset: 0;
   border-color: var(--focus);
-  box-shadow: var(--focus-ring);
 }
 input:disabled,
 select:disabled,
@@ -847,12 +858,12 @@ input[type="file"] {
   cursor: pointer;
 }
 input[type="file"]::file-selector-button {
-  height: 28px;
+  height: 30px;
   margin-right: 10px;
   padding: 0 10px;
   cursor: pointer;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--subtle);
   font: inherit;
   font-size: 13px;
@@ -939,19 +950,12 @@ td.empty {
   align-items: center;
   gap: 6px;
   height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
+  padding: 0 7px;
+  border-radius: 2px;
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   border: 1px solid transparent;
-}
-.badge::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
 }
 .st-available,
 .st-approved {
@@ -984,8 +988,8 @@ td.empty {
   display: inline-flex;
   height: 22px;
   align-items: center;
-  padding: 0 8px;
-  border-radius: 999px;
+  padding: 0 7px;
+  border-radius: 2px;
   background: var(--subtle);
   border: 1px solid var(--border);
   font-size: 12px;
@@ -1040,7 +1044,7 @@ td.empty {
   height: 44px;
   object-fit: cover;
   display: block;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--subtle);
 }
@@ -1073,9 +1077,9 @@ dialog.modal-panel {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 6px;
   box-shadow: var(--shadow-lg);
-  animation: pop 0.14s ease-out;
+  animation: fade 0.1s ease-out;
 }
 dialog.modal-panel::backdrop {
   background: rgba(9, 9, 11, 0.4);
@@ -1115,7 +1119,7 @@ dialog.modal-panel.sm {
   padding: 14px 20px;
   border-top: 1px solid var(--border);
   background: var(--surface-2);
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 6px 6px;
 }
 
 dialog.modal-panel.sheet {
@@ -1145,15 +1149,9 @@ dialog.modal-panel.sheet.lg {
     opacity: 0;
   }
 }
-@keyframes pop {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.99);
-  }
-}
 @keyframes slide {
   from {
-    transform: translateX(24px);
+    transform: translateX(12px);
     opacity: 0;
   }
 }
@@ -1176,10 +1174,21 @@ dialog.modal-panel.sheet.lg {
   font-weight: 600;
   text-transform: capitalize;
 }
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+table.cal-grid {
+  width: calc(100% + 8px);
+  margin: -4px -4px 0;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 4px;
+}
+table.cal-grid th,
+table.cal-grid td {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+table.cal-grid tbody tr:hover td {
+  background: none;
 }
 .cal-head {
   font-size: 11.5px;
@@ -1205,8 +1214,7 @@ button.cal-day {
   font-size: 13px;
   box-shadow: none;
 }
-button.cal-day:disabled {
-  opacity: 1;
+button.cal-day[aria-disabled="true"] {
   cursor: default;
 }
 button.cal-free:hover {
@@ -1322,7 +1330,7 @@ button.cal-selected {
   display: grid;
   place-items: center;
   padding: 24px 16px;
-  background: radial-gradient(1200px 600px at 50% -10%, var(--subtle), var(--bg));
+  background: var(--bg);
 }
 .auth-card {
   width: min(100%, 380px);
@@ -1471,9 +1479,9 @@ button.cal-selected {
   margin-bottom: 16px;
 }
 button.chip {
-  height: 28px;
+  height: 32px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text-2);
   border-color: var(--border-strong);
@@ -1501,7 +1509,7 @@ button.chip[aria-pressed="true"] {
   border-radius: var(--radius);
 }
 .segmented button {
-  height: 30px;
+  height: 32px;
   padding: 0 12px;
   background: transparent;
   border-color: transparent;
@@ -1580,7 +1588,7 @@ fieldset.chips {
   flex: none;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius);
   background: var(--subtle);
   border: 1px solid var(--border);
   color: var(--text-2);
@@ -1923,10 +1931,10 @@ table.audit-changes tbody tr:hover td {
   gap: 8px;
 }
 button.swatch {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   border: 2px solid var(--surface);
   box-shadow: 0 0 0 1px var(--border-strong);
 }
@@ -1981,8 +1989,62 @@ button.swatch[aria-pressed="true"] {
   align-items: center;
   height: 28px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-contrast);
   font-size: 12.5px;
+}
+
+/* ---------- Help page (Bedienung) ---------- */
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+}
+.keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.help-section {
+  max-width: 860px;
+  margin-bottom: 32px;
+}
+.help-section h2 {
+  margin-bottom: 10px;
+}
+.help-section .table-wrap {
+  margin-bottom: 8px;
+}
+.help-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+}
+.key-table td:first-child {
+  width: 260px;
+  white-space: nowrap;
+}
+fieldset.own-periods {
+  align-items: center;
+}
+fieldset.own-periods legend {
+  float: left;
+  margin-right: 4px;
+  font-size: 12px;
+  color: var(--muted);
 }

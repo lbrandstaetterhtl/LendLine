@@ -191,6 +191,8 @@ export function SearchPage() {
               <Field label="Gerätename" htmlFor="q" optional>
                 <input
                   id="q"
+                  data-shortcut="search"
+                  title="Tastenkürzel: /"
                   type="search"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}

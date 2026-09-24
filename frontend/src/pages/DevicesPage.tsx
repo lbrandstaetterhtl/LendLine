@@ -47,6 +47,8 @@ export function DevicesPage() {
         <Field label="Suche" htmlFor="device-search" className="grow">
           <input
             id="device-search"
+            data-shortcut="search"
+            title="Tastenkürzel: /"
             type="search"
             value={term}
             onChange={(e) => setTerm(e.target.value)}

@@ -134,7 +134,7 @@ export function AdminDevicesPage() {
         title="Geräte"
         description="Ein Gerät ist ein Modell. Jedes Stück hat eine eigene Seriennummer und einen eigenen Status."
         actions={
-          <button type="button" onClick={openNew}>
+          <button type="button" onClick={openNew} data-shortcut="new" title="Tastenkürzel: n">
             <Icon name="plus" /> Gerät anlegen
           </button>
         }
