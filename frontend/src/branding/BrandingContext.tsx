@@ -1,0 +1,91 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+
+import { api } from "../api/client";
+import { accentCss } from "./palette";
+
+export type Branding = {
+  accent: string | null;
+  logoUrl: string | null;
+  logoDarkUrl: string | null;
+};
+
+type BrandingContextValue = {
+  branding: Branding;
+  /**
+   * Applies a new branding right away, e.g. the response of a save on the admin page.
+   */
+  setBranding: (branding: Branding) => void;
+};
+
+const DEFAULT: Branding = { accent: null, logoUrl: null, logoDarkUrl: null };
+
+// index.html reads CSS_KEY before the first paint; keep both names in sync with it.
+const STORAGE_KEY = "lendline-branding";
+const CSS_KEY = "lendline-branding-css";
+const STYLE_ID = "lendline-branding";
+
+function readCached(): Branding {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? { ...DEFAULT, ...(JSON.parse(raw) as Partial<Branding>) } : DEFAULT;
+  } catch {
+    return DEFAULT;
+  }
+}
+
+function applyAccent(accent: string | null): string {
+  const css = accent ? accentCss(accent) : "";
+  let style = document.getElementById(STYLE_ID);
+  if (!style) {
+    style = document.createElement("style");
+    style.id = STYLE_ID;
+    document.head.append(style);
+  }
+  style.textContent = css;
+  return css;
+}
+
+function store(branding: Branding, css: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(branding));
+    if (css) localStorage.setItem(CSS_KEY, css);
+    else localStorage.removeItem(CSS_KEY);
+  } catch {
+    // Storage blocked: the branding still loads from the API, just after the first paint.
+  }
+}
+
+const BrandingContext = createContext<BrandingContextValue | null>(null);
+
+export function BrandingProvider({ children }: { children: React.ReactNode }) {
+  const [branding, setState] = useState<Branding>(readCached);
+
+  const setBranding = useCallback((next: Branding) => {
+    setState(next);
+    store(next, applyAccent(next.accent));
+  }, []);
+
+  useEffect(() => {
+    const session = { active: true };
+    void (async () => {
+      try {
+        const loaded = await api<Branding>("/api/branding");
+        if (session.active) setBranding(loaded);
+      } catch {
+        // API not reachable: keep the cached branding.
+      }
+    })();
+    return () => {
+      session.active = false;
+    };
+  }, [setBranding]);
+
+  const value = useMemo(() => ({ branding, setBranding }), [branding, setBranding]);
+  return <BrandingContext.Provider value={value}>{children}</BrandingContext.Provider>;
+}
+
+export function useBranding(): BrandingContextValue {
+  const ctx = useContext(BrandingContext);
+  if (!ctx) throw new Error("BrandingProvider fehlt");
+  return ctx;
+}

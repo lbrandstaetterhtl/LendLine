@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Pinned here, not in tsconfig.json: this is the config that emits, so src/index.ts lands at
+    // dist/index.js.
+    "rootDir": "src",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

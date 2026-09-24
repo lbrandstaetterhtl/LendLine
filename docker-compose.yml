@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lendline
+      POSTGRES_PASSWORD: lendline
+      POSTGRES_DB: lendline
+    ports:
+      - "5432:5432"
+    volumes:
+      - lendline_pg:/var/lib/postgresql/data
+
+volumes:
+  lendline_pg:

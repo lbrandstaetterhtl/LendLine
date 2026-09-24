@@ -1,0 +1,12 @@
+{
+  "name": "lendline",
+  "private": true,
+  "scripts": {
+    "format:docs": "prettier --check \"**/*.{json,md,yml,yaml}\"",
+    "format:docs:fix": "prettier --write \"**/*.{json,md,yml,yaml}\"",
+    "check": "npm --prefix backend run check && npm --prefix frontend run check && npm run format:docs"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9"
+  }
+}

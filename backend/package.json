@@ -1,0 +1,56 @@
+{
+  "name": "lendline-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --max-warnings 0 -c .oxlintrc.json --tsconfig tsconfig.json src/ prisma/",
+    "lint:fix": "oxlint --fix -c .oxlintrc.json --tsconfig tsconfig.json src/ prisma/",
+    "lint:types": "oxlint --max-warnings 0 --type-aware --report-unused-disable-directives -c .oxlintrc.json --tsconfig tsconfig.json src/ prisma/",
+    "format": "oxfmt --check .",
+    "format:fix": "oxfmt .",
+    "knip": "knip",
+    "check": "npm run typecheck && npm run lint:types && npm run format && npm run knip",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "db:setup": "prisma migrate dev --name init && tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "ldapts": "^8.0.9",
+    "multer": "^2.4.0",
+    "nodemailer": "^7.0.6",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.23",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^24.5.2",
+    "@types/nodemailer": "^7.0.1",
+    "knip": "^6.38.0",
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
+    "prisma": "^6.16.2",
+    "tsx": "^4.20.5",
+    "typescript": "^7.0.2"
+  }
+}

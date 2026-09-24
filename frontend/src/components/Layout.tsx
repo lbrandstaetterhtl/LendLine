@@ -1,0 +1,202 @@
+import { useEffect, useState } from "react";
+import { NavLink, Outlet } from "react-router-dom";
+
+import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { useBranding } from "../branding/BrandingContext";
+import { Icon, type IconName } from "./icons";
+import { BrandLogo, LogoMark, Wordmark } from "./Logo";
+import { ThemeSwitch } from "./ThemeSwitch";
+import { NAV_REFRESH_EVENT } from "./ui";
+
+type NavItem = {
+  to: string;
+  label: string;
+  icon: IconName;
+  end?: boolean;
+  count?: "openRequests" | "activeLoans";
+};
+
+const lendLinks: NavItem[] = [
+  { to: "/search", label: "Stück suchen", icon: "search" },
+  { to: "/devices", label: "Gerätekatalog", icon: "box", end: true },
+  { to: "/my-requests", label: "Meine Anfragen", icon: "list" },
+];
+
+const adminLinks: NavItem[] = [
+  { to: "/admin", label: "Übersicht", icon: "home", end: true },
+  { to: "/admin/requests", label: "Anfragen", icon: "inbox", count: "openRequests" },
+  { to: "/admin/borrowed", label: "Ausleihen", icon: "clock", count: "activeLoans" },
+];
+
+const adminDataLinks: NavItem[] = [
+  { to: "/admin/devices", label: "Geräte", icon: "box" },
+  { to: "/admin/categories", label: "Kategorien", icon: "tag" },
+  { to: "/admin/rooms", label: "Räume", icon: "door" },
+  { to: "/admin/users", label: "Benutzer", icon: "users" },
+];
+
+const adminSystemLinks: NavItem[] = [
+  { to: "/admin/protokoll", label: "Protokoll", icon: "file" },
+  { to: "/admin/erscheinungsbild", label: "Erscheinungsbild", icon: "palette" },
+  { to: "/admin/wartung", label: "Wartung", icon: "tool" },
+];
+
+type Counts = { openRequests: number; activeLoans: number; maintenance: boolean };
+
+function initials(name = "") {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function Brand() {
+  const { branding } = useBranding();
+  // A company logo usually carries its own name, so it stands alone.
+  if (branding.logoUrl) return <BrandLogo height={32} />;
+  return (
+    <>
+      <LogoMark size={28} />
+      <span>
+        <Wordmark />
+        <small>IT-Geräteausleihe</small>
+      </span>
+    </>
+  );
+}
+
+export function Layout() {
+  const { user, logout } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { data: counts, reload: reloadCounts } = useApi<Counts>(
+    isAdmin ? "/api/admin/summary" : null
+  );
+
+  // Pages announce changes (approve, return, …) so the counters never lag behind.
+  useEffect(() => {
+    window.addEventListener(NAV_REFRESH_EVENT, reloadCounts);
+    return () => window.removeEventListener(NAV_REFRESH_EVENT, reloadCounts);
+  }, [reloadCounts]);
+
+  function onNavigate() {
+    setMenuOpen(false);
+    reloadCounts();
+  }
+  function renderLinks(items: NavItem[]) {
+    return (
+      <ul>
+        {items.map((item) => {
+          const count = item.count && counts ? counts[item.count] : 0;
+          return (
+            <li key={item.to}>
+              <NavLink to={item.to} end={item.end} onClick={onNavigate}>
+                <Icon name={item.icon} />
+                {item.label}
+                {count > 0 && (
+                  <span className="nav-count" aria-label={`${count} offen`}>
+                    {count}
+                  </span>
+                )}
+              </NavLink>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  return (
+    <div className="app">
+      <a className="skip" href="#inhalt">
+        Zum Inhalt springen
+      </a>
+
+      <div className="topbar">
+        <div className="brand-inline">
+          <Brand />
+        </div>
+        <button
+          type="button"
+          className="ghost icon"
+          aria-label="Menü öffnen"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(true)}
+        >
+          <Icon name="menu" />
+        </button>
+      </div>
+      {menuOpen && (
+        <button
+          type="button"
+          className="scrim"
+          aria-label="Menü schließen"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
+
+      <aside className="sidebar" data-open={menuOpen}>
+        <div className="sidebar-brand">
+          <Brand />
+        </div>
+        <nav aria-label="Hauptnavigation">
+          <p className="nav-label">Ausleihe</p>
+          {renderLinks(lendLinks)}
+          {isAdmin && (
+            <>
+              <p className="nav-label">Verwaltung</p>
+              {renderLinks(adminLinks)}
+              <p className="nav-label">Stammdaten</p>
+              {renderLinks(adminDataLinks)}
+              <p className="nav-label">System</p>
+              {renderLinks(adminSystemLinks)}
+            </>
+          )}
+        </nav>
+        <div className="sidebar-theme">
+          <span>Darstellung</span>
+          <ThemeSwitch />
+        </div>
+        <div className="sidebar-user">
+          <span className="avatar" aria-hidden="true">
+            {initials(user?.name)}
+          </span>
+          <div className="who">
+            <strong title={user?.email}>{user?.name}</strong>
+            <span>{isAdmin ? "Verwaltung" : "Nutzer"}</span>
+          </div>
+          <button
+            type="button"
+            className="ghost icon"
+            onClick={() => void logout()}
+            aria-label="Abmelden"
+            title="Abmelden"
+          >
+            <Icon name="logout" />
+          </button>
+        </div>
+      </aside>
+
+      <main id="inhalt" className="content">
+        <div className="content-inner">
+          {counts?.maintenance && (
+            <div className="maintenance-banner" aria-live="polite">
+              <Icon name="tool" />
+              <span>
+                <strong>Wartungsmodus aktiv.</strong> Nutzer können sich nicht anmelden, nur die
+                Verwaltung arbeitet.
+              </span>
+              <NavLink to="/admin/wartung" onClick={onNavigate}>
+                Verwalten
+              </NavLink>
+            </div>
+          )}
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  );
+}

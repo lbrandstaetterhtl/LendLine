@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AuthSource {
+  LOCAL
+  LDAP
+}
+
+enum DeviceStatus {
+  AVAILABLE
+  BORROWED
+  DEFECTIVE
+}
+
+enum RequestStatus {
+  OPEN
+  APPROVED
+  REJECTED
+  RETURNED
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String?
+  authSource    AuthSource     @default(LOCAL)
+  ldapDn        String?        @unique
+  role          Role           @default(USER)
+  createdAt     DateTime       @default(now())
+  requests      BorrowRequest[]
+  refreshTokens RefreshToken[]
+}
+
+model Category {
+  id      String   @id @default(cuid())
+  name    String   @unique
+  devices Device[]
+}
+
+model Device {
+    id          String          @id @default(cuid())
+    name        String
+    categoryId  String
+    category    Category        @relation(fields: [categoryId], references: [id])
+    description String          @default("")
+    createdAt   DateTime        @default(now())
+    updatedAt   DateTime        @updatedAt
+    requests    BorrowRequest[]
+    images      DeviceImage[]
+    units       DeviceUnit[]
+}
+
+model Room {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  building    String          @default("")
+  description String          @default("")
+  requests    BorrowRequest[]
+}
+
+model DeviceUnit {
+    id           String          @id @default(cuid())
+    deviceId     String
+    serialNumber String          @unique
+    status       DeviceStatus    @default(AVAILABLE)
+    device       Device          @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+    requests     BorrowRequest[]
+
+    @@index([deviceId])
+    @@index([status])
+}
+
+model DeviceImage {
+  id        String   @id @default(cuid())
+  deviceId  String
+  fileName  String
+  createdAt DateTime @default(now())
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+}
+
+model BorrowRequest {
+  id              String        @id @default(cuid())
+  userId          String
+  deviceId        String
+    unitId          String?
+        roomId          String
+        status          RequestStatus @default(OPEN)
+  requestedAt     DateTime      @default(now())
+    startsAt        DateTime
+    desiredUntil    DateTime
+  approvedAt      DateTime?
+  returnedAt      DateTime?
+  comment         String        @default("")
+  rejectionReason String        @default("")
+  user            User          @relation(fields: [userId], references: [id])
+  device          Device        @relation(fields: [deviceId], references: [id])
+    unit            DeviceUnit?   @relation(fields: [unitId], references: [id])
+  room            Room          @relation(fields: [roomId], references: [id])
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([status])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  actorId    String?
+  actorName  String
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  /// Structured detail: { changes?: [{ field, from, to }], context?: { label: value } }
+  details    Json?
+  ip         String?
+  userAgent  String?
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([entityType])
+  @@index([actorId])
+}
+
+/// Runtime settings changed from the admin UI, e.g. key "maintenance".
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

@@ -1,0 +1,155 @@
+import type { Device, DeviceStatus } from "../types";
+
+import { useState } from "react";
+import { Link } from "react-router-dom";
+
+import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { CategorySelect } from "../components/CategorySelect";
+import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceImages";
+import { Icon } from "../components/icons";
+import { Alert, Field, PageHeader } from "../components/ui";
+
+export function DevicesPage() {
+  const isAdmin = useAuth().user?.role === "ADMIN";
+  const [categoryId, setCategoryId] = useState("");
+  const [status, setStatus] = useState<"" | DeviceStatus>("");
+  const params = new URLSearchParams();
+  if (categoryId) params.set("categoryId", categoryId);
+  if (status) params.set("status", status);
+  const query = params.toString();
+  const { data: all, error } = useApi<Device[]>(`/api/devices${query ? `?${query}` : ""}`);
+  const [term, setTerm] = useState("");
+  const needle = term.trim().toLowerCase();
+  const devices = needle
+    ? all?.filter((device) => `${device.name} ${device.description}`.toLowerCase().includes(needle))
+    : all;
+  const [preview, setPreview] = useState<{
+    name: string;
+    images: { id: string; url: string }[];
+    index: number;
+  } | null>(null);
+  const [pieceDevice, setPieceDevice] = useState<Device | null>(null);
+
+  return (
+    <>
+      <PageHeader
+        title="Gerätekatalog"
+        description="Alle Geräte mit aktuellem Bestand. Für eine Ausleihe den Zeitraum über die Suche wählen."
+        actions={
+          <Link className="btn" to="/search">
+            <Icon name="search" /> Stück suchen
+          </Link>
+        }
+      />
+      <Alert>{error}</Alert>
+      <div className="toolbar">
+        <Field label="Suche" htmlFor="device-search" className="grow">
+          <input
+            id="device-search"
+            type="search"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Gerätename oder Beschreibung"
+          />
+        </Field>
+        <Field label="Kategorie" htmlFor="category">
+          <CategorySelect
+            id="category"
+            value={categoryId}
+            onChange={setCategoryId}
+            emptyLabel="Alle Kategorien"
+          />
+        </Field>
+        <Field label="Verfügbarkeit" htmlFor="status">
+          <select
+            id="status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as "" | DeviceStatus)}
+          >
+            <option value="">Alle</option>
+            <option value="AVAILABLE">Mit freien Stücken</option>
+            <option value="BORROWED">Mit ausgeliehenen Stücken</option>
+            {isAdmin && <option value="DEFECTIVE">Mit defekten Stücken</option>}
+          </select>
+        </Field>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Gerät</th>
+              <th>Kategorie</th>
+              <th className="num">Verfügbar</th>
+              <th className="num">Gesamt</th>
+              <th>Beschreibung</th>
+              <th>Bilder</th>
+              <th>
+                <span className="sr-only">Aktionen</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices?.map((device) => (
+              <tr key={device.id}>
+                <td>
+                  <button type="button" className="linkish" onClick={() => setPieceDevice(device)}>
+                    {device.name}
+                  </button>
+                </td>
+                <td>
+                  <span className="tag">{device.category}</span>
+                </td>
+                <td className="num">{device.quantityAvailable}</td>
+                <td className="num muted">{device.quantityTotal}</td>
+                <td className="muted">{device.description || "–"}</td>
+                <td>
+                  <DeviceImages
+                    images={device.images}
+                    alt={device.name}
+                    onOpen={(index) =>
+                      setPreview({ name: device.name, images: device.images, index })
+                    }
+                  />
+                </td>
+                <td className="actions-cell">
+                  <button
+                    type="button"
+                    className="secondary sm"
+                    onClick={() => setPieceDevice(device)}
+                  >
+                    Stücke
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {devices?.length === 0 && (
+              <tr>
+                <td colSpan={7} className="empty">
+                  Keine Geräte gefunden.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {pieceDevice && (
+        <PieceListDialog
+          key={pieceDevice.id}
+          deviceId={pieceDevice.id}
+          name={pieceDevice.name}
+          onClose={() => setPieceDevice(null)}
+        />
+      )}
+      {preview && (
+        <ImagePopup
+          images={preview.images}
+          alt={preview.name}
+          index={preview.index}
+          onIndex={(index) => setPreview({ ...preview, index })}
+          onClose={() => setPreview(null)}
+        />
+      )}
+    </>
+  );
+}

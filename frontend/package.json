@@ -1,0 +1,35 @@
+{
+  "name": "lendline-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --max-warnings 0 -c .oxlintrc.json --tsconfig tsconfig.json src/",
+    "lint:fix": "oxlint --fix -c .oxlintrc.json --tsconfig tsconfig.json src/",
+    "lint:types": "oxlint --max-warnings 0 --type-aware --report-unused-disable-directives -c .oxlintrc.json --tsconfig tsconfig.json src/",
+    "format": "oxfmt --check .",
+    "format:fix": "oxfmt .",
+    "knip": "knip",
+    "check": "npm run typecheck && npm run lint:types && npm run format && npm run knip"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "knip": "^6.38.0",
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.5"
+  }
+}

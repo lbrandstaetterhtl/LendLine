@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LendLine · IT-Geräteausleihe</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
+    <script>
+      // Apply a saved "Hell"/"Dunkel" choice before the first paint (see src/theme.ts).
+      try {
+        var theme = localStorage.getItem("lendline-theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        // Company accent colour, cached by src/branding/BrandingContext.tsx.
+        var brandingCss = localStorage.getItem("lendline-branding-css");
+        if (brandingCss) {
+          var style = document.createElement("style");
+          style.id = "lendline-branding";
+          style.textContent = brandingCss;
+          document.head.appendChild(style);
+        }
+      } catch (error) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
