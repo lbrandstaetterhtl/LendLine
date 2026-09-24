@@ -30,17 +30,17 @@ The UI, API error messages, e-mails and README are in **German**. This document 
 
 ## 1. At a glance
 
-| Aspect   | Details                                                                                                                                |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend  | Node.js ≥ 20, TypeScript, Express 4, Prisma 6 (PostgreSQL), Zod, JWT, bcrypt, ldapts, multer, nodemailer                               |
-| Frontend | React 19, React Router 7, Vite 7, TypeScript, plain CSS (no UI library)                                                                |
-| Database | PostgreSQL 16 (via `docker-compose.yml`)                                                                                               |
-| Auth     | Short-lived JWT access token (in memory) + rotating refresh token (httpOnly cookie); optional LDAP/Active Directory                    |
-| Roles    | `USER` (borrower, "Nutzer") and `ADMIN` ("Verwaltung")                                                                                 |
-| Ports    | API `127.0.0.1:3001`, frontend dev server `127.0.0.1:5173` (proxies `/api` to the API)                                                 |
-| Quality  | TypeScript 7 (strict), oxlint (incl. type-aware rules), oxfmt, Prettier (MD/JSON/YAML), knip — see §3 “Code quality”                   |
-| Tests    | None                                                                                                                                   |
-| VCS      | The folder is not a git repository (a `.gitignore` exists). The `.venv`/`.idea` folders come from PyCharm and are not used by the app. |
+| Aspect   | Details                                                                                                              |
+| -------- | -------------------------------------------------------------------------------------------------------------------- |
+| Backend  | Node.js ≥ 20, TypeScript, Express 4, Prisma 6 (PostgreSQL), Zod, JWT, bcrypt, ldapts, multer, nodemailer             |
+| Frontend | React 19, React Router 7, Vite 7, TypeScript, plain CSS (no UI library)                                              |
+| Database | PostgreSQL 16 (via `docker-compose.yml`)                                                                             |
+| Auth     | Short-lived JWT access token (in memory) + rotating refresh token (httpOnly cookie); optional LDAP/Active Directory  |
+| Roles    | `USER` (borrower, "Nutzer") and `ADMIN` ("Verwaltung")                                                               |
+| Ports    | API `127.0.0.1:3001`, frontend dev server `127.0.0.1:5173` (proxies `/api` to the API)                               |
+| Quality  | TypeScript 7 (strict), oxlint (incl. type-aware rules), oxfmt, Prettier (MD/JSON/YAML), knip — see §3 “Code quality” |
+| Tests    | None (security audits: `security-audit-1.md`, `fix-report.md`, `security-audit-2.md` in the repository root)         |
+| VCS      | Git repository (`main`). The `.venv`/`.idea` folders come from PyCharm, are git-ignored and not used by the app.     |
 
 ---
 
@@ -49,12 +49,13 @@ The UI, API error messages, e-mails and README are in **German**. This document 
 ```
 LendLine/
 ├── README.md                  German quick-start (partly outdated, see §15)
-├── docker-compose.yml         PostgreSQL 16 container (user/pass/db = lendline)
+├── docker-compose.yml         PostgreSQL 16 container on 127.0.0.1:5432 (user/db = lendline, password from POSTGRES_PASSWORD, default lendline)
 ├── .gitignore                 node_modules, dist, .env, backend/uploads, .idea, .venv
 ├── package.json               Root scripts: check (everything), format:docs (Prettier)
 ├── .oxfmtrc.json              Code formatting (oxfmt), used by the backend
 ├── .prettierignore            Prettier formats only Markdown/JSON/YAML
 ├── doc/                       This documentation
+├── security-audit-1.md        Security audit, fix-report.md and security-audit-2.md (verification)
 │
 ├── backend/
 │   ├── .env / .env.example    Runtime configuration
@@ -72,7 +73,7 @@ LendLine/
 │       ├── index.ts           Starts the HTTP server
 │       ├── app.ts             Express app, middleware, route mounting, admin endpoints
 │       ├── config.ts          Reads & validates environment variables
-│       ├── lib/               prisma client, HttpError, bcrypt, JWT/refresh tokens, asyncHandler, routeParam
+│       ├── lib/               prisma client, HttpError, bcrypt, JWT/refresh tokens, asyncHandler, routeParam, rate limiter, request context
 │       ├── middleware/        auth (requireAuth/requireAdmin), validateBody, upload (multer), errorHandler
 │       ├── validators/        Zod schemas for auth, devices, requests
 │       ├── routes/            auth, categories, devices, requests, rooms, users
@@ -89,11 +90,12 @@ LendLine/
         ├── main.tsx           BrowserRouter + AuthProvider + global CSS
         ├── App.tsx            Route table + route guards
         ├── types.ts           Shared types, status labels, date formatting
+        ├── shortcuts.ts       Keyboard shortcuts (one list for the handler and the help page)
         ├── api/client.ts      fetch wrapper with bearer token + auto refresh (one shared refresh request)
         ├── api/useApi.ts      Data-loading hook: { data, error, reload }
         ├── auth/AuthContext.tsx
-        ├── components/        Layout, ui (PageHeader, Field, Alert, Modal), icons, CategorySelect, DeviceImages (+ calendar dialogs), StatusBadge
-        ├── pages/             One file per screen (user + admin)
+        ├── components/        Layout (+ global shortcuts), ui (PageHeader, Field, Alert, Modal), icons, CategorySelect, DeviceImages (+ calendar dialogs), StatusBadge
+        ├── pages/             One file per screen (user + admin, HelpPage = „Bedienung“)
         └── styles/global.css
 ```
 
@@ -114,10 +116,10 @@ docker compose up -d
 
 # 2. Backend
 cd backend
-copy .env.example .env          # Windows; use `cp` on Linux/macOS — then change the JWT secrets
+copy .env.example .env          # Windows; use `cp` on Linux/macOS — then set JWT_ACCESS_SECRET (see §4)
 npm install
 npx prisma migrate deploy       # apply all migrations
-npm run prisma:seed             # demo users, categories, devices
+npx prisma db seed              # demo users, categories, devices (loads .env; see below)
 npm run dev                     # tsx watch → http://localhost:3001
 
 # 3. Frontend (second terminal)
@@ -134,6 +136,9 @@ npm run dev                     # http://localhost:5173
 | User ("Max Mustermann") | `user@lendline.local`  | `User12345!` |
 
 The seed also creates the categories _Laptop, Monitor, Beamer, Zubehör_ and five devices with one unit each (the Epson projector unit `BM-3001` is seeded as `DEFECTIVE`). The seed is idempotent (upserts / "create if missing by name").
+
+- Run it with `npx prisma db seed`: the Prisma CLI loads `backend/.env`. `npm run prisma:seed` calls `tsx prisma/seed.ts` directly, which does **not** load `.env` and fails with "Environment variable not found: DATABASE_URL" unless the variables are set in the shell.
+- The seed refuses to run with `NODE_ENV=production`, because the demo passwords are public. It does not run automatically otherwise, but check `NODE_ENV` on real installations (see §15).
 
 Rooms are **not** in the seed; the `rooms` migration inserts `A101`, `B204`, `C12` and a placeholder `Nicht zugeordnet` (`room-unassigned`).
 
@@ -186,8 +191,12 @@ Adopted from a shared lint bundle and adapted to this project (2026-09-24). Run 
   - Dialogs are native `<dialog>` elements (`Modal` in `components/ui.tsx`). The browser handles
     focus, Escape, the backdrop and nested dialogs.
 - **Not adopted from the bundle:** Vitest rules and test tsconfigs (no tests yet), Tailwind class
-  sorting, `@shared/*` paths, and the husky/lint-staged pre-commit hook (the folder is not a git
-  repository; add it once it is).
+  sorting, `@shared/*` paths, and the husky/lint-staged pre-commit hook (not set up yet, although
+  the folder is now a git repository).
+- **Line endings on Windows:** with `core.autocrlf=true` git checks files out with CRLF, and
+  `oxfmt --check` (part of `npm run check`) then reports every such file. Running `oxfmt` rewrites
+  them to LF, which git shows as modified although only the line endings changed. Either work with
+  `core.autocrlf=input`/`false`, or add a `.gitattributes` with `* text=auto eol=lf`.
 
 ---
 
@@ -195,15 +204,17 @@ Adopted from a shared lint bundle and adapted to this project (2026-09-24). Run 
 
 All read in `backend/src/config.ts`. `DATABASE_URL`, `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are required — the process throws on startup if they are missing.
 
+`JWT_ACCESS_SECRET` must be at least 32 characters and must not start with `change-me` (the placeholder in `.env.example`, which is public). With `NODE_ENV=production` a weak secret aborts the start; otherwise the API only prints a warning. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
+
 | Variable                              | Default                                                                  | Meaning                                                                  |
 | ------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
 | `DATABASE_URL`                        | — (required)                                                             | PostgreSQL connection string                                             |
-| `JWT_ACCESS_SECRET`                   | — (required)                                                             | HMAC secret for access tokens                                            |
+| `JWT_ACCESS_SECRET`                   | — (required)                                                             | HMAC secret for access tokens (HS256); ≥ 32 characters, see above        |
 | `JWT_REFRESH_SECRET`                  | — (required)                                                             | Read but **not used** (refresh tokens are random opaque strings, see §8) |
 | `JWT_ACCESS_TTL`                      | `15m`                                                                    | Access token lifetime; format `<n>[s                                     | m   | h   | d]`, invalid → 15 min |
 | `JWT_REFRESH_TTL_DAYS`                | `7`                                                                      | Refresh token/cookie lifetime in days                                    |
 | `PORT`                                | `3001`                                                                   | API port (always bound to `127.0.0.1`)                                   |
-| `NODE_ENV`                            | `development`                                                            | `production` sets the refresh cookie `secure` flag                       |
+| `NODE_ENV`                            | `development`                                                            | `production`: refresh cookie `secure`, weak secret aborts, seed refused  |
 | `FRONTEND_ORIGIN`                     | `http://localhost:5173`                                                  | CORS origin (credentials allowed)                                        |
 | `SMTP_HOST`                           | empty                                                                    | Empty → e-mails are only logged to the console                           |
 | `SMTP_PORT` / `SMTP_SECURE`           | `587` / `false`                                                          |                                                                          |
@@ -217,6 +228,8 @@ All read in `backend/src/config.ts`. `DATABASE_URL`, `JWT_ACCESS_SECRET` and `JW
 | `LDAP_ATTR_EMAIL` / `LDAP_ATTR_NAME`  | `mail` / `displayName`                                                   | Attribute mapping (name falls back to `cn`, then the login name)         |
 | `LDAP_TLS_REJECT_UNAUTHORIZED`        | `true`                                                                   | Set `false` to accept self-signed certificates                           |
 | `LDAP_ALLOW_LOCAL_REGISTER`           | `true`                                                                   | `false` disables self-registration while LDAP is enabled                 |
+
+`docker-compose.yml` reads `POSTGRES_PASSWORD` (default `lendline`); keep `DATABASE_URL` in step with it.
 
 ---
 
@@ -243,7 +256,8 @@ flowchart LR
 
 - **Routes** (`src/routes/*`) — parse input (Zod via `validateBody` or inline `.parse`), apply `requireAuth`/`requireAdmin`, call a service, send JSON. Async handlers are wrapped in `asyncHandler()`, which passes errors to `next()`; required route params are read with `routeParam(req, "id")`.
 - **Services** (`src/services/*`) — all business rules, Prisma queries, transactions, audit writes and e-mail dispatch.
-- **Errors** — services throw `HttpError(status, message)`; `errorHandler` maps `HttpError` → its status, `ZodError` → 400 (messages joined), anything else → 500 `"Interner Serverfehler"`. Responses are always `{ "error": "<message>" }`.
+- **Errors** — services throw `HttpError(status, message, code?)`; `errorHandler` maps `HttpError` → its status, `ZodError` → 400 (messages joined), body-parser errors (malformed JSON → 400, body over 100 kB → 413, not logged), anything else → 500 `"Interner Serverfehler"` (logged with stack trace). Responses are always `{ "error": "<message>" }`, plus `code` where set (`MAINTENANCE`, `RATE_LIMITED`).
+- **Security headers** — every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`; `X-Powered-By` is disabled.
 - Prisma error codes are mapped where relevant: `P2002` (unique) → 409, `P2025` (not found) → 404, `P2034` (serialization failure) → 409.
 
 **Static files:** `GET /api/uploads/...` serves `backend/uploads` (relative to the process CWD — start the API from `backend/`). No authentication is required for images.
@@ -412,7 +426,7 @@ Returns every non-defective unit (optionally filtered by category and case-insen
 | Room                     | any request references it                                               |
 | User                     | it's your own account, it's the last admin, or the user has any request |
 
-Additional user rules: you cannot remove your own admin role; the last admin cannot be demoted. Setting a password for an LDAP user through the admin UI converts them to a `LOCAL` user (clears `ldapDn`).
+Additional user rules: you cannot remove your own admin role; the last admin cannot be demoted. The admin count and the change it guards run in one `Serializable` transaction, so two admins demoting each other at the same moment cannot leave none (the loser gets 409 "bitte erneut versuchen"). Setting a password through the admin UI ends all of that user's sessions (refresh tokens) and converts an LDAP user to a `LOCAL` user (clears `ldapDn`).
 
 ### 7.9 Images
 
@@ -426,14 +440,16 @@ Additional user rules: you cannot remove your own admin role; the last admin can
 
 ### Tokens
 
-| Token         | Format                                                                       | Storage                                                                                  | Lifetime                        |
-| ------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------- |
-| Access token  | JWT (HS256), payload `{ sub: userId, role }` signed with `JWT_ACCESS_SECRET` | JS memory in the frontend (`api/client.ts`), sent as `Authorization: Bearer …`           | `JWT_ACCESS_TTL` (15 min)       |
-| Refresh token | 48 random bytes, hex; only its **SHA-256 hash** is stored in `RefreshToken`  | httpOnly cookie `refreshToken`, `SameSite=Lax`, `Path=/api/auth`, `Secure` in production | `JWT_REFRESH_TTL_DAYS` (7 days) |
+| Token         | Format                                                                      | Storage                                                                                  | Lifetime                        |
+| ------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------- |
+| Access token  | JWT (HS256, pinned on sign and verify), payload `{ sub: userId, role }`     | JS memory in the frontend (`api/client.ts`), sent as `Authorization: Bearer …`           | `JWT_ACCESS_TTL` (15 min)       |
+| Refresh token | 48 random bytes, hex; only its **SHA-256 hash** is stored in `RefreshToken` | httpOnly cookie `refreshToken`, `SameSite=Lax`, `Path=/api/auth`, `Secure` in production | `JWT_REFRESH_TTL_DAYS` (7 days) |
 
-**Rotation:** every `/api/auth/refresh` revokes the presented token and issues a new pair. Logout revokes the current token. Expired/revoked rows stay until an admin runs _Abgelaufene Sitzungen bereinigen_ on `/admin/wartung`.
+**Rotation:** every `/api/auth/refresh` revokes the presented token and issues a new pair. The revocation is atomic (`updateMany … where revokedAt = null`): of two requests presenting the same token only one gets a new pair, the other gets 401. Logout revokes the current token. Expired/revoked rows stay until an admin runs _Abgelaufene Sitzungen bereinigen_ on `/admin/wartung`.
 
-The role is read from the JWT, so a role change takes effect only after the next refresh (≤ 15 min).
+`/auth/refresh` and `/auth/logout` rely on the `SameSite=Lax` cookie and additionally refuse (403) an `Origin` header that is neither `FRONTEND_ORIGIN` nor the request's own host.
+
+**The role is read from the database, not from the JWT:** `requireAuth` loads the user on every request. A deleted account gets 401 at once, a demoted admin loses admin rights at once. Ending sessions (`/users/:id/sessions/revoke`, the maintenance task, a password reset) revokes refresh tokens only; an already issued access token of an account that still exists stays valid until it expires (≤ `JWT_ACCESS_TTL`).
 
 ### Flow
 
@@ -462,12 +478,26 @@ On page load `AuthProvider` calls `/api/auth/refresh` and then `/api/auth/me` to
    - bind as the found DN with the user's password (wrong password → 401),
    - map e-mail/name, compute admin from `memberOf` vs `LDAP_ADMIN_GROUP` (full DN match or `cn=<value>,…` prefix),
    - upsert the local user (matched by `ldapDn` or e-mail) with `authSource=LDAP`, `passwordHash=null`. The role is overwritten from LDAP **only** when `LDAP_ADMIN_GROUP` is set; otherwise an existing role is kept and new users get `USER`.
+   - when an existing account changes hands — it was `LOCAL`, or its `ldapDn` differs (e.g. a move between OUs) — all its refresh tokens are revoked first, so a session of someone who registered that e-mail locally does not carry over.
    - Any non-HTTP LDAP failure (server down, etc.) is logged and falls through to local login.
-2. Local login: find by lower-cased e-mail; fails if there is no hash, the user is an LDAP user, or bcrypt (12 rounds) does not match.
+2. Local login: find by lower-cased e-mail; fails if there is no hash, the user is an LDAP user, or bcrypt (12 rounds) does not match. bcrypt always runs (against a dummy hash when the account is missing), so the response time does not reveal whether an account exists.
+
+### Rate limits
+
+In memory, per API process (`lib/rateLimit.ts`, applied in `routes/auth.ts`); over the limit → 429 `{ error, code: "RATE_LIMITED" }`.
+
+| Endpoint              | Limit                                                                                                                             |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /auth/login`    | 10 attempts / 15 min per IP + account, 50 / 15 min per IP. A successful login is refunded (per IP) and resets the account counter |
+| `POST /auth/register` | 10 / hour per IP                                                                                                                  |
+
+Every attempt is counted before the password check, so parallel requests cannot slip past. The counters reset on restart, and each process counts on its own. Keys use `req.ip`, which is only the real client address behind a proxy on loopback that appends `X-Forwarded-For` (Vite in development; configure the production reverse proxy the same way).
 
 ### Registration
 
-`POST /api/auth/register` creates a `LOCAL` `USER`. It is blocked (403) when LDAP is enabled and `LDAP_ALLOW_LOCAL_REGISTER=false`. `GET /api/auth/options` tells the login page whether to show the register link.
+`POST /api/auth/register` creates a `LOCAL` `USER`. It is blocked (403) when LDAP is enabled and `LDAP_ALLOW_LOCAL_REGISTER=false`. `GET /api/auth/options` tells the login page whether to show the register link. The e-mail address is not verified.
+
+New passwords (registration, admin create/reset) must be 8 characters to 72 bytes UTF-8 — bcrypt ignores everything after 72 bytes. The login password is capped at 200 characters, so older, longer passwords keep working.
 
 ### Authorization
 
@@ -490,34 +520,34 @@ Admins switch it on at `/admin/wartung` with a message and an optional expected 
 ## 9. REST API reference
 
 Base path `/api`. JSON in/out. "Auth": 🔓 public, 👤 any logged-in user, 🛡 admin.
-Errors: `{ "error": "<German message>" }` with 400/401/403/404/409/500, plus 503 with `code: "MAINTENANCE"` during maintenance (§8).
+Errors: `{ "error": "<German message>" }` with 400/401/403/404/409/413/500, plus 429 with `code: "RATE_LIMITED"` (login/registration, §8) and 503 with `code: "MAINTENANCE"` during maintenance (§8).
 
 ### Health & admin
 
-| Method | Path                                                                  | Auth | Description                                                                                                                                                                                   |
-| ------ | --------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/health`                                                             | 🔓   | `{ ok: true }`                                                                                                                                                                                |
-| GET    | `/branding`                                                           | 🔓   | `{ accent, logoUrl, logoDarkUrl }` (all nullable), read by every page including the login page                                                                                                |
-| GET    | `/admin/summary`                                                      | 🛡    | `{ users, categories, devices, devicesAvailable, devicesBorrowed, devicesDefective, openRequests, activeLoans, maintenance }` (unit counts by stored status; does not refresh statuses first) |
-| GET    | `/admin/audit?q=&category=&action=&actorId=&from=&to=&cursor=&limit=` | 🛡    | `{ items, nextCursor }`, newest first (default 50, max 200). `category`: requests, devices, masterdata, users, auth; `from`/`to`: `YYYY-MM-DD` (whole days)                                   |
-| GET    | `/admin/audit/actors`                                                 | 🛡    | People who appear in the log, for the person filter                                                                                                                                           |
-| GET    | `/admin/maintenance`                                                  | 🛡    | System status: `{ maintenance, database, app, integrations, counts, sessions, uploads, audit }` (DB latency, uptime, version, SMTP/LDAP, session and orphaned-upload counts)                  |
-| PUT    | `/admin/maintenance/mode`                                             | 🛡    | `{ enabled, message (≤ 500, empty → default text), until ("YYYY-MM-DDTHH:MM" local time or null) }` → the new mode                                                                            |
-| POST   | `/admin/maintenance/tasks/:task`                                      | 🛡    | Runs one task → `{ message }`: `cleanup-sessions`, `cleanup-uploads`, `refresh-units`, `test-mail`, `end-sessions` (all except the caller's own); unknown task → 404                          |
-| PUT    | `/admin/branding`                                                     | 🛡    | `{ accent: "#rrggbb" \| null }` (stored lower-case; null → built-in accent) → branding                                                                                                        |
-| POST   | `/admin/branding/logo/:variant`                                       | 🛡    | `variant` = `light` \| `dark`; multipart field `logo`, SVG/PNG/JPG/WEBP, ≤ 1 MB → branding. Replaces and deletes the previous file                                                            |
-| DELETE | `/admin/branding/logo/:variant`                                       | 🛡    | Removes that logo and its file → branding                                                                                                                                                     |
+| Method | Path                                                                          | Auth | Description                                                                                                                                                                                                                                       |
+| ------ | ----------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`                                                                     | 🔓   | `{ ok: true }`                                                                                                                                                                                                                                    |
+| GET    | `/branding`                                                                   | 🔓   | `{ accent, logoUrl, logoDarkUrl }` (all nullable), read by every page including the login page                                                                                                                                                    |
+| GET    | `/admin/summary`                                                              | 🛡    | `{ users, categories, devices, devicesAvailable, devicesBorrowed, devicesDefective, openRequests, activeLoans, maintenance }` (unit counts by stored status; does not refresh statuses first)                                                     |
+| GET    | `/admin/audit?q=&category=&action=&actorId=&userId=&from=&to=&cursor=&limit=` | 🛡    | `{ items, nextCursor }`, newest first (default 50, max 200). `category`: requests, devices, masterdata, users, auth, system; `userId`: everything about one person (own actions, account, their requests); `from`/`to`: `YYYY-MM-DD` (whole days) |
+| GET    | `/admin/audit/actors`                                                         | 🛡    | People who appear in the log, for the person filter                                                                                                                                                                                               |
+| GET    | `/admin/maintenance`                                                          | 🛡    | System status: `{ maintenance, database, app, integrations, counts, sessions, uploads, audit }` (DB latency, uptime, version, SMTP/LDAP, session and orphaned-upload counts)                                                                      |
+| PUT    | `/admin/maintenance/mode`                                                     | 🛡    | `{ enabled, message (≤ 500, empty → default text), until ("YYYY-MM-DDTHH:MM" local time or null) }` → the new mode                                                                                                                                |
+| POST   | `/admin/maintenance/tasks/:task`                                              | 🛡    | Runs one task → `{ message }`: `cleanup-sessions`, `cleanup-uploads`, `refresh-units`, `test-mail`, `end-sessions` (all except the caller's own); unknown task → 404                                                                              |
+| PUT    | `/admin/branding`                                                             | 🛡    | `{ accent: "#rrggbb" \| null }` (stored lower-case; null → built-in accent) → branding                                                                                                                                                            |
+| POST   | `/admin/branding/logo/:variant`                                               | 🛡    | `variant` = `light` \| `dark`; multipart field `logo`, SVG/PNG/JPG/WEBP, ≤ 1 MB → branding. Replaces and deletes the previous file                                                                                                                |
+| DELETE | `/admin/branding/logo/:variant`                                               | 🛡    | Removes that logo and its file → branding                                                                                                                                                                                                         |
 
 ### Auth — `/auth`
 
-| Method | Path             | Auth   | Body / notes                                                                                                           |
-| ------ | ---------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/options`  | 🔓     | `{ ldapEnabled, allowLocalRegister, maintenance: { enabled, message?, until? } }` (does not reveal who switched it on) |
-| POST   | `/auth/register` | 🔓     | `{ name (2–120), email, password (8–200) }` → 201 `{ user, accessToken }` + cookie; 409 duplicate e-mail               |
-| POST   | `/auth/login`    | 🔓     | `{ email (e-mail or LDAP user name), password }` → `{ user, accessToken }` + cookie                                    |
-| POST   | `/auth/refresh`  | cookie | Rotates the refresh token → `{ user, accessToken }`                                                                    |
-| POST   | `/auth/logout`   | cookie | Revokes the token, clears the cookie → 204                                                                             |
-| GET    | `/auth/me`       | 👤     | `{ id, name, email, role, createdAt }`                                                                                 |
+| Method | Path             | Auth   | Body / notes                                                                                                               |
+| ------ | ---------------- | ------ | -------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/options`  | 🔓     | `{ ldapEnabled, allowLocalRegister, maintenance: { enabled, message?, until? } }` (does not reveal who switched it on)     |
+| POST   | `/auth/register` | 🔓     | `{ name (2–120), email, password (8 chars – 72 bytes) }` → 201 `{ user, accessToken }` + cookie; 409 duplicate e-mail; 429 |
+| POST   | `/auth/login`    | 🔓     | `{ email (e-mail or LDAP user name), password (≤ 200) }` → `{ user, accessToken }` + cookie; 429 when rate-limited         |
+| POST   | `/auth/refresh`  | cookie | Rotates the refresh token → `{ user, accessToken }`; 403 on a foreign `Origin`                                             |
+| POST   | `/auth/logout`   | cookie | Revokes the token, clears the cookie → 204; 403 on a foreign `Origin`                                                      |
+| GET    | `/auth/me`       | 👤     | `{ id, name, email, role, createdAt }`                                                                                     |
 
 ### Categories — `/categories`
 
@@ -594,12 +624,14 @@ Request response shape: all `BorrowRequest` columns plus
 
 ### Users — `/users` (all 🛡)
 
-| Method | Path         | Notes                                                              |
-| ------ | ------------ | ------------------------------------------------------------------ |
-| GET    | `/users`     | `{ id, name, email, role, authSource, createdAt }[]`, admins first |
-| POST   | `/users`     | `{ name, email, password (≥8), role? }` → creates a `LOCAL` user   |
-| PATCH  | `/users/:id` | `{ name?, role?, password? }` (e-mail is immutable)                |
-| DELETE | `/users/:id` | Rules in §7.8                                                      |
+| Method | Path                         | Notes                                                                                                          |
+| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| GET    | `/users`                     | `{ id, name, email, role, authSource, createdAt }[]`, admins first                                             |
+| POST   | `/users`                     | `{ name, email, password (8 chars – 72 bytes), role? }` → creates a `LOCAL` user                               |
+| PATCH  | `/users/:id`                 | `{ name?, role?, password? }` (e-mail is immutable); a new password ends the user's sessions                   |
+| DELETE | `/users/:id`                 | Rules in §7.8                                                                                                  |
+| GET    | `/users/:id/profile`         | `{ user, activeSessions, lastLogin { createdAt, ip, userAgent }, lastActivityAt, stats, requests }` (API only) |
+| POST   | `/users/:id/sessions/revoke` | Revokes all refresh tokens of that user (not your own) → `{ revoked }` (API only)                              |
 
 ---
 
@@ -613,11 +645,13 @@ Request response shape: all `BorrowRequest` columns plus
 | `lib/prisma.ts`                                                        | Single shared `PrismaClient`                                                                                       |
 | `lib/errors.ts`                                                        | `HttpError`                                                                                                        |
 | `lib/password.ts`                                                      | bcrypt hash/verify, 12 rounds                                                                                      |
-| `lib/tokens.ts`                                                        | JWT sign/verify; random refresh token; SHA-256 hashing                                                             |
-| `middleware/auth.ts`                                                   | `requireAuth`, `requireAdmin`; augments `Express.Request` with `user`                                              |
+| `lib/tokens.ts`                                                        | JWT sign/verify (HS256 pinned); random refresh token; SHA-256 hashing                                              |
+| `lib/rateLimit.ts`                                                     | In-memory fixed-window `RateLimiter` (`consume`, `refund`, `reset`) and `clientIp`                                 |
+| `lib/requestContext.ts`                                                | `AsyncLocalStorage` with the caller's IP and user agent, read by the audit log                                     |
+| `middleware/auth.ts`                                                   | `requireAuth` (verifies the JWT, loads id + role from the DB), `requireAdmin`; augments `Express.Request`          |
 | `middleware/validate.ts`                                               | `validateBody(schema)` — parses and replaces `req.body` (throws `ZodError` → 400)                                  |
 | `middleware/upload.ts`                                                 | multer disk storage + limits; creates the upload dir at import time                                                |
-| `middleware/errorHandler.ts`                                           | Error → JSON                                                                                                       |
+| `middleware/errorHandler.ts`                                           | Error → JSON (incl. body-parser errors → 400/413)                                                                  |
 | `validators/*.ts`                                                      | Zod schemas (auth, device, request); categories/rooms/users define their schemas inline in the router              |
 | `services/authService.ts`                                              | register, login (LDAP + local), refresh, logout, me                                                                |
 | `services/ldapService.ts`                                              | Directory search/bind, filter escaping, admin-group mapping                                                        |
@@ -639,7 +673,7 @@ Request response shape: all `BorrowRequest` columns plus
 
 ## 11. E-mail notifications
 
-`emails/mailer.ts` creates a nodemailer transport per message. Without `SMTP_HOST` the message is printed to the console (`[mail] SMTP nicht konfiguriert…`).
+`emails/mailer.ts` creates a nodemailer (v10) transport per message. Without `SMTP_HOST` the message is printed to the console (`[mail] SMTP nicht konfiguriert…`).
 
 | Trigger | Template             | Subject                        | Contents                                                                     |
 | ------- | -------------------- | ------------------------------ | ---------------------------------------------------------------------------- |
@@ -691,6 +725,7 @@ Token refreshes are not logged (too frequent to be useful).
 - `refreshSession()` shares one in-flight request between concurrent callers. The server rotates the refresh token on every use, so a second parallel refresh (StrictMode's double effect, several 401s at once) would present an already-revoked token and end the session.
 - No state library. Pages load data with `useApi<T>(path)` → `{ data, error, reload }`; mutations call `api()` directly and then `reload()`. Errors appear via `<Alert>`.
 - Destructive actions ask for confirmation with `window.confirm`; rejecting a request uses a dialog with a mandatory reason. After approve/return the page calls `refreshNav()` so the sidebar counters update.
+- `<Alert>` scrolls itself into view when a new message appears, so an error above a long form (e.g. the device sheet) is never out of sight.
 
 ### 13.2 Routes
 
@@ -701,6 +736,7 @@ Token refreshes are not logged (too frequent to be useful).
 | `/search`                 | `SearchPage`           | users  | **Main booking flow**: quick periods (Heute/Morgen/Rest der Woche/Nächste Woche) or a custom period → free units (shown immediately for tomorrow) → "Kalender & anfragen"; aside with the user's next bookings and a 3-step guide |
 | `/devices`                | `DevicesPage`          | users  | Catalog with availability counts, text search, filters, images; clicking a name opens the unit list/calendar                                                                                                                      |
 | `/my-requests`            | `MyRequestsPage`       | users  | Own requests with status filter tabs (Alle/Offen/Bestätigt/Abgeschlossen), period, room, rejection reason / return time                                                                                                           |
+| `/hilfe`                  | `HelpPage`             | users  | „Bedienung“: mouse/touchpad notes, keyboard basics, all shortcuts (the `g` table lists admin pages only for admins), calendar and image keys                                                                                      |
 | `/admin`                  | `AdminHomePage`        | admin  | Summary counts, the 5 oldest open requests, returns due today/overdue, latest 8 audit entries                                                                                                                                     |
 | `/admin/devices`          | `AdminDevicesPage`     | admin  | Create/edit devices, manage units (serial + status), upload/remove images                                                                                                                                                         |
 | `/admin/categories`       | `AdminCategoriesPage`  | admin  | Category CRUD                                                                                                                                                                                                                     |
@@ -720,25 +756,28 @@ After login, admins land on `/admin` and users on `/search`.
 1. **Suche** → enter start and end → _Suchen_ → free units in that window.
 2. _Kalender öffnen_ → `PieceCalendarDialog` shows a month grid for the unit (days marked _frei / angefragt / ausgeliehen / defekt_) and a list of booked periods.
 3. Coming from the search, the calendar opens at the searched month, outlines the searched period and offers _Für diesen Zeitraum anfragen_: the request form opens with start and end already taken from the search. Alternatively click a free day → a nested dialog opens, pre-filled 08:00–17:00 on that day; adjust start/end, pick a **room** (`Nicht zugeordnet` is hidden), optional comment → confirm → `POST /api/requests`.
-4. Watch the status under **Meine Anfragen**; e-mails arrive on approve/reject/return.
+4. **Several devices for the same appointment:** above the month grid, _Zeitraum aus meinen Anfragen_ lists the periods of the user's own `OPEN`/`APPROVED` requests that have not ended (from `GET /api/requests/mine`; one chip per period, the tooltip names the devices). Clicking a chip outlines the period, jumps to its month and shows it in the bar with _Für diesen Zeitraum anfragen_; the form then gets start, end and — if no room is chosen yet — the room of that request. If this unit already has an open or approved booking in the period, the bar says _Dieses Stück ist in diesem Zeitraum schon belegt_ instead of offering the button. Clicking the chip again clears the choice.
+5. Watch the status under **Meine Anfragen**; e-mails arrive on approve/reject/return.
 
 (Alternatively: **Geräte** → click a device name → `PieceListDialog` → _Kalender ansehen_ → same calendar.)
 
 ### 13.4 Components
 
-| Component          | Notes                                                                                                                                                                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Layout`           | Fixed sidebar (brand, nav groups "Ausleihe" / "Verwaltung" / "Stammdaten" with icons and open-request/loan counters, user card with logout); mobile top bar + slide-in menu                                                                            |
-| `ui.tsx`           | `PageHeader`, `Field` (label, "optional" marker, hint), `Alert`, `Modal` (native `<dialog>`, `variant="sheet"` for side panels), `refreshNav()`                                                                                                        |
-| `Logo.tsx`         | `LogoMark` (brand mark "Rücklauf-Schleife": an L whose foot loops back as an arrow; below 20 px without arrowhead) and `Wordmark` ("**Lend**Line"). Favicon: `public/favicon.svg`; e-mails use the text wordmark (SVG is blocked by many mail clients) |
-| `icons.tsx`        | Inline SVG icon set (`<Icon name="…" />`)                                                                                                                                                                                                              |
-| `CategorySelect`   | Category `<select>` loaded via `useApi`; `emptyLabel` for filters ("Alle Kategorien")                                                                                                                                                                  |
-| `DeviceImages.tsx` | Despite its name, holds `DeviceImages` (thumbnails), `PieceCalendarDialog`, `PieceListDialog` and `ImagePopup`                                                                                                                                         |
-| `StatusBadge`      | `DeviceBadge`, `RequestBadge` (CSS classes `st-<status>`)                                                                                                                                                                                              |
+| Component          | Notes                                                                                                                                                                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Layout`           | Fixed sidebar (brand, nav groups "Ausleihe" / "Verwaltung" / "Stammdaten" / "System" / "Hilfe" with icons, open-request/loan counters and shortcut tooltips, user card with logout); mobile top bar + slide-in menu (Escape closes it); global shortcuts; focus to the page heading after navigation |
+| `ui.tsx`           | `PageHeader`, `Field` (label, "optional" marker, hint), `Alert` (scrolls into view), `Modal` (native `<dialog>`, `variant="sheet"` for side panels; see §13.7), `refreshNav()`                                                                                                                       |
+| `Logo.tsx`         | `LogoMark` (brand mark "Rücklauf-Schleife": an L whose foot loops back as an arrow; below 20 px without arrowhead) and `Wordmark` ("**Lend**Line"). Favicon: `public/favicon.svg`; e-mails use the text wordmark (SVG is blocked by many mail clients)                                               |
+| `icons.tsx`        | Inline SVG icon set (`<Icon name="…" />`)                                                                                                                                                                                                                                                            |
+| `CategorySelect`   | Category `<select>` loaded via `useApi`; `emptyLabel` for filters ("Alle Kategorien")                                                                                                                                                                                                                |
+| `DeviceImages.tsx` | Despite its name, holds `DeviceImages` (thumbnails), `PieceCalendarDialog` (month grid, own-period chips, request form), `PieceListDialog` and `ImagePopup` (← / → between images)                                                                                                                   |
+| `StatusBadge`      | `DeviceBadge`, `RequestBadge` (CSS classes `st-<status>`)                                                                                                                                                                                                                                            |
 
 ### 13.5 Styling
 
-`styles/global.css` — design tokens in `:root` (neutral zinc greys, 8 px radius, subtle shadows), minimalist tables, pill badges, form grid (`.form-grid`, `.form-actions`), native-dialog modal and side sheet, calendar classes `cal-free/open/borrowed/defective/out`, visible focus rings, skip link, `.sr-only`, reduced-motion support.
+`styles/global.css` — design tokens in `:root` (neutral zinc greys, `--radius` 4 px / `--radius-sm` 3 px, `--shadow-sm: none`, one flat shadow for dialogs), minimalist tables, square badges and tags (no status dot), form grid (`.form-grid`, `.form-actions`), native-dialog modal (6 px corners, fade-in) and side sheet, calendar table `table.cal-grid` with classes `cal-free/open/borrowed/defective/out/selected`, a 2 px focus outline (1 px line on inputs), skip link, `.sr-only`, `kbd` and help-page styles, reduced-motion support, `scrollbar-gutter: stable`.
+
+Pointer targets: buttons 36 px high (`.sm` 32 px, icon buttons 36/32 px square), sidebar links 36 px, chips, segmented filters, theme switch and colour swatches ≥ 30 px, 8 px between neighbouring action buttons.
 
 **Dark mode:** every colour is a token in `:root`. A dark palette overrides the tokens when the OS prefers dark (unless the user chose _Hell_) or when _Dunkel_ is chosen explicitly (`data-theme` on `<html>`). The two dark blocks in `global.css` must stay identical. The switch _Wie System / Hell / Dunkel_ sits at the bottom of the sidebar (`components/ThemeSwitch.tsx`). The choice is stored per browser in `localStorage` (`lendline-theme`, see `src/theme.ts`), and an inline script in `index.html` applies it before the first paint. Text on the accent colour uses `--accent-contrast`, so the primary buttons and the logo tile invert in dark mode.
 
@@ -754,6 +793,20 @@ LendLine is rented out as **one instance per company** (own installation and dat
 - **Accent:** `branding/palette.ts` derives `--accent`, `--accent-hover` and `--accent-contrast` for both modes. The colour is darkened (light mode) or lightened (dark mode) until it has ≥ 3:1 contrast with the surface; the label colour (white or `#18181b`) is whichever contrasts more. The rules use `html:root`, so they outrank `global.css` whatever the order of the style elements. Saving the default black means "no custom accent", which keeps the white accent in dark mode.
 - **No flash:** `BrandingProvider` (`branding/BrandingContext.tsx`) starts from the branding cached in `localStorage` (`lendline-branding`), loads `/api/branding` on start and after every save. The generated CSS is cached as `lendline-branding-css`, which the inline script in `index.html` injects before the first paint.
 - **Not yet customisable:** company name (browser title, e-mail subjects, texts still say "LendLine"), favicon, e-mail logo and sender.
+
+### 13.7 Keyboard
+
+Everything is reachable with Tab/Shift+Tab; every action is a real `<button>` or link. The help page `/hilfe` explains it for users.
+
+| Where        | Keys                                                                                                                                                                                                                                                        |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anywhere     | `?` help page · `/` search field of the page (`[data-shortcut="search"]`) · `n` create (`[data-shortcut="new"]`: button is clicked, input focused) · `g` + letter jumps to a page (`src/shortcuts.ts`, e.g. `g g` Geräte, `g k` Katalog)                    |
+| Dialogs      | Focus starts in the first field; `Esc` closes; `Ctrl/Cmd+Enter` submits the dialog's form (also from a textarea); focus returns to the opener on close                                                                                                      |
+| Calendar     | One Tab stop (roving `tabIndex`, WAI-ARIA grid pattern); arrows ±1 day / ±1 week, `Home`/`End` Monday/Sunday, `PageUp`/`PageDown` month, `Enter` picks a free day. Taken days use `aria-disabled` (not `disabled`) so they stay focusable and are announced |
+| Image viewer | `←` / `→`                                                                                                                                                                                                                                                   |
+| Mobile menu  | Focus moves into the menu on open; `Esc` closes it                                                                                                                                                                                                          |
+
+Rules: shortcuts never fire while typing in a field (`isTyping`) or while a dialog is open; after every route change the page `<h1>` gets focus (`tabIndex=-1`, no outline). Open dialogs share one scroll lock (a module-level counter in `Modal`), so nested dialogs may close in any order without leaving the page unscrollable.
 
 ## 14. Migration history
 
@@ -777,9 +830,8 @@ The migrations are dated 2026-09-23/24 and show how the model evolved:
 
 ## 15. Known issues, gaps & inconsistencies
 
-Found while reading the code (2026-09-24). Build/type errors, the audit action-name mismatch, the
-dev-mode logout on reload (parallel refresh requests) and the dead code listed here earlier are
-fixed; `npm run check` passes.
+State after the security audit and fixes of 2026-09-24 (details in `security-audit-2.md`). `npm run
+check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 
 ### Functional inconsistencies
 
@@ -788,19 +840,24 @@ fixed; `npm run check` passes.
 - **Reject reason**: optional in the API, mandatory in the UI.
 - Schema drift: migration `…140000_categories` creates `Device_categoryId_idx`, but `schema.prisma` has no `@@index([categoryId])` on `Device`. The next `prisma migrate dev` will try to drop that index.
 - Admin category creation with a duplicate name returns the existing category with HTTP 201 instead of 409.
+- `npm run prisma:seed` does not load `.env` (use `npx prisma db seed`, §3).
+- Two tabs refreshing at the same moment: one gets 401 and shows the login page (a reload helps) — a side effect of the atomic token rotation (§8).
+- `/users/:id/profile` and `/users/:id/sessions/revoke` exist in the API but have no UI.
 
 ### Security / operational notes
 
+- **`NODE_ENV` matters:** the weak-secret abort and the seed guard only apply with `NODE_ENV=production`, and it defaults to `development`. Always set it on real installations (open finding, Medium).
+- Ending sessions or resetting a password leaves an already issued access token valid for up to `JWT_ACCESS_TTL` (needs a `sessionVersion` column).
+- LDAP: accounts are still matched by e-mail as a fallback; a second directory entry with the same `mail` takes over the account's data and role (sessions are revoked). `ldap://` without TLS and `LDAP_TLS_REJECT_UNAUTHORIZED=false` are accepted without warning.
+- Rate limits are in memory and per process (§8); no reuse detection for refresh tokens.
 - `JWT_REFRESH_SECRET` is required but unused.
-- No rate limiting or lockout on `/api/auth/login`.
-- Refresh-token rotation has no reuse detection. Old token rows are only removed by the manual task _Abgelaufene Sitzungen bereinigen_ (`/admin/wartung`), not automatically.
-- Uploaded images are publicly readable under `/api/uploads/…` without authentication (intended for logos, which the login page needs; device photos are public too).
+- Uploaded images are publicly readable under `/api/uploads/…` without authentication (intended for logos, which the login page needs; device photos are public too). Upload content is not checked beyond extension and MIME type (mitigated by `nosniff` + `sandbox` CSP).
+- Registration does not verify the e-mail address.
+- `prisma` (dev dependency) pulls in `deepmerge-ts < 8` (GHSA-ggr8-5vv4-36mx); CLI only.
 - The API binds to `127.0.0.1` only; a production deployment needs a reverse proxy that also serves the built frontend (no production serving setup exists).
 - Time handling depends on the server time zone (§10).
 - `backend/.env` exists locally; it is git-ignored — make sure real secrets never end up in `.env.example`.
 - No automated tests, no CI, no pre-commit hook (lint/format/typecheck are set up, see §3).
-
----
 
 ## 16. Glossary (German → English)
 
