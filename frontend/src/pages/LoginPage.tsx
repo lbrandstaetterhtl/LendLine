@@ -1,6 +1,6 @@
 import type { SubmitEvent } from "react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
@@ -15,9 +15,25 @@ type AuthOptions = {
   maintenance: { enabled: boolean; message?: string; until?: string | null };
 };
 
+/**
+ * Where to go after the login: the page that sent the person here (only paths inside the app, never
+ * another site), else the start page of the role.
+ */
+function afterLogin(state: unknown, isAdmin: boolean): string {
+  const home = isAdmin ? "/admin" : "/search";
+  const from =
+    typeof state === "object" && state !== null && "from" in state && typeof state.from === "string"
+      ? state.from
+      : "";
+  if (!from.startsWith("/") || from.startsWith("//") || from.startsWith("/login")) return home;
+  if (!isAdmin && from.startsWith("/admin")) return home;
+  return from;
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { state } = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -35,7 +51,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       const user = await login(email, password);
-      void navigate(user.role === "ADMIN" ? "/admin" : "/search");
+      void navigate(afterLogin(state, user.role === "ADMIN"), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Anmeldung fehlgeschlagen");
     } finally {

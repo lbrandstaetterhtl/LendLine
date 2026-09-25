@@ -93,7 +93,9 @@ export function AdminHomePage() {
               {waiting.map((item) => (
                 <li key={item.id}>
                   <div className="mini-row">
-                    <strong>{item.device.name}</strong>
+                    <Link to={`/admin/requests?focus=${item.id}`}>
+                      <strong>{item.device.name}</strong>
+                    </Link>
                     <span className="muted small">{item.user.name}</span>
                   </div>
                   <div className="muted small">
@@ -124,10 +126,12 @@ export function AdminHomePage() {
                 return (
                   <li key={loan.id}>
                     <div className="mini-row">
-                      <strong>
-                        {loan.device.name}{" "}
-                        <span className="muted mono">{loan.device.serialNumber}</span>
-                      </strong>
+                      <Link to={`/admin/borrowed?focus=${loan.id}`}>
+                        <strong>
+                          {loan.device.name}{" "}
+                          <span className="muted mono">{loan.device.serialNumber}</span>
+                        </strong>
+                      </Link>
                       {overdue && <span className="badge st-rejected">überfällig</span>}
                     </div>
                     <div className="muted small">

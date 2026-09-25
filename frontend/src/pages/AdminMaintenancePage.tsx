@@ -6,6 +6,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
 import { Icon } from "../components/icons";
+import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader, refreshNav } from "../components/ui";
 import { formatDate, toLocalInput } from "../types";
 
@@ -132,6 +133,7 @@ export function AdminMaintenancePage() {
 
   return (
     <>
+      <SettingsTabs />
       <PageHeader
         title="Wartung"
         description="Wartungsmodus, Systemzustand und Aufräumarbeiten. Jede Aktion wird im Protokoll festgehalten."

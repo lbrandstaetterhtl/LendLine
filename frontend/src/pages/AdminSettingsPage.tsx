@@ -7,6 +7,7 @@ import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
 import { useTerms } from "../branding/BrandingContext";
 import { Icon } from "../components/icons";
+import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader } from "../components/ui";
 
 type Policy = {
@@ -74,6 +75,7 @@ export function AdminSettingsPage() {
 
   return (
     <>
+      <SettingsTabs />
       <PageHeader
         title="Einstellungen"
         description="Wer sich registrieren darf, welche Regeln für Ausleihen gelten und was im Anfrageformular abgefragt wird."

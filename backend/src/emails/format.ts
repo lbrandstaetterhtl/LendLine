@@ -30,6 +30,10 @@ export type MailContext = {
    * Absolute URL of the logo (mail programs load it from the server), or null for text only.
    */
   logoUrl: string | null;
+  /**
+   * Address of the app (FRONTEND_ORIGIN), for the link back in every mail.
+   */
+  appUrl: string;
 };
 
 export function escapeHtml(value: string): string {
@@ -75,10 +79,15 @@ export function composeMail(
     intro: string;
     rows: [label: string, value: string][];
     extra: string;
+    /**
+     * Path inside the app the mail leads to, e.g. "/my-requests".
+     */
+    link?: { label: string; path: string };
   }
 ): MailMessage {
   const { settings } = ctx;
   const greeting = `${settings.greeting || "Guten Tag"} ${input.recipientName},`;
+  const linkUrl = input.link ? `${ctx.appUrl}${input.link.path}` : "";
   const text = [
     greeting,
     "",
@@ -86,6 +95,7 @@ export function composeMail(
     "",
     ...input.rows.map(([label, value]) => `${label}: ${value}`),
     ...(input.extra ? ["", input.extra] : []),
+    ...(input.link ? ["", `${input.link.label}: ${linkUrl}`] : []),
     ...(settings.signature ? ["", settings.signature] : []),
     ...(settings.footer ? ["", "--", settings.footer] : []),
   ].join("\n");
@@ -104,6 +114,7 @@ export function composeMail(
        ${rows}
   </table>
   ${paragraphs(input.extra)}
+  ${input.link ? `<p><a href="${escapeHtml(linkUrl)}">${escapeHtml(input.link.label)}</a></p>` : ""}
   ${paragraphs(settings.signature)}
   ${settings.footer ? `<p style="margin-top: 20px; color: #5c6370;">${escapeHtml(settings.footer).replaceAll("\n", "<br>")}</p>` : ""}
 </body>

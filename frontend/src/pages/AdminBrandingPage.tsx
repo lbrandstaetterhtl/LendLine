@@ -11,6 +11,7 @@ import { type Branding, DEFAULT_TERMS, type Terms, useBranding } from "../brandi
 import { accentPalette } from "../branding/palette";
 import { Icon } from "../components/icons";
 import { LogoMark } from "../components/Logo";
+import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader } from "../components/ui";
 
 type Slot = "light" | "dark" | "favicon" | "login";
@@ -57,6 +58,7 @@ export function AdminBrandingPage() {
 
   return (
     <>
+      <SettingsTabs />
       <PageHeader
         title="Erscheinungsbild"
         description="Logo, Farben, Schrift und Begriffe Ihrer Firma. Änderungen gelten sofort für alle, auch auf der Anmeldeseite."

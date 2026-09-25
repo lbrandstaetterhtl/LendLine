@@ -15,6 +15,7 @@ import {
 } from "../components/DeviceFields";
 import { DeviceImages, PieceCalendarDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
+import { RequestSent } from "../components/RequestSent";
 import { RequestBadge } from "../components/StatusBadge";
 import { Alert, Field, PageHeader } from "../components/ui";
 import { formatDate, toLocalInput } from "../types";
@@ -106,6 +107,7 @@ export function SearchPage() {
     return { period, path: searchPath(period, "", "") };
   });
   const [picked, setPicked] = useState<Hit | null>(null);
+  const [sent, setSent] = useState("");
   const [error, setError] = useState("");
   const {
     data: hits,
@@ -144,7 +146,9 @@ export function SearchPage() {
     runSearch(period);
   }
 
-  function onRequested() {
+  function onRequested(message: string) {
+    setPicked(null);
+    setSent(message);
     reloadMine();
     reloadHits();
   }
@@ -153,9 +157,10 @@ export function SearchPage() {
     <>
       <PageHeader
         title={`${terms.unit} suchen`}
-        description={`Zeitraum wählen, freie ${terms.units} finden und im Kalender anfragen.`}
+        description={`Zeitraum wählen, freie ${terms.units} finden und direkt anfragen.`}
       />
       <Alert>{error || searchError}</Alert>
+      <RequestSent message={sent} />
 
       <div className="page-grid">
         <div>
@@ -285,9 +290,12 @@ export function SearchPage() {
                           <button
                             type="button"
                             className="secondary sm"
-                            onClick={() => setPicked(hit)}
+                            onClick={() => {
+                              setSent("");
+                              setPicked(hit);
+                            }}
                           >
-                            <Icon name="calendar" /> Kalender & anfragen
+                            <Icon name="plus" /> Anfragen
                           </button>
                         </td>
                       </tr>
@@ -339,7 +347,7 @@ export function SearchPage() {
             </div>
             <ol className="steps">
               <li>Zeitraum wählen oder eine Schnellauswahl nutzen.</li>
-              <li>Den Kalender des passenden Eintrags öffnen und anfragen.</li>
+              <li>Beim passenden Eintrag „Anfragen“ klicken, Formular ausfüllen, senden.</li>
               <li>Die Verwaltung bestätigt, Sie erhalten eine E-Mail.</li>
             </ol>
           </section>
@@ -358,6 +366,8 @@ export function SearchPage() {
             bookings: [],
           }}
           period={searched.period}
+          // The period comes from the search: straight to the form, the calendar is one click away.
+          startWithRequest
           onRequested={onRequested}
           onClose={() => setPicked(null)}
         />

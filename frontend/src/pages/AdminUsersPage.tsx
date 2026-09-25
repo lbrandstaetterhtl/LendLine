@@ -2,6 +2,7 @@ import type { Role } from "../types";
 
 import type { SubmitEvent } from "react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
@@ -24,6 +25,9 @@ const emptyForm = { name: "", email: "", password: "", role: "USER" as Role };
 export function AdminUsersPage() {
   const { user: me } = useAuth();
   const { data: users, error: loadError, reload } = useApi<ManagedUser[]>("/api/users");
+  const { data: policy } = useApi<{ registration: { enabled: boolean; domains: string[] } }>(
+    "/api/admin/settings/policy"
+  );
   const [form, setForm] = useState(emptyForm);
   // null: closed; id null: creating; id set: editing that record.
   const [editor, setEditor] = useState<{ id: string | null } | null>(null);
@@ -127,6 +131,16 @@ export function AdminUsersPage() {
           </button>
         }
       />
+      {policy && (
+        <p className="muted small page-note">
+          Selbstregistrierung:{" "}
+          {policy.registration.enabled
+            ? `an${policy.registration.domains.length > 0 ? ` (nur ${policy.registration.domains.map((domain) => `@${domain}`).join(", ")})` : " (alle Adressen)"}`
+            : "aus – Konten legen Sie hier an"}
+          {" · "}
+          <Link to="/admin/einstellungen">ändern</Link>
+        </p>
+      )}
       <Alert>{error || loadError}</Alert>
       <Alert tone="ok">{info}</Alert>
       <div className="table-wrap">

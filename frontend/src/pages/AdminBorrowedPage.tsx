@@ -6,9 +6,11 @@ import { api } from "../api/client";
 import { useApi } from "../api/useApi";
 import { useTerms } from "../branding/BrandingContext";
 import { Alert, PageHeader, refreshNav } from "../components/ui";
+import { useFocusRow } from "../components/useFocusRow";
 import { formatDate } from "../types";
 
 export function AdminBorrowedPage() {
+  const focus = useFocusRow();
   const terms = useTerms();
   const {
     data: requests,
@@ -66,7 +68,11 @@ export function AdminBorrowedPage() {
             {requests?.map((item) => {
               const overdue = new Date(item.desiredUntil).getTime() < now;
               return (
-                <tr key={item.id}>
+                <tr
+                  key={item.id}
+                  id={`row-${item.id}`}
+                  className={focus === item.id ? "row-focus" : undefined}
+                >
                   <td>
                     <div style={{ fontWeight: 550 }}>{item.device.name}</div>
                     <div className="muted mono">{item.device.serialNumber}</div>

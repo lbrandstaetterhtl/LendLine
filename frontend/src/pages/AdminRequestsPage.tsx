@@ -8,9 +8,11 @@ import { useApi } from "../api/useApi";
 import { useTerms } from "../branding/BrandingContext";
 import { FieldAnswers } from "../components/FieldAnswers";
 import { Alert, Field, Modal, PageHeader, refreshNav } from "../components/ui";
+import { useFocusRow } from "../components/useFocusRow";
 import { formatDate } from "../types";
 
 export function AdminRequestsPage() {
+  const focus = useFocusRow();
   const terms = useTerms();
   const {
     data: requests,
@@ -85,7 +87,11 @@ export function AdminRequestsPage() {
           </thead>
           <tbody>
             {requests?.map((item) => (
-              <tr key={item.id}>
+              <tr
+                key={item.id}
+                id={`row-${item.id}`}
+                className={focus === item.id ? "row-focus" : undefined}
+              >
                 <td>
                   <div style={{ fontWeight: 550 }}>{item.device.name}</div>
                   <div className="muted mono">{item.device.serialNumber}</div>

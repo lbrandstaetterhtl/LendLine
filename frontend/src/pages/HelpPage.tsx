@@ -71,8 +71,10 @@ export function HelpPage() {
             Sie gerade weiter unten sind.
           </li>
           <li>
-            Kalender: Ein Klick auf einen freien Tag öffnet die Anfrage für diesen Tag (8–17 Uhr).
-            Belegte Tage zeigen beim Überfahren ihren Status.
+            Suche: „Anfragen“ öffnet das Formular mit dem gesuchten Zeitraum, „Im Kalender ansehen“
+            die Belegung. Im Kalender öffnet ein Klick auf einen freien Tag die Anfrage für diesen
+            Tag (8–17 Uhr); belegte Tage zeigen beim Überfahren ihren Status. Alles bleibt in einem
+            Fenster, nach dem Senden führt ein Link zu „Meine Anfragen“.
           </li>
           <li>Tastenkürzel zu den Menüpunkten zeigt ein kurzer Halt mit dem Zeiger darüber.</li>
         </ul>

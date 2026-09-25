@@ -24,14 +24,15 @@ import { SearchPage } from "./pages/SearchPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   if (!ready)
     return (
       <div className="auth-wrap">
         <p className="muted">Laden…</p>
       </div>
     );
-  if (!user) return <Navigate to="/login" replace />;
+  // The login page brings the person back here afterwards (bookmark, link from an e-mail).
+  if (!user) return <Navigate to="/login" replace state={{ from: `${pathname}${search}` }} />;
   // The server refuses everything else until then, see requireAuth.
   if (user.mustChangePassword && pathname !== "/konto") return <Navigate to="/konto" replace />;
   return children;
@@ -41,6 +42,14 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   if (user?.role !== "ADMIN") return <Navigate to="/search" replace />;
   return children;
+}
+
+/**
+ * Unknown addresses go to the start page of the person's role.
+ */
+function RoleHome() {
+  const { user } = useAuth();
+  return <Navigate to={user?.role === "ADMIN" ? "/admin" : "/search"} replace />;
 }
 
 function GuestOnly({ children }: { children: React.ReactNode }) {
@@ -183,7 +192,14 @@ export function App() {
           }
         />
       </Route>
-      <Route path="*" element={<Navigate to="/search" replace />} />
+      <Route
+        path="*"
+        element={
+          <Protected>
+            <RoleHome />
+          </Protected>
+        }
+      />
     </Routes>
   );
 }

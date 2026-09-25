@@ -19,6 +19,10 @@ type NavItem = {
   icon: IconName;
   end?: boolean;
   count?: "openRequests" | "activeLoans";
+  /**
+   * Further paths that belong to this entry (the tabs of one page).
+   */
+  alsoActiveOn?: string[];
 };
 
 const lendLinks: NavItem[] = [
@@ -40,15 +44,24 @@ const adminDataLinks: NavItem[] = [
   { to: "/admin/users", label: "Benutzer", icon: "users" },
 ];
 
-const adminSystemLinks: NavItem[] = [
-  { to: "/admin/protokoll", label: "Protokoll", icon: "file" },
-  { to: "/admin/erscheinungsbild", label: "Erscheinungsbild", icon: "palette" },
-  { to: "/admin/einstellungen", label: "Einstellungen", icon: "sliders" },
-  { to: "/admin/emails", label: "E-Mails", icon: "mail" },
-  { to: "/admin/wartung", label: "Wartung", icon: "tool" },
+// One entry for everything that configures the installation; the pages are tabs of it
+// (components/SettingsTabs.tsx), and their old addresses stay valid.
+export const settingsPaths = [
+  "/admin/erscheinungsbild",
+  "/admin/einstellungen",
+  "/admin/emails",
+  "/admin/wartung",
 ];
 
-const helpLinks: NavItem[] = [{ to: "/hilfe", label: "Bedienung", icon: "keyboard" }];
+const adminSystemLinks: NavItem[] = [
+  { to: "/admin/protokoll", label: "Protokoll", icon: "file" },
+  {
+    to: "/admin/erscheinungsbild",
+    label: "Einstellungen",
+    icon: "sliders",
+    alsoActiveOn: settingsPaths,
+  },
+];
 
 /**
  * Global keys: "?" help, "/" search field, "n" create, "g" + letter to jump to a page. Dialogs
@@ -175,22 +188,26 @@ export function Layout() {
     setMenuOpen(false);
     reloadCounts();
   }
+  const { pathname } = useLocation();
+
   function renderLinks(items: NavItem[]) {
     return (
       <ul>
         {items.map((item) => {
           const count = item.count && counts ? counts[item.count] : 0;
           const key = goKeyFor(item.to);
+          const label = typeof item.label === "string" ? item.label : item.label(terms);
           return (
             <li key={item.to}>
               <NavLink
-                to={item.to}
+                // On one of its tabs the entry points at that tab, so NavLink marks it as current.
+                to={item.alsoActiveOn?.includes(pathname) ? pathname : item.to}
                 end={item.end}
                 onClick={onNavigate}
                 title={key ? `Tastenkürzel: g, dann ${key}` : undefined}
               >
                 <Icon name={item.icon} />
-                {typeof item.label === "string" ? item.label : item.label(terms)}
+                {label}
                 {count > 0 && (
                   <span className="nav-count" aria-label={`${count} offen`}>
                     {count}
@@ -238,23 +255,33 @@ export function Layout() {
           <Brand />
         </div>
         <nav aria-label="Hauptnavigation">
-          <p className="nav-label">Ausleihe</p>
-          {renderLinks(lendLinks)}
+          {/* Admins start on their overview, so their own work comes first. */}
           {isAdmin && (
             <>
               <p className="nav-label">Verwaltung</p>
               {renderLinks(adminLinks)}
+            </>
+          )}
+          <p className="nav-label">Ausleihe</p>
+          {renderLinks(lendLinks)}
+          {isAdmin && (
+            <>
               <p className="nav-label">Stammdaten</p>
               {renderLinks(adminDataLinks)}
               <p className="nav-label">System</p>
               {renderLinks(adminSystemLinks)}
             </>
           )}
-          <p className="nav-label">Hilfe</p>
-          {renderLinks(helpLinks)}
         </nav>
         <div className="sidebar-theme">
-          <span>Darstellung</span>
+          <NavLink
+            to="/hilfe"
+            className="help-link"
+            onClick={onNavigate}
+            title="Bedienung und Tastenkürzel (Taste ?)"
+          >
+            <Icon name="keyboard" /> Hilfe
+          </NavLink>
           <ThemeSwitch />
         </div>
         <div className="sidebar-user">

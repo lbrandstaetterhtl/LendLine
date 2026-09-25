@@ -19,8 +19,12 @@ export async function mailContext(): Promise<MailContext> {
     terms: branding.terms,
     logoUrl:
       settings.showLogo && logo ? `${config.frontendOrigin}/api/uploads/branding/${logo}` : null,
+    appUrl: config.frontendOrigin,
   };
 }
+
+// Every notification leads back to the person's requests (after a login if needed).
+const myRequests = { label: "Meine Anfragen öffnen", path: "/my-requests" };
 
 function deviceRows(ctx: MailContext, device: MailDevice): [string, string][] {
   return [
@@ -53,6 +57,7 @@ export function requestApprovedTemplate(
       ...(input.fields ?? []).map((field) => [field.label, field.value] as [string, string]),
     ],
     extra: ctx.settings.approvedText,
+    link: myRequests,
   });
 }
 
@@ -70,6 +75,7 @@ export function requestRejectedTemplate(
       ["Grund", input.rejectionReason.trim() || "Es wurde kein Ablehnungsgrund angegeben."],
     ],
     extra: ctx.settings.rejectedText,
+    link: myRequests,
   });
 }
 
@@ -84,6 +90,7 @@ export function deviceReturnedTemplate(
     intro: "Die Rückgabe wurde erfasst. Damit ist die Ausleihe abgeschlossen.",
     rows: [...deviceRows(ctx, input.device), ["Rückgabe am", formatDate(input.returnedAt)]],
     extra: ctx.settings.returnedText,
+    link: myRequests,
   });
 }
 
@@ -95,6 +102,7 @@ export function testMailTemplate(ctx: MailContext, input: { recipientName: strin
     intro: `Diese Test-E-Mail wurde am ${formatDate(new Date())} aus dem Wartungsbereich gesendet. Der E-Mail-Versand funktioniert.`,
     rows: [],
     extra: "",
+    link: { label: "LendLine öffnen", path: "/" },
   });
 }
 

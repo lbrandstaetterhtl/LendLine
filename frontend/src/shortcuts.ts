@@ -19,10 +19,15 @@ export const goShortcuts: GoShortcut[] = [
   { key: "r", to: "/admin/rooms", label: "Räume", admin: true },
   { key: "b", to: "/admin/users", label: "Benutzer", admin: true },
   { key: "p", to: "/admin/protokoll", label: "Protokoll", admin: true },
-  { key: "e", to: "/admin/erscheinungsbild", label: "Erscheinungsbild", admin: true },
-  { key: "i", to: "/admin/einstellungen", label: "Einstellungen", admin: true },
-  { key: "v", to: "/admin/emails", label: "E-Mail-Vorlagen", admin: true },
-  { key: "w", to: "/admin/wartung", label: "Wartung", admin: true },
+  {
+    key: "e",
+    to: "/admin/erscheinungsbild",
+    label: "Einstellungen: Erscheinungsbild",
+    admin: true,
+  },
+  { key: "i", to: "/admin/einstellungen", label: "Einstellungen: Regeln & Formular", admin: true },
+  { key: "v", to: "/admin/emails", label: "Einstellungen: E-Mails", admin: true },
+  { key: "w", to: "/admin/wartung", label: "Einstellungen: Wartung", admin: true },
 ];
 
 export function goKeyFor(to: string): string | undefined {

@@ -2237,3 +2237,81 @@ label.check input {
 .field-row input[aria-invalid="true"] {
   border-color: var(--bad);
 }
+
+/* Settings tabs (components/SettingsTabs.tsx): one menu entry, four pages. */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tabs-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.settings-tabs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.settings-tabs-list a {
+  padding: 8px 12px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  text-decoration: none;
+  font-weight: 500;
+}
+.settings-tabs-list a:hover {
+  color: var(--text);
+}
+.settings-tabs-list a[aria-current="page"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Help link next to the theme switch in the sidebar footer. */
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 12.5px;
+}
+.help-link:hover,
+.help-link[aria-current="page"] {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* "← Alle Stücke" at the top of a calendar opened from the piece list. */
+.back-link {
+  margin: -4px 0 12px -8px;
+}
+
+/* Short screens (a 768 px laptop): tighter entries, so the admin menu fits without scrolling. */
+@media (max-height: 820px) {
+  .sidebar nav a {
+    height: 32px;
+  }
+  .sidebar .nav-label:not(:first-child) {
+    margin-top: 10px;
+  }
+}
+
+/* A row opened from the overview (?focus=<id>). */
+tr.row-focus td {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.page-note {
+  margin: -8px 0 16px;
+}

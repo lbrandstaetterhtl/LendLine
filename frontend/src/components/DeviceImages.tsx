@@ -176,6 +176,8 @@ export function PieceCalendarDialog({
   deviceName,
   unit,
   period,
+  startWithRequest = false,
+  onBack,
   onRequested,
   onClose,
 }: {
@@ -187,9 +189,18 @@ export function PieceCalendarDialog({
    */
   period?: Period;
   /**
-   * Called after a request was created, so the opener can refresh its data.
+   * Opens straight on the request form (the period is already known, e.g. from the search).
    */
-  onRequested?: () => void;
+  startWithRequest?: boolean;
+  /**
+   * Shows "← Alle Stücke" and goes back to the piece list that opened this calendar.
+   */
+  onBack?: () => void;
+  /**
+   * Called with a confirmation after a request was created. The opener closes the dialog and shows
+   * the message on its page, so no dialog stays open on top of another.
+   */
+  onRequested?: (message: string) => void;
   onClose: () => void;
 }) {
   const [cursor, setCursor] = useState(() => (period ? new Date(period.startsAt) : new Date()));
@@ -202,7 +213,8 @@ export function PieceCalendarDialog({
   const terms = useTerms();
   const [formError, setFormError] = useState("");
   const [info, setInfo] = useState("");
-  const [requestOpen, setRequestOpen] = useState(false);
+  // Calendar and request form are two views of one dialog, never two dialogs on top of each other.
+  const [requestOpen, setRequestOpen] = useState(startWithRequest && Boolean(period));
   const [sending, setSending] = useState(false);
   const { data: allRooms, error: roomsError } = useApi<Room[]>("/api/rooms");
   const { data: myRequests, reload: reloadMyRequests } =
@@ -324,14 +336,16 @@ export function PieceCalendarDialog({
           fields: fieldValues,
         }),
       });
+      const message = form?.autoApprove
+        ? `${deviceName} (${current.serialNumber}): Ausleihe bestätigt. Die Bestätigung kommt auch per E-Mail.`
+        : `${deviceName} (${current.serialNumber}): Anfrage gesendet. Die Verwaltung prüft sie.`;
+      if (onRequested) {
+        onRequested(message);
+        return;
+      }
       reloadCalendar();
       reloadMyRequests();
-      onRequested?.();
-      setInfo(
-        form?.autoApprove
-          ? "Ausleihe bestätigt. Die Bestätigung erhalten Sie auch per E-Mail."
-          : "Anfrage gesendet. Die Verwaltung prüft sie. Den Stand sehen Sie unter „Meine Anfragen“."
-      );
+      setInfo(message);
       setComment("");
       setFieldValues({});
       setRequestOpen(false);
@@ -349,6 +363,107 @@ export function PieceCalendarDialog({
       ? toLocalInput(new Date(new Date(startsAt).getTime() + form.maxDays * 24 * 60 * 60 * 1000))
       : undefined;
 
+  if (requestOpen) {
+    return (
+      <Modal
+        title="Ausleihe anfragen"
+        description={`${deviceName} · ${terms.unit} ${current.serialNumber}`}
+        onClose={onClose}
+        size="sm"
+        footer={
+          <>
+            <button type="button" className="secondary" onClick={() => setRequestOpen(false)}>
+              <Icon name="calendar" /> Im Kalender ansehen
+            </button>
+            <button type="submit" form="request-form" disabled={sending}>
+              {sending ? "Wird gesendet…" : "Anfrage senden"}
+            </button>
+          </>
+        }
+      >
+        <Alert>{formError || roomsError}</Alert>
+        <form
+          id="request-form"
+          className="form-grid cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitRequest();
+          }}
+        >
+          <Field label="Start" htmlFor="cal-from">
+            <input
+              id="cal-from"
+              type="datetime-local"
+              value={startsAt}
+              onChange={(event) => setStartsAt(event.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Ende" htmlFor="cal-until">
+            <input
+              id="cal-until"
+              type="datetime-local"
+              min={startsAt}
+              max={latestEnd}
+              value={desiredUntil}
+              onChange={(event) => setDesiredUntil(event.target.value)}
+              required
+            />
+          </Field>
+          {form?.room !== "hidden" && (
+            <Field
+              label={terms.room}
+              htmlFor="cal-room"
+              className="span-full"
+              optional={form?.room === "optional"}
+              hint="Wo es eingesetzt wird."
+            >
+              <select
+                id="cal-room"
+                value={roomId}
+                onChange={(event) => setRoomId(event.target.value)}
+                required={form?.room !== "optional"}
+              >
+                <option value="">{terms.room} wählen…</option>
+                {rooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.name}
+                    {room.building ? ` · ${room.building}` : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {form?.fields.map((field) => (
+            <CustomField
+              key={field.id}
+              field={field}
+              value={fieldValues[field.id]}
+              onChange={(value) => setFieldValues((values) => ({ ...values, [field.id]: value }))}
+            />
+          ))}
+          {form?.comment !== "hidden" && (
+            <Field
+              label={form?.commentLabel ?? "Kommentar"}
+              htmlFor="cal-comment"
+              optional={form?.comment !== "required"}
+              className="span-full"
+            >
+              <textarea
+                id="cal-comment"
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                maxLength={1000}
+                required={form?.comment === "required"}
+                placeholder={form?.commentHint ?? "z. B. Zweck oder Zubehörwunsch"}
+              />
+            </Field>
+          )}
+        </form>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       title={`${terms.unit} ${current.serialNumber}`}
@@ -360,6 +475,11 @@ export function PieceCalendarDialog({
       onClose={onClose}
       size="lg"
     >
+      {onBack && (
+        <button type="button" className="ghost sm back-link" onClick={onBack}>
+          <Icon name="left" /> Alle {terms.units}
+        </button>
+      )}
       <Alert>{calendarError || roomsError}</Alert>
       <Alert tone="ok">{info}</Alert>
       {highlight ? (
@@ -511,105 +631,6 @@ export function PieceCalendarDialog({
           </li>
         ))}
       </ul>
-
-      {requestOpen && (
-        <Modal
-          title="Ausleihe anfragen"
-          description={`${deviceName} · ${terms.unit} ${current.serialNumber}`}
-          onClose={() => setRequestOpen(false)}
-          size="sm"
-          footer={
-            <>
-              <button type="button" className="secondary" onClick={() => setRequestOpen(false)}>
-                Abbrechen
-              </button>
-              <button type="submit" form="request-form" disabled={sending}>
-                {sending ? "Wird gesendet…" : "Anfrage senden"}
-              </button>
-            </>
-          }
-        >
-          <Alert>{formError}</Alert>
-          <form
-            id="request-form"
-            className="form-grid cols-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitRequest();
-            }}
-          >
-            <Field label="Start" htmlFor="cal-from">
-              <input
-                id="cal-from"
-                type="datetime-local"
-                value={startsAt}
-                onChange={(event) => setStartsAt(event.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Ende" htmlFor="cal-until">
-              <input
-                id="cal-until"
-                type="datetime-local"
-                min={startsAt}
-                max={latestEnd}
-                value={desiredUntil}
-                onChange={(event) => setDesiredUntil(event.target.value)}
-                required
-              />
-            </Field>
-            {form?.room !== "hidden" && (
-              <Field
-                label={terms.room}
-                htmlFor="cal-room"
-                className="span-full"
-                optional={form?.room === "optional"}
-                hint="Wo es eingesetzt wird."
-              >
-                <select
-                  id="cal-room"
-                  value={roomId}
-                  onChange={(event) => setRoomId(event.target.value)}
-                  required={form?.room !== "optional"}
-                >
-                  <option value="">{terms.room} wählen…</option>
-                  {rooms.map((room) => (
-                    <option key={room.id} value={room.id}>
-                      {room.name}
-                      {room.building ? ` · ${room.building}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
-            {form?.fields.map((field) => (
-              <CustomField
-                key={field.id}
-                field={field}
-                value={fieldValues[field.id]}
-                onChange={(value) => setFieldValues((values) => ({ ...values, [field.id]: value }))}
-              />
-            ))}
-            {form?.comment !== "hidden" && (
-              <Field
-                label={form?.commentLabel ?? "Kommentar"}
-                htmlFor="cal-comment"
-                optional={form?.comment !== "required"}
-                className="span-full"
-              >
-                <textarea
-                  id="cal-comment"
-                  value={comment}
-                  onChange={(event) => setComment(event.target.value)}
-                  maxLength={1000}
-                  required={form?.comment === "required"}
-                  placeholder={form?.commentHint ?? "z. B. Zweck oder Zubehörwunsch"}
-                />
-              </Field>
-            )}
-          </form>
-        </Modal>
-      )}
     </Modal>
   );
 }
@@ -691,16 +712,40 @@ function CustomField({
 export function PieceListDialog({
   deviceId,
   name,
+  onRequested,
   onClose,
 }: {
   deviceId: string;
   name: string;
+  onRequested?: (message: string) => void;
   onClose: () => void;
 }) {
   const terms = useTerms();
   const [selected, setSelected] = useState<CalendarUnit | null>(null);
+  // With one bookable piece the list is an extra step for nothing: open its calendar right away.
+  const [listWanted, setListWanted] = useState(false);
   const { data, error } = useApi<{ units: CalendarUnit[] }>(`/api/devices/${deviceId}/calendar`);
   const units = data?.units;
+  const bookable = units?.filter((unit) => unit.status !== "DEFECTIVE") ?? [];
+  const only = !listWanted && units && bookable.length === 1 ? bookable[0] : undefined;
+  const active = selected ?? only;
+
+  if (active) {
+    return (
+      <PieceCalendarDialog
+        key={active.id}
+        deviceId={deviceId}
+        deviceName={name}
+        unit={active}
+        onBack={() => {
+          setSelected(null);
+          setListWanted(true);
+        }}
+        onRequested={onRequested}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <Modal
@@ -736,7 +781,7 @@ export function PieceListDialog({
                 </td>
                 <td className="actions-cell">
                   <button type="button" className="secondary sm" onClick={() => setSelected(unit)}>
-                    <Icon name="calendar" /> Kalender
+                    <Icon name="calendar" /> Kalender & anfragen
                   </button>
                 </td>
               </tr>
@@ -744,15 +789,6 @@ export function PieceListDialog({
           </tbody>
         </table>
       </div>
-      {selected && (
-        <PieceCalendarDialog
-          key={selected.id}
-          deviceId={deviceId}
-          deviceName={name}
-          unit={selected}
-          onClose={() => setSelected(null)}
-        />
-      )}
     </Modal>
   );
 }

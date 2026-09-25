@@ -10,6 +10,7 @@ import { CategorySelect } from "../components/CategorySelect";
 import { DeviceFieldList, FieldFilter, useFieldOptions } from "../components/DeviceFields";
 import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
+import { RequestSent } from "../components/RequestSent";
 import { Alert, Field, PageHeader } from "../components/ui";
 
 export function DevicesPage() {
@@ -45,6 +46,7 @@ export function DevicesPage() {
     index: number;
   } | null>(null);
   const [pieceDevice, setPieceDevice] = useState<Device | null>(null);
+  const [sent, setSent] = useState("");
 
   return (
     <>
@@ -58,6 +60,7 @@ export function DevicesPage() {
         }
       />
       <Alert>{error}</Alert>
+      <RequestSent message={sent} />
       <div className="toolbar">
         <Field label="Suche" htmlFor="device-search" className="grow">
           <input
@@ -139,7 +142,7 @@ export function DevicesPage() {
                     className="secondary sm"
                     onClick={() => setPieceDevice(device)}
                   >
-                    {terms.units}
+                    <Icon name="calendar" /> Kalender & anfragen
                   </button>
                 </td>
               </tr>
@@ -159,6 +162,10 @@ export function DevicesPage() {
           key={pieceDevice.id}
           deviceId={pieceDevice.id}
           name={pieceDevice.name}
+          onRequested={(message) => {
+            setPieceDevice(null);
+            setSent(message);
+          }}
           onClose={() => setPieceDevice(null)}
         />
       )}

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
+import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader } from "../components/ui";
 
 type MailSettings = {
@@ -22,6 +23,7 @@ export function AdminEmailsPage() {
   const { data: stored, error, reload } = useApi<MailSettings>("/api/admin/settings/mail");
   return (
     <>
+      <SettingsTabs />
       <PageHeader
         title="E-Mails"
         description="Absender, Texte und Signatur der Benachrichtigungen bei Bestätigung, Ablehnung und Rückgabe."
