@@ -438,7 +438,7 @@ Returns every non-defective unit (optionally filtered by category and case-insen
 | Room                     | any request references it                                               |
 | User                     | it's your own account, it's the last admin, or the user has any request |
 
-Additional user rules: you cannot remove your own admin role; the last admin cannot be demoted. The admin count and the change it guards run in one `Serializable` transaction, so two admins demoting each other at the same moment cannot leave none (the loser gets 409 "bitte erneut versuchen"). Setting a password through the admin UI ends all of that user's sessions (refresh tokens) and converts an LDAP user to a `LOCAL` user (clears `ldapDn`).
+Additional user rules: nobody changes their own group; at least one user must keep `groups.manage` (§8). The count and the change it guards run in one `Serializable` transaction, so two people removing each other at the same moment cannot leave none (the loser gets 409 "bitte erneut versuchen"). Setting a password through the admin UI ends all of that user's sessions (refresh tokens) and converts an LDAP user to a `LOCAL` user (clears `ldapDn`).
 
 ### 7.9 Images
 
@@ -454,14 +454,14 @@ Additional user rules: you cannot remove your own admin role; the last admin can
 
 | Token         | Format                                                                      | Storage                                                                                  | Lifetime                        |
 | ------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------- |
-| Access token  | JWT (HS256, pinned on sign and verify), payload `{ sub: userId, role, sv }` | JS memory in the frontend (`api/client.ts`), sent as `Authorization: Bearer …`           | `JWT_ACCESS_TTL` (15 min)       |
+| Access token  | JWT (HS256, pinned on sign and verify), payload `{ sub: userId, sv }`       | JS memory in the frontend (`api/client.ts`), sent as `Authorization: Bearer …`           | `JWT_ACCESS_TTL` (15 min)       |
 | Refresh token | 48 random bytes, hex; only its **SHA-256 hash** is stored in `RefreshToken` | httpOnly cookie `refreshToken`, `SameSite=Lax`, `Path=/api/auth`, `Secure` in production | `JWT_REFRESH_TTL_DAYS` (7 days) |
 
 **Rotation:** every `/api/auth/refresh` revokes the presented token and issues a new pair. The revocation is atomic (`updateMany … where revokedAt = null`): of two requests presenting the same token only one gets a new pair, the other gets 401. Logout revokes the current token. Expired/revoked rows stay until an admin runs _Abgelaufene Sitzungen bereinigen_ on `/admin/wartung`.
 
 `/auth/refresh` and `/auth/logout` rely on the `SameSite=Lax` cookie and additionally refuse (403) an `Origin` header that is neither `FRONTEND_ORIGIN` nor the request's own host.
 
-**Role and session version come from the database, not from the JWT:** `requireAuth` loads the user on every request and compares `User.sessionVersion` with the token's `sv`. `services/sessionService.ts → endAllSessions()` raises the version and revokes the refresh tokens; it is used by `/users/:id/sessions/revoke`, the maintenance task "end all sessions", an admin password reset, a role change, the own password change and an LDAP takeover. The affected person is signed out **at once**, not after `JWT_ACCESS_TTL`.
+**Group, permissions and session version come from the database, not from the JWT:** `requireAuth` loads the user on every request and compares `User.sessionVersion` with the token's `sv`. `services/sessionService.ts → endAllSessions()` raises the version and revokes the refresh tokens; it is used by `/users/:id/sessions/revoke`, the maintenance task "end all sessions", an admin password reset, a group change, the own password change and an LDAP takeover. The affected person is signed out **at once**, not after `JWT_ACCESS_TTL`.
 
 **Reuse detection:** a rotation sets `rotatedAt` on the old token. If such a token comes back more than 60 s later, it was copied (stolen cookie, backup, malware): all sessions of the account end and the log records `SESSION_REUSE_DETECTED`. Within the 60 s it is just a lost race and answers 401. Tokens revoked by logout or an admin have no `rotatedAt` and never trigger this. The frontend serialises refreshes across tabs with the Web Locks API (`navigator.locks`, `api/client.ts`), so two tabs no longer race.
 
@@ -545,7 +545,7 @@ New passwords (registration, admin create/reset) must be 8 characters to 72 byte
 
 Admins switch it on at `/admin/wartung` with a message and an optional expected end ("Voraussichtlich bis", informational only). While it is on, only admins can use LendLine (`services/maintenanceService.ts`):
 
-- `requireAuth`, login, registration and `/auth/refresh` call `assertAccessDuringMaintenance(role)`. Non-admins get **503** `{ error: <message>, code: "MAINTENANCE" }`; registration is blocked for everyone.
+- `requireAuth`, login, registration and `/auth/refresh` call `assertAccessDuringMaintenance(permissions)`. Everyone without `maintenance.bypass` gets **503** `{ error: <message>, code: "MAINTENANCE" }`; registration is blocked for everyone.
 - The refresh check runs **before** rotation, so a user's refresh token stays valid and their session simply continues after the maintenance without a new login.
 - The frontend (`api/client.ts`) fires `lendline:maintenance` on that 503; `AuthProvider` drops the in-memory user, and the login page shows the message from `/auth/options`.
 - The setting is cached in memory for 5 s (it is checked on every authenticated request), so a switch takes up to 5 s to apply. With several API processes, each has its own cache.
@@ -588,7 +588,7 @@ Errors: `{ "error": "<German message>" }` with 400/401/403/404/409/413/500, plus
 | POST   | `/auth/refresh`  | cookie | Rotates the refresh token → `{ user, accessToken }`; 403 on a foreign `Origin`                                                   |
 | POST   | `/auth/logout`   | cookie | Revokes the token, clears the cookie → 204; 403 on a foreign `Origin`                                                            |
 | POST   | `/auth/password` | 👤     | `{ currentPassword, newPassword }` → `{ user, accessToken }` + new cookie; ends all other sessions; 400 wrong password; 409 LDAP |
-| GET    | `/auth/me`       | 👤     | `{ id, name, email, role, createdAt, mustChangePassword, authSource }`                                                           |
+| GET    | `/auth/me`       | 👤     | `{ id, name, email, createdAt, mustChangePassword, authSource, group { id, name }, permissions[] }`                              |
 
 ### Categories — `/categories`
 
@@ -693,32 +693,32 @@ Permissions: listing and profile `users.view`; create, change, delete `users.man
 
 ## 10. Backend internals
 
-| File                                                                   | Responsibility                                                                                                     |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `src/index.ts`                                                         | `createApp().listen(PORT, "127.0.0.1")`                                                                            |
-| `src/app.ts`                                                           | CORS (single origin, credentials), JSON, cookies, static uploads, routers, `/api/admin/*` endpoints, error handler |
-| `src/config.ts`                                                        | Env parsing; `ldap.enabled` getter                                                                                 |
-| `lib/prisma.ts`                                                        | Single shared `PrismaClient`                                                                                       |
-| `lib/errors.ts`                                                        | `HttpError`                                                                                                        |
-| `lib/password.ts`                                                      | bcrypt hash/verify, 12 rounds                                                                                      |
-| `lib/tokens.ts`                                                        | JWT sign/verify (HS256 pinned); random refresh token; SHA-256 hashing                                              |
-| `lib/rateLimit.ts`                                                     | In-memory fixed-window `RateLimiter` (`consume`, `refund`, `reset`) and `clientIp`                                 |
-| `lib/requestContext.ts`                                                | `AsyncLocalStorage` with the caller's IP and user agent, read by the audit log                                     |
-| `middleware/auth.ts`                                                   | `requireAuth` (verifies the JWT, loads id + role from the DB), `requireAdmin`; augments `Express.Request`          |
-| `middleware/validate.ts`                                               | `validateBody(schema)` — parses and replaces `req.body` (throws `ZodError` → 400)                                  |
-| `middleware/upload.ts`                                                 | multer disk storage + limits; creates the upload dir at import time                                                |
-| `middleware/errorHandler.ts`                                           | Error → JSON (incl. body-parser errors → 400/413)                                                                  |
-| `validators/*.ts`                                                      | Zod schemas (auth, device, request); categories/rooms/users define their schemas inline in the router              |
-| `services/authService.ts`                                              | register, login (LDAP + local), refresh, logout, me                                                                |
-| `services/ldapService.ts`                                              | Directory search/bind, filter escaping, admin-group mapping                                                        |
-| `services/deviceService.ts`                                            | Device CRUD, unit reconciliation, calendar, public/admin projection (`toPublic`)                                   |
-| `services/searchService.ts`                                            | Free-unit search                                                                                                   |
-| `services/requestService.ts`                                           | Request lifecycle, e-mail dispatch, audit                                                                          |
-| `services/unitStatus.ts`                                               | Derived `AVAILABLE`/`BORROWED` status                                                                              |
-| `services/imageService.ts`                                             | Image records + file cleanup                                                                                       |
-| `services/categoryService.ts`, `roomService.ts`, `userAdminService.ts` | CRUD with guards + audit                                                                                           |
-| `services/auditService.ts`                                             | `recordAudit` (never throws), `listAudit`                                                                          |
-| `services/adminSummaryService.ts`                                      | Dashboard counts                                                                                                   |
+| File                                                                   | Responsibility                                                                                                                                |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                                                         | `createApp().listen(PORT, "127.0.0.1")`                                                                                                       |
+| `src/app.ts`                                                           | CORS (single origin, credentials), JSON, cookies, static uploads, routers, `/api/admin/*` endpoints, error handler                            |
+| `src/config.ts`                                                        | Env parsing; `ldap.enabled` getter                                                                                                            |
+| `lib/prisma.ts`                                                        | Single shared `PrismaClient`                                                                                                                  |
+| `lib/errors.ts`                                                        | `HttpError`                                                                                                                                   |
+| `lib/password.ts`                                                      | bcrypt hash/verify, 12 rounds                                                                                                                 |
+| `lib/tokens.ts`                                                        | JWT sign/verify (HS256 pinned); random refresh token; SHA-256 hashing                                                                         |
+| `lib/rateLimit.ts`                                                     | In-memory fixed-window `RateLimiter` (`consume`, `refund`, `reset`) and `clientIp`                                                            |
+| `lib/requestContext.ts`                                                | `AsyncLocalStorage` with the caller's IP and user agent, read by the audit log                                                                |
+| `middleware/auth.ts`                                                   | `requireAuth` (verifies the JWT, loads user + group from the DB), `requirePermission`, `can`, `assertManageScope`; augments `Express.Request` |
+| `middleware/validate.ts`                                               | `validateBody(schema)` — parses and replaces `req.body` (throws `ZodError` → 400)                                                             |
+| `middleware/upload.ts`                                                 | multer disk storage + limits; creates the upload dir at import time                                                                           |
+| `middleware/errorHandler.ts`                                           | Error → JSON (incl. body-parser errors → 400/413)                                                                                             |
+| `validators/*.ts`                                                      | Zod schemas (auth, device, request); categories/rooms/users define their schemas inline in the router                                         |
+| `services/authService.ts`                                              | register, login (LDAP + local), refresh, logout, me                                                                                           |
+| `services/ldapService.ts`                                              | Directory search/bind, filter escaping, admin-group mapping                                                                                   |
+| `services/deviceService.ts`                                            | Device CRUD, unit reconciliation, calendar, public/admin projection (`toPublic`)                                                              |
+| `services/searchService.ts`                                            | Free-unit search                                                                                                                              |
+| `services/requestService.ts`                                           | Request lifecycle, e-mail dispatch, audit                                                                                                     |
+| `services/unitStatus.ts`                                               | Derived `AVAILABLE`/`BORROWED` status                                                                                                         |
+| `services/imageService.ts`                                             | Image records + file cleanup                                                                                                                  |
+| `services/categoryService.ts`, `roomService.ts`, `userAdminService.ts` | CRUD with guards + audit                                                                                                                      |
+| `services/auditService.ts`                                             | `recordAudit` (never throws), `listAudit`                                                                                                     |
+| `services/adminSummaryService.ts`                                      | Dashboard counts                                                                                                                              |
 
 **Conventions**
 
@@ -756,22 +756,23 @@ Each entry stores:
 - `details` (JSON): `changes` as `[{ field, from, to }]` (unchanged fields are dropped) and `context` as ordered `{ label: value }` facts. Old entries from before 2026-09-24 have no details.
 - `ip`, `userAgent`: taken automatically from the current request via `AsyncLocalStorage` (`lib/requestContext.ts`). `trust proxy` is set to loopback, and the Vite proxy forwards `X-Forwarded-For` (`xfwd`).
 
-| Action                                                      | Entity          | Details                                                                                                                 |
-| ----------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `DEVICE_CREATED` / `_UPDATED` / `_DELETED`                  | DEVICE          | Name/category/description changes; per piece: added, removed, serial renamed, status change; stock and piece list       |
-| `IMAGE_ADDED` / `IMAGE_REMOVED`                             | DEVICE          | File names, size, image count                                                                                           |
-| `CATEGORY_*`, `ROOM_*`                                      | CATEGORY / ROOM | Field changes (name, building, description)                                                                             |
-| `USER_CREATED` / `_UPDATED` / `_DELETED`                    | USER            | Name, role, sign-in source, "password reset" (never the hash); also LDAP provisioning and directory-driven role changes |
-| `USER_REGISTERED`                                           | USER            | Self-registration                                                                                                       |
-| `REQUEST_CREATED` / `_APPROVED` / `_REJECTED` / `_RETURNED` | REQUEST         | Status change; device and serial, person, period, room, comment, rejection reason, return time and punctuality          |
-| `LOGIN_SUCCEEDED` / `LOGIN_FAILED` / `LOGOUT`               | AUTH            | Method (local account or LDAP); failure reason                                                                          |
-| `MAINTENANCE_ON` / `_OFF` / `_UPDATED`                      | SYSTEM          | Message and expected end                                                                                                |
-| `MAINTENANCE_TASK`                                          | SYSTEM          | Task id and result; deleted file names, test-mail recipient and transport                                               |
-| `BRANDING_UPDATED`                                          | SYSTEM          | Accent colour old → new; uploaded logo file name and size; logo removed                                                 |
-| `SETTINGS_UPDATED`                                          | SYSTEM          | Changed settings as `path: old → new` (e.g. `rules.maxDays`)                                                            |
-| `REQUEST_CANCELLED`                                         | REQUEST         | Withdrawn by the requester                                                                                              |
-| `REQUESTS_BULK_REJECTED`                                    | USER            | Count and reason of the bulk rejection                                                                                  |
-| `PASSWORD_CHANGED` / `SESSION_REUSE_DETECTED`               | AUTH            | Own password change; copied refresh token detected (all sessions ended)                                                 |
+| Action                                                      | Entity          | Details                                                                                                                   |
+| ----------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `DEVICE_CREATED` / `_UPDATED` / `_DELETED`                  | DEVICE          | Name/category/description changes; per piece: added, removed, serial renamed, status change; stock and piece list         |
+| `IMAGE_ADDED` / `IMAGE_REMOVED`                             | DEVICE          | File names, size, image count                                                                                             |
+| `CATEGORY_*`, `ROOM_*`                                      | CATEGORY / ROOM | Field changes (name, building, description)                                                                               |
+| `USER_CREATED` / `_UPDATED` / `_DELETED`                    | USER            | Name, group, sign-in source, "password reset" (never the hash); also LDAP provisioning and directory-driven group changes |
+| `USER_REGISTERED`                                           | USER            | Self-registration                                                                                                         |
+| `REQUEST_CREATED` / `_APPROVED` / `_REJECTED` / `_RETURNED` | REQUEST         | Status change; device and serial, person, period, room, comment, rejection reason, return time and punctuality            |
+| `LOGIN_SUCCEEDED` / `LOGIN_FAILED` / `LOGOUT`               | AUTH            | Method (local account or LDAP); failure reason                                                                            |
+| `MAINTENANCE_ON` / `_OFF` / `_UPDATED`                      | SYSTEM          | Message and expected end                                                                                                  |
+| `MAINTENANCE_TASK`                                          | SYSTEM          | Task id and result; deleted file names, test-mail recipient and transport                                                 |
+| `BRANDING_UPDATED`                                          | SYSTEM          | Accent colour old → new; uploaded logo file name and size; logo removed                                                   |
+| `GROUP_CREATED` / `_UPDATED` / `_DELETED`                   | GROUP           | Every changed permission as ja/nein, scopes, rules, directory groups; moved members on delete                             |
+| `SETTINGS_UPDATED`                                          | SYSTEM          | Changed settings as `path: old → new` (e.g. `rules.maxDays`)                                                              |
+| `REQUEST_CANCELLED`                                         | REQUEST         | Withdrawn by the requester                                                                                                |
+| `REQUESTS_BULK_REJECTED`                                    | USER            | Count and reason of the bulk rejection                                                                                    |
+| `PASSWORD_CHANGED` / `SESSION_REUSE_DETECTED`               | AUTH            | Own password change; copied refresh token detected (all sessions ended)                                                   |
 
 Token refreshes are not logged (too frequent to be useful).
 
@@ -824,7 +825,7 @@ After login, admins land on `/admin` and users on `/search`.
 3. **Several devices for the same appointment:** above the month grid, _Zeitraum aus meinen Anfragen_ lists the periods of the user's own `OPEN`/`APPROVED` requests that have not ended (one chip per period, the tooltip names the devices). A chip outlines the period and offers _Für diesen Zeitraum anfragen_; the form then gets start, end and — if none is chosen yet — the room of that request. If the unit is already booked then, the bar says _In diesem Zeitraum schon belegt_.
 4. Calendar, list and form are **views of one dialog**, never dialogs on top of each other. After sending, the dialog closes and the page shows the confirmation with a link „Zu meinen Anfragen“ (`components/RequestSent.tsx`).
 
-**Navigation rules:** the sidebar shows „Verwaltung“ first for admins; „Einstellungen“ is one entry for the four tabs Erscheinungsbild, Regeln & Formular, E-Mails, Wartung (`components/SettingsTabs.tsx`; each tab keeps its own URL, so bookmarks and shortcuts stay valid). „Hilfe“ sits next to the theme switch. A logged-out visitor is sent to `/login` with the requested path in the router state and returns there after the login (internal paths only). Unknown paths go to `/admin` or `/search` by role. Links from the overview carry `?focus=<id>`; the lists scroll to that row and highlight it (`components/useFocusRow.ts`). Every notification e-mail links to `/my-requests`. The findings behind these rules are in `navigation-audit.md`.
+**Navigation rules:** the sidebar shows only pages the person's group may open, „Verwaltung“ first; „Einstellungen“ is one entry for the four tabs Erscheinungsbild, Regeln & Formular, E-Mails, Wartung (`components/SettingsTabs.tsx`; each tab keeps its own URL, so bookmarks and shortcuts stay valid). „Hilfe“ sits next to the theme switch. A logged-out visitor is sent to `/login` with the requested path in the router state and returns there after the login (internal paths only). Unknown paths go to the start page of the group (`homePath`: overview, search or „Meine Anfragen“). Links from the overview carry `?focus=<id>`; the lists scroll to that row and highlight it (`components/useFocusRow.ts`). Every notification e-mail links to `/my-requests`. The findings behind these rules are in `navigation-audit.md`.
 
 ### 13.4 Components
 
@@ -927,7 +928,7 @@ check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 ### Security / operational notes
 
 - **`NODE_ENV` matters:** it defaults to `development`. The placeholder secret is refused everywhere; the `Secure` cookie follows `FRONTEND_ORIGIN` (https) and the demo seed refuses any non-local origin. The short-secret abort and the insecure-LDAP abort still need `NODE_ENV=production`, so always set it on real installations.
-- LDAP: accounts are still matched by e-mail as a fallback; a second directory entry with the same `mail` takes over the account's data and role (sessions are revoked). Needs a stable directory key (`objectGUID`/`entryUUID`) and a migration.
+- LDAP: accounts are still matched by e-mail as a fallback; a second directory entry with the same `mail` takes over the account's data and group (sessions are revoked). Needs a stable directory key (`objectGUID`/`entryUUID`) and a migration.
 - Rate limits are in memory and per process (§8).
 - Uploaded images are publicly readable under `/api/uploads/…` without authentication (intended for logos, which the login page needs; device photos are public too).
 - Registration (off by default) does not verify the e-mail address; the domain list limits who can register.
@@ -939,22 +940,22 @@ check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 
 ## 16. Glossary (German → English)
 
-| German (UI / code)                            | English                               |
-| --------------------------------------------- | ------------------------------------- |
-| Gerät                                         | Device (model/type)                   |
-| Stück                                         | Unit / physical piece                 |
-| Seriennummer                                  | Serial number                         |
-| Verfügbar / Ausgeliehen / Defekt              | Available / Borrowed / Defective      |
-| Anfrage                                       | (Borrow) request                      |
-| Offen / Bestätigt / Abgelehnt / Zurückgegeben | Open / Approved / Rejected / Returned |
-| Ausleihe                                      | Loan / lending                        |
-| Rückgabe                                      | Return                                |
-| Raum / Raumbuch / Gebäude                     | Room / room register / building       |
-| Kategorie                                     | Category                              |
-| Verwaltung                                    | Administration (admin role)           |
-| Nutzer / Benutzer                             | User                                  |
-| Protokoll                                     | Audit log                             |
-| Übersicht                                     | Dashboard / overview                  |
-| Anmelden / Abmelden / Registrieren            | Log in / Log out / Register           |
-| Verzeichnis                                   | Directory (LDAP)                      |
-| Ablehnungsgrund                               | Rejection reason                      |
+| German (UI / code)                            | English                                                   |
+| --------------------------------------------- | --------------------------------------------------------- |
+| Gerät                                         | Device (model/type)                                       |
+| Stück                                         | Unit / physical piece                                     |
+| Seriennummer                                  | Serial number                                             |
+| Verfügbar / Ausgeliehen / Defekt              | Available / Borrowed / Defective                          |
+| Anfrage                                       | (Borrow) request                                          |
+| Offen / Bestätigt / Abgelehnt / Zurückgegeben | Open / Approved / Rejected / Returned                     |
+| Ausleihe                                      | Loan / lending                                            |
+| Rückgabe                                      | Return                                                    |
+| Raum / Raumbuch / Gebäude                     | Room / room register / building                           |
+| Kategorie                                     | Category                                                  |
+| Verwaltung                                    | Administration (the built-in group with every permission) |
+| Nutzer / Benutzer                             | User                                                      |
+| Protokoll                                     | Audit log                                                 |
+| Übersicht                                     | Dashboard / overview                                      |
+| Anmelden / Abmelden / Registrieren            | Log in / Log out / Register                               |
+| Verzeichnis                                   | Directory (LDAP)                                          |
+| Ablehnungsgrund                               | Rejection reason                                          |
