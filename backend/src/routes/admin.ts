@@ -23,6 +23,7 @@ import {
 import { setMaintenance } from "../services/maintenanceService.js";
 import { mailSchema, getSetting, setSetting } from "../services/settingsService.js";
 import { maintenanceTasks, runMaintenanceTask, systemStatus } from "../services/systemService.js";
+import { uiUsage } from "../services/uiService.js";
 import { auditQuerySchema } from "../validators/audit.js";
 
 const maintenanceSchema = z.object({
@@ -98,9 +99,13 @@ adminRouter.post(
   })
 );
 
-const settingKeys = ["policy", "mail"] as const;
+const settingKeys = ["policy", "mail", "ui"] as const;
 
-const settingPermission = { policy: "settings.rules", mail: "settings.mail" } as const;
+const settingPermission = {
+  policy: "settings.rules",
+  mail: "settings.mail",
+  ui: "settings.mode",
+} as const;
 
 function settingKey(req: Request) {
   const key = settingKeys.find((name) => name === routeParam(req, "key"));
@@ -110,6 +115,14 @@ function settingKey(req: Request) {
   }
   return key;
 }
+
+adminRouter.get(
+  "/ui/usage",
+  requirePermission("settings.mode"),
+  asyncHandler(async (_req, res) => {
+    res.json(await uiUsage());
+  })
+);
 
 // Before the generic route: shows unsaved mail settings with sample data.
 adminRouter.post(

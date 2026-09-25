@@ -9,6 +9,7 @@ import { useTerms } from "../branding/BrandingContext";
 import { Icon } from "../components/icons";
 import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader } from "../components/ui";
+import { useFeature } from "../ui/UiContext";
 
 type Policy = {
   registration: { enabled: boolean; domains: string[] };
@@ -56,6 +57,8 @@ function slug(label: string, taken: string[]): string {
 
 export function AdminSettingsPage() {
   const { data: policy, error, reload } = useApi<Policy>("/api/admin/settings/policy");
+  const showRules = useFeature("rules.loan");
+  const showForm = useFeature("form.custom");
   const [info, setInfo] = useState("");
   const [saveError, setSaveError] = useState("");
 
@@ -85,8 +88,8 @@ export function AdminSettingsPage() {
       {policy && (
         <div className="dash-grid branding-grid" key={JSON.stringify(policy)}>
           <RegistrationCard policy={policy} save={save} />
-          <RulesCard policy={policy} save={save} />
-          <FormCard policy={policy} save={save} />
+          {showRules && <RulesCard policy={policy} save={save} />}
+          {showForm && <FormCard policy={policy} save={save} />}
         </div>
       )}
     </>

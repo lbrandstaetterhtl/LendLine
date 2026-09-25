@@ -8,6 +8,7 @@ import { can } from "../auth/permissions";
 import { Icon } from "../components/icons";
 import { UserTabs } from "../components/SettingsTabs";
 import { Alert, Field, Modal, PageHeader } from "../components/ui";
+import { useFeature } from "../ui/UiContext";
 
 type Group = {
   id: string;
@@ -82,6 +83,7 @@ function requiredBy(selected: Set<string>, key: string): string[] {
 export function AdminGroupsPage() {
   const { user: me } = useAuth();
   const editable = can(me, "groups.manage");
+  const advanced = useFeature("groups.advanced");
   const { data: groups, error, reload } = useApi<Group[]>("/api/groups");
   const { data: sections } = useApi<PermissionSection[]>("/api/groups/permissions");
   const { data: categories } = useApi<Category[]>("/api/categories");
@@ -161,8 +163,10 @@ export function AdminGroupsPage() {
                 </span>
               )}
             </p>
-            <ScopeLine label="Leiht aus" ids={group.borrowCategoryIds} categories={categories} />
-            {group.manageCategoryIds.length > 0 && (
+            {advanced && (
+              <ScopeLine label="Leiht aus" ids={group.borrowCategoryIds} categories={categories} />
+            )}
+            {advanced && group.manageCategoryIds.length > 0 && (
               <ScopeLine label="Verwaltet" ids={group.manageCategoryIds} categories={categories} />
             )}
             <div className="form-actions">
@@ -262,6 +266,7 @@ function GroupEditor({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const selected = new Set(form.permissions);
+  const advanced = useFeature("groups.advanced");
   const had = new Set(initial.permissions);
 
   function toggle(key: string, on: boolean) {
@@ -448,95 +453,102 @@ function GroupEditor({
             })}
           </section>
 
-          <section className="form-section">
-            <h3>Kategorien</h3>
-            <div className="form-grid cols-2">
-              <CategoryScope
-                label="Darf ausleihen aus"
-                hint="Nichts gewählt: aus allen Kategorien. Andere Kategorien sieht die Gruppe im Katalog nicht."
-                categories={categories}
-                value={form.borrowCategoryIds}
-                onChange={(borrowCategoryIds) => setForm({ ...form, borrowCategoryIds })}
-              />
-              <CategoryScope
-                label="Verwaltet"
-                hint="Gilt für Anfragen, Rückgaben, Geräte und Bilder. Nichts gewählt: alle Kategorien."
-                categories={categories}
-                value={form.manageCategoryIds}
-                onChange={(manageCategoryIds) => setForm({ ...form, manageCategoryIds })}
-              />
-            </div>
-          </section>
+          {advanced && (
+            <>
+              <section className="form-section">
+                <h3>Kategorien</h3>
+                <div className="form-grid cols-2">
+                  <CategoryScope
+                    label="Darf ausleihen aus"
+                    hint="Nichts gewählt: aus allen Kategorien. Andere Kategorien sieht die Gruppe im Katalog nicht."
+                    categories={categories}
+                    value={form.borrowCategoryIds}
+                    onChange={(borrowCategoryIds) => setForm({ ...form, borrowCategoryIds })}
+                  />
+                  <CategoryScope
+                    label="Verwaltet"
+                    hint="Gilt für Anfragen, Rückgaben, Geräte und Bilder. Nichts gewählt: alle Kategorien."
+                    categories={categories}
+                    value={form.manageCategoryIds}
+                    onChange={(manageCategoryIds) => setForm({ ...form, manageCategoryIds })}
+                  />
+                </div>
+              </section>
 
-          <section className="form-section">
-            <h3>Ausleihregeln dieser Gruppe</h3>
-            <p className="hint">Leer lassen: es gilt die Einstellung unter „Regeln & Formular“.</p>
-            <div className="form-grid cols-2">
-              <Field label="Höchstdauer (Tage)" htmlFor="group-days" optional>
-                <input
-                  id="group-days"
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={form.maxDays ?? ""}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      maxDays: event.target.value ? Number(event.target.value) : null,
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Offene Anfragen pro Person" htmlFor="group-open" optional>
-                <input
-                  id="group-open"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={form.maxOpenPerUser ?? ""}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      maxOpenPerUser: event.target.value ? Number(event.target.value) : null,
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Automatisch bestätigen" htmlFor="group-auto">
-                <select
-                  id="group-auto"
-                  value={form.autoApprove === null ? "" : String(form.autoApprove)}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      autoApprove: event.target.value === "" ? null : event.target.value === "true",
-                    })
-                  }
+              <section className="form-section">
+                <h3>Ausleihregeln dieser Gruppe</h3>
+                <p className="hint">
+                  Leer lassen: es gilt die Einstellung unter „Regeln & Formular“.
+                </p>
+                <div className="form-grid cols-2">
+                  <Field label="Höchstdauer (Tage)" htmlFor="group-days" optional>
+                    <input
+                      id="group-days"
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={form.maxDays ?? ""}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          maxDays: event.target.value ? Number(event.target.value) : null,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Offene Anfragen pro Person" htmlFor="group-open" optional>
+                    <input
+                      id="group-open"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={form.maxOpenPerUser ?? ""}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          maxOpenPerUser: event.target.value ? Number(event.target.value) : null,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Automatisch bestätigen" htmlFor="group-auto">
+                    <select
+                      id="group-auto"
+                      value={form.autoApprove === null ? "" : String(form.autoApprove)}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          autoApprove:
+                            event.target.value === "" ? null : event.target.value === "true",
+                        })
+                      }
+                    >
+                      <option value="">Wie allgemein eingestellt</option>
+                      <option value="true">Ja</option>
+                      <option value="false">Nein</option>
+                    </select>
+                  </Field>
+                </div>
+              </section>
+
+              <section className="form-section">
+                <h3>Verzeichnis (LDAP)</h3>
+                <Field
+                  label="Verzeichnisgruppen"
+                  htmlFor="group-dns"
+                  optional
+                  hint="Eine vollständige DN pro Zeile, z. B. CN=IT-Team,OU=Groups,DC=firma,DC=de. Wer bei der Anmeldung Mitglied ist, kommt in diese Gruppe."
                 >
-                  <option value="">Wie allgemein eingestellt</option>
-                  <option value="true">Ja</option>
-                  <option value="false">Nein</option>
-                </select>
-              </Field>
-            </div>
-          </section>
-
-          <section className="form-section">
-            <h3>Verzeichnis (LDAP)</h3>
-            <Field
-              label="Verzeichnisgruppen"
-              htmlFor="group-dns"
-              optional
-              hint="Eine vollständige DN pro Zeile, z. B. CN=IT-Team,OU=Groups,DC=firma,DC=de. Wer bei der Anmeldung Mitglied ist, kommt in diese Gruppe."
-            >
-              <textarea
-                id="group-dns"
-                value={dns}
-                onChange={(event) => setDns(event.target.value)}
-                spellCheck={false}
-              />
-            </Field>
-          </section>
+                  <textarea
+                    id="group-dns"
+                    value={dns}
+                    onChange={(event) => setDns(event.target.value)}
+                    spellCheck={false}
+                  />
+                </Field>
+              </section>
+            </>
+          )}
         </fieldset>
       </form>
     </Modal>

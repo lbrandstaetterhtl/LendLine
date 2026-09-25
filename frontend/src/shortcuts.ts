@@ -23,6 +23,7 @@ export const goShortcuts: GoShortcut[] = [
   { key: "b", to: "/admin/users", label: "Benutzer" },
   { key: "q", to: "/admin/gruppen", label: "Gruppen" },
   { key: "p", to: "/admin/protokoll", label: "Protokoll" },
+  { key: "o", to: "/admin/modus", label: "Einstellungen: Modus" },
   {
     key: "e",
     to: "/admin/erscheinungsbild",

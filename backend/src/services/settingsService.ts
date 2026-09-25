@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { prisma } from "../lib/prisma.js";
+import { uiFeatureKeys, uiModes } from "../lib/uiFeatures.js";
 import { recordAudit } from "./auditService.js";
 
 /**
@@ -106,7 +107,25 @@ export const mailSchema = z.object({
 });
 export type MailSettings = z.infer<typeof mailSchema>;
 
-const schemas = { policy: policySchema, mail: mailSchema } as const;
+export const uiSchema = z.object({
+  /**
+   * "full" for installations that existed before the mode: nothing they use disappears.
+   */
+  mode: z.enum(uiModes).default("full"),
+  /**
+   * The own selection for "custom" (kept when switching to a preset and back).
+   */
+  custom: z
+    .record(z.string(), z.boolean())
+    .default({})
+    .transform((value) =>
+      Object.fromEntries(
+        Object.entries(value).filter(([key]) => (uiFeatureKeys as string[]).includes(key))
+      )
+    ),
+});
+
+const schemas = { policy: policySchema, mail: mailSchema, ui: uiSchema } as const;
 type Key = keyof typeof schemas;
 type Value<K extends Key> = z.infer<(typeof schemas)[K]>;
 
@@ -125,7 +144,11 @@ export async function getSetting<K extends Key>(key: K): Promise<Value<K>> {
   return value;
 }
 
-const labels: Record<Key, string> = { policy: "Einstellungen", mail: "E-Mail-Einstellungen" };
+const labels: Record<Key, string> = {
+  policy: "Einstellungen",
+  mail: "E-Mail-Einstellungen",
+  ui: "Einstellungsmodus",
+};
 
 export async function setSetting<K extends Key>(
   key: K,

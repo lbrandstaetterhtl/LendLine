@@ -76,6 +76,11 @@ export const permissionSections = [
     title: "System",
     permissions: [
       { key: "audit.view", label: "Protokoll sehen" },
+      {
+        key: "settings.mode",
+        label: "Einstellungsmodus wählen",
+        hint: "Einfach, Mittel, Voll oder eigene Auswahl: welche Bereiche die Verwaltung sieht.",
+      },
       { key: "settings.appearance", label: "Erscheinungsbild ändern" },
       {
         key: "settings.rules",

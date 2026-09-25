@@ -13,6 +13,7 @@ import { Icon } from "../components/icons";
 import { LogoMark } from "../components/Logo";
 import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader } from "../components/ui";
+import { useFeature } from "../ui/UiContext";
 
 type Slot = "light" | "dark" | "favicon" | "login";
 
@@ -39,6 +40,7 @@ async function saveBranding(patch: object): Promise<Branding> {
 
 export function AdminBrandingPage() {
   const { branding, setBranding } = useBranding();
+  const extended = useFeature("appearance.extended");
   const [info, setInfo] = useState("");
   const [error, setError] = useState("");
 
@@ -107,47 +109,51 @@ export function AdminBrandingPage() {
           onError={failed}
         />
 
-        <StyleForm
-          key={`style-${version}`}
-          appearance={branding.appearance}
-          onSaved={saved}
-          onError={failed}
-        />
-
-        <section className="card">
-          <div className="card-title">
-            <h2>Browser-Symbol</h2>
-          </div>
-          <p className="muted small">
-            Das kleine Bild im Browser-Tab und in Lesezeichen. Quadratisch, am besten SVG oder PNG
-            ab 64 × 64 px; ICO geht auch.
-          </p>
-          <div className="logo-slots">
-            <ImageSlot
-              slot="favicon"
-              label="Symbol"
-              hint="quadratisch"
-              url={branding.faviconUrl}
+        {extended && (
+          <>
+            <StyleForm
+              key={`style-${version}`}
+              appearance={branding.appearance}
               onSaved={saved}
               onError={failed}
             />
-          </div>
-        </section>
 
-        <TermsForm
-          key={`terms-${version}`}
-          terms={branding.terms}
-          onSaved={saved}
-          onError={failed}
-        />
+            <section className="card">
+              <div className="card-title">
+                <h2>Browser-Symbol</h2>
+              </div>
+              <p className="muted small">
+                Das kleine Bild im Browser-Tab und in Lesezeichen. Quadratisch, am besten SVG oder
+                PNG ab 64 × 64 px; ICO geht auch.
+              </p>
+              <div className="logo-slots">
+                <ImageSlot
+                  slot="favicon"
+                  label="Symbol"
+                  hint="quadratisch"
+                  url={branding.faviconUrl}
+                  onSaved={saved}
+                  onError={failed}
+                />
+              </div>
+            </section>
 
-        <LoginForm
-          key={`login-${version}`}
-          login={branding.login}
-          imageUrl={branding.loginImageUrl}
-          onSaved={saved}
-          onError={failed}
-        />
+            <TermsForm
+              key={`terms-${version}`}
+              terms={branding.terms}
+              onSaved={saved}
+              onError={failed}
+            />
+
+            <LoginForm
+              key={`login-${version}`}
+              login={branding.login}
+              imageUrl={branding.loginImageUrl}
+              onSaved={saved}
+              onError={failed}
+            />
+          </>
+        )}
       </div>
     </>
   );

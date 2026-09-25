@@ -1,13 +1,12 @@
-import type { User } from "../types";
-
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { can, canOpen } from "../auth/permissions";
+import { can } from "../auth/permissions";
 import { type Terms, useBranding, useTerms } from "../branding/BrandingContext";
 import { goKeyFor, goShortcuts, isTyping } from "../shortcuts";
+import { useCanOpen } from "../ui/UiContext";
 import { Icon, type IconName } from "./icons";
 import { BrandLogo, LogoMark, Wordmark } from "./Logo";
 import { ThemeSwitch } from "./ThemeSwitch";
@@ -55,6 +54,7 @@ const adminDataLinks: NavItem[] = [
 // One entry for everything that configures the installation; the pages are tabs of it
 // (components/SettingsTabs.tsx), and their old addresses stay valid.
 export const settingsPaths = [
+  "/admin/modus",
   "/admin/erscheinungsbild",
   "/admin/einstellungen",
   "/admin/emails",
@@ -75,7 +75,7 @@ const adminSystemLinks: NavItem[] = [
  * Global keys: "?" help, "/" search field, "n" create, "g" + letter to jump to a page. Dialogs
  * handle their own keys; while one is open (or a field has focus) nothing fires here.
  */
-function useShortcuts(user: User | null) {
+function useShortcuts(openable: (path: string) => boolean) {
   const navigate = useNavigate();
   useEffect(() => {
     let goPending = 0;
@@ -86,7 +86,7 @@ function useShortcuts(user: User | null) {
       if (goPending && Date.now() - goPending < 1500) {
         goPending = 0;
         const target = goShortcuts.find(
-          (shortcut) => shortcut.key === event.key.toLowerCase() && canOpen(user, shortcut.to)
+          (shortcut) => shortcut.key === event.key.toLowerCase() && openable(shortcut.to)
         );
         if (target) {
           event.preventDefault();
@@ -116,7 +116,7 @@ function useShortcuts(user: User | null) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [user, navigate]);
+  }, [openable, navigate]);
 }
 
 /**
@@ -168,7 +168,8 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const terms = useTerms();
-  useShortcuts(user);
+  const openable = useCanOpen();
+  useShortcuts(openable);
   useFocusOnNavigation();
 
   // Mobile menu: focus moves into it, Escape closes it again.
@@ -203,8 +204,8 @@ export function Layout() {
    */
   function visible(items: NavItem[]): NavItem[] {
     return items.flatMap((item) => {
-      if (!item.alsoActiveOn) return canOpen(user, item.to) ? [item] : [];
-      const first = item.alsoActiveOn.find((path) => canOpen(user, path));
+      if (!item.alsoActiveOn) return openable(item.to) ? [item] : [];
+      const first = item.alsoActiveOn.find((path) => openable(path));
       return first ? [{ ...item, to: first }] : [];
     });
   }
@@ -332,9 +333,11 @@ export function Layout() {
                 <strong>Wartungsmodus aktiv.</strong> Nutzer können sich nicht anmelden, nur die
                 Verwaltung arbeitet.
               </span>
-              <NavLink to="/admin/wartung" onClick={onNavigate}>
-                Verwalten
-              </NavLink>
+              {openable("/admin/wartung") && (
+                <NavLink to="/admin/wartung" onClick={onNavigate}>
+                  Verwalten
+                </NavLink>
+              )}
             </div>
           )}
           <Outlet />

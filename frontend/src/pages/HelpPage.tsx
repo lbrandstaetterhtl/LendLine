@@ -1,7 +1,6 @@
-import { useAuth } from "../auth/AuthContext";
-import { canOpen } from "../auth/permissions";
 import { PageHeader } from "../components/ui";
 import { goShortcuts } from "../shortcuts";
+import { useCanOpen } from "../ui/UiContext";
 
 function Keys({ children }: { children: string }) {
   // "Strg+Enter" → <kbd>Strg</kbd>+<kbd>Enter</kbd>; "g, dann s" keeps its words.
@@ -44,8 +43,8 @@ function KeyTable({ caption, rows }: { caption: string; rows: [string, string][]
 }
 
 export function HelpPage() {
-  const { user } = useAuth();
-  const pages = goShortcuts.filter((shortcut) => canOpen(user, shortcut.to));
+  const openable = useCanOpen();
+  const pages = goShortcuts.filter((shortcut) => openable(shortcut.to));
 
   return (
     <>

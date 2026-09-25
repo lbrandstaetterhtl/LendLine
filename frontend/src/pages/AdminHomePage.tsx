@@ -10,6 +10,7 @@ import { can } from "../auth/permissions";
 import { AuditTimeline } from "../components/AuditTimeline";
 import { Alert, PageHeader } from "../components/ui";
 import { formatDate } from "../types";
+import { useFeature } from "../ui/UiContext";
 
 type Summary = {
   users: number;
@@ -34,7 +35,8 @@ export function AdminHomePage() {
   const { user } = useAuth();
   const seesRequests = can(user, "requests.view");
   const seesLoans = can(user, "loans.manage");
-  const seesAudit = can(user, "audit.view");
+  const auditShown = useFeature("audit");
+  const seesAudit = can(user, "audit.view") && auditShown;
   const { data: audit } = useApi<AuditPage>(seesAudit ? "/api/admin/audit?limit=8" : null);
   const { data: open } = useApi<BorrowRequest[]>(seesRequests ? "/api/requests?status=OPEN" : null);
   const { data: loans } = useApi<BorrowRequest[]>(

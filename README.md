@@ -55,6 +55,8 @@ Die Anmeldung akzeptiert dann E-Mail, `sAMAccountName` oder `uid`. Ein Treffer w
 
 Alles Firmenspezifische stellt die Verwaltung in der Oberfläche ein, ohne Neustart:
 
+- **Modus:** Einfach, Mittel, Voll oder eigene Auswahl – wie viel der Verwaltung überhaupt angezeigt wird. Ausgeblendete Bereiche behalten ihre Einstellungen.
+
 - **Erscheinungsbild:** Logo (hell/dunkel), Akzentfarbe, Schrift, Schriftgröße, Ecken, Seitenleiste, Browser-Symbol, eigene Begriffe (z. B. „Ausrüstung“ statt „Gerät“), Überschrift, Text und Bild der Anmeldeseite.
 - **Einstellungen:** Selbstregistrierung (standardmäßig **aus**, optional nur für bestimmte E-Mail-Domains), Höchstdauer einer Ausleihe, offene Anfragen pro Person, automatische Bestätigung, Anfrageformular (Raum und Kommentar Pflicht/optional/ausgeblendet, bis zu 10 eigene Felder).
 - **Geräte:** freie Eigenschaften pro Gerät (z. B. „RAM: 16 GB“, „Anschlüsse: HDMI, USB-C“). Nutzer sehen sie im Katalog und in der Suche und können danach filtern.

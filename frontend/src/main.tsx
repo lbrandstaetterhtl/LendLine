@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { AuthProvider } from "./auth/AuthContext";
 import { BrandingProvider } from "./branding/BrandingContext";
+import { UiProvider } from "./ui/UiContext";
 import "./styles/global.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -13,7 +14,9 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <BrandingProvider>
         <AuthProvider>
-          <App />
+          <UiProvider>
+            <App />
+          </UiProvider>
         </AuthProvider>
       </BrandingProvider>
     </BrowserRouter>

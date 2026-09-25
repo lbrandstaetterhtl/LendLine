@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 
-import { useAuth } from "../auth/AuthContext";
-import { canOpen } from "../auth/permissions";
+import { useCanOpen } from "../ui/UiContext";
 
 type Tab = { to: string; label: string };
 
@@ -10,8 +9,8 @@ type Tab = { to: string; label: string };
  * keep working; tabs the person may not open are left out.
  */
 function PageTabs({ title, tabs }: { title: string; tabs: Tab[] }) {
-  const { user } = useAuth();
-  const shown = tabs.filter((tab) => canOpen(user, tab.to));
+  const openable = useCanOpen();
+  const shown = tabs.filter((tab) => openable(tab.to));
   if (shown.length < 2) return null;
   return (
     <nav className="settings-tabs" aria-label={title}>
@@ -32,6 +31,7 @@ export function SettingsTabs() {
     <PageTabs
       title="Einstellungen"
       tabs={[
+        { to: "/admin/modus", label: "Modus" },
         { to: "/admin/erscheinungsbild", label: "Erscheinungsbild" },
         { to: "/admin/einstellungen", label: "Regeln & Formular" },
         { to: "/admin/emails", label: "E-Mails" },

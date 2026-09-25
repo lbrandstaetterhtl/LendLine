@@ -14,6 +14,7 @@ import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceI
 import { Icon } from "../components/icons";
 import { DeviceBadge } from "../components/StatusBadge";
 import { Alert, Field, Modal, PageHeader } from "../components/ui";
+import { useFeature } from "../ui/UiContext";
 
 type PieceForm = { id?: string; serialNumber: string; status: DeviceStatus };
 type DeviceForm = {
@@ -40,6 +41,7 @@ export function AdminDevicesPage() {
   const { user } = useAuth();
   const canManage = can(user, "devices.manage");
   const canImages = can(user, "devices.images");
+  const properties = useFeature("devices.properties");
   // null: closed; id null: creating; id set: editing that record.
   const [editor, setEditor] = useState<{ id: string | null } | null>(null);
   const [files, setFiles] = useState<FileList | null>(null);
@@ -306,18 +308,20 @@ export function AdminDevicesPage() {
               </div>
             </section>
 
-            <section className="form-section">
-              <h3>Eigenschaften</h3>
-              <p className="hint">
-                Frei wählbar, z. B. RAM: 16 GB oder Anschlüsse: HDMI, USB-C. Nutzer sehen sie im
-                Katalog und können danach filtern.
-              </p>
-              <DeviceFieldsEditor
-                fields={form.fields}
-                options={fieldOptions}
-                onChange={(fields) => setForm({ ...form, fields })}
-              />
-            </section>
+            {properties && (
+              <section className="form-section">
+                <h3>Eigenschaften</h3>
+                <p className="hint">
+                  Frei wählbar, z. B. RAM: 16 GB oder Anschlüsse: HDMI, USB-C. Nutzer sehen sie im
+                  Katalog und können danach filtern.
+                </p>
+                <DeviceFieldsEditor
+                  fields={form.fields}
+                  options={fieldOptions}
+                  onChange={(fields) => setForm({ ...form, fields })}
+                />
+              </section>
+            )}
 
             <section className="form-section">
               <h3>Stücke</h3>

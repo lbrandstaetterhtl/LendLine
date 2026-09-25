@@ -3,6 +3,7 @@ import type { DeviceField } from "../types";
 import { useId } from "react";
 
 import { useApi } from "../api/useApi";
+import { useFeature } from "../ui/UiContext";
 import { Icon } from "./icons";
 import { Field } from "./ui";
 
@@ -19,7 +20,8 @@ export function useFieldOptions() {
  * A device's properties as small "Name Wert" tags.
  */
 export function DeviceFieldList({ fields }: { fields?: DeviceField[] }) {
-  if (!fields?.length) return null;
+  const enabled = useFeature("devices.properties");
+  if (!enabled || !fields?.length) return null;
   return (
     <ul className="device-fields" aria-label="Eigenschaften">
       {fields.map((field) => (
@@ -47,7 +49,8 @@ export function FieldFilter({
   onChange: (filter: FieldFilterValue) => void;
 }) {
   const id = useId();
-  if (options.length === 0) return null;
+  const enabled = useFeature("devices.properties");
+  if (!enabled || options.length === 0) return null;
   const values = options.find((option) => option.name === filter.field)?.values ?? [];
   return (
     <>

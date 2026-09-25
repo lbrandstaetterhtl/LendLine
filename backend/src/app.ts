@@ -18,6 +18,7 @@ import { roomRouter } from "./routes/rooms.js";
 import { userRouter } from "./routes/users.js";
 import { getBranding } from "./services/brandingService.js";
 import { requestFormConfig } from "./services/settingsService.js";
+import { uiConfig } from "./services/uiService.js";
 
 export function createApp() {
   const app = express();
@@ -66,6 +67,14 @@ export function createApp() {
     requireAuth,
     asyncHandler(async (req, res) => {
       res.json(await requestFormConfig(req.user!.rules));
+    })
+  );
+  // Which areas of the administration the settings mode shows.
+  app.get(
+    "/api/ui",
+    requireAuth,
+    asyncHandler(async (_req, res) => {
+      res.json(await uiConfig());
     })
   );
   app.use("/api/auth", authRouter);

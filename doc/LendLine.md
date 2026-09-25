@@ -871,6 +871,26 @@ LendLine is rented out as **one instance per company** (own installation and dat
 
 Every change is logged as `SETTINGS_UPDATED` with the changed paths. A row that no longer validates (e.g. edited by hand) falls back to the defaults.
 
+### 13.7a Settings mode ("Einstellungsmodus", `/admin/modus`)
+
+A company chooses how much of the administration it sees: **Einfach**, **Mittel**, **Voll** or **Eigene Auswahl** (`SystemSetting` key `ui` = `{ mode, custom }`, permission `settings.mode`; installations without the setting are in „Voll“). The areas and which preset includes them are listed once in `backend/src/lib/uiFeatures.ts`:
+
+| Area                                                                        | Einfach | Mittel | Voll |
+| --------------------------------------------------------------------------- | ------- | ------ | ---- |
+| Erweitertes Erscheinungsbild (font, form, sidebar, icon, terms, login page) | –       | ✓      | ✓    |
+| Ausleihregeln                                                               | –       | ✓      | ✓    |
+| Anfrageformular anpassen                                                    | –       | ✓      | ✓    |
+| E-Mail-Texte                                                                | –       | ✓      | ✓    |
+| Gruppen und Rechte                                                          | –       | ✓      | ✓    |
+| Erweiterte Gruppeneinstellungen (categories, rules, LDAP per group)         | –       | –      | ✓    |
+| Geräte-Eigenschaften (editor, tags, filter)                                 | –       | ✓      | ✓    |
+| Protokoll                                                                   | –       | ✓      | ✓    |
+| Wartung                                                                     | –       | –      | ✓    |
+
+Always shown: logo, accent colour, self-registration, users, devices, categories, rooms, requests and loans.
+
+The mode **only hides** interface parts (menu entries, tabs, cards, editor sections); it is not a permission. What is configured in a hidden area keeps working, and the API still accepts changes from people with the permission. `GET /api/ui` (everyone signed in) returns mode, effective areas and the catalogue; the frontend reads it through `ui/UiContext.tsx` (`useFeature`, `useCanOpen`, which combines permissions and areas for guards, menu, tabs and shortcuts). `GET /api/admin/ui/usage` lists areas that differ from their defaults, so the mode page warns „Ausgeblendet, aber weiter wirksam“ before such an area disappears.
+
 ### 13.8 Keyboard
 
 Everything is reachable with Tab/Shift+Tab; every action is a real `<button>` or link. The help page `/hilfe` explains it for users.
@@ -906,6 +926,7 @@ The migrations are dated 2026-09-23 to 25 and show how the model evolved:
 | `20260925110000_token_rotation`   | `RefreshToken.rotatedAt` (reuse detection)                                                                                                                                                                                              |
 | `20260925120000_request_form`     | `RequestStatus.CANCELLED`, `BorrowRequest.cancelledAt`, `BorrowRequest.fields` (JSON)                                                                                                                                                   |
 | `20260925130000_device_fields`    | `Device.fields` (JSON, free properties)                                                                                                                                                                                                 |
+| `20260925150000_settings_mode`    | Adds the permission `settings.mode` to „Verwaltung“                                                                                                                                                                                     |
 | `20260925140000_groups`           | `Group` table with „Verwaltung“ and „Nutzer“, `User.groupId` (backfilled from the role), drops `User.role` and the `Role` enum                                                                                                          |
 
 ---

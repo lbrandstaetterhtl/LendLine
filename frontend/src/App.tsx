@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
-import { canOpen, homePath } from "./auth/permissions";
+import { homePath } from "./auth/permissions";
 import { Layout } from "./components/Layout";
 import { AccountPage } from "./pages/AccountPage";
 import { AdminAuditPage } from "./pages/AdminAuditPage";
@@ -13,6 +13,7 @@ import { AdminEmailsPage } from "./pages/AdminEmailsPage";
 import { AdminGroupsPage } from "./pages/AdminGroupsPage";
 import { AdminHomePage } from "./pages/AdminHomePage";
 import { AdminMaintenancePage } from "./pages/AdminMaintenancePage";
+import { AdminModePage } from "./pages/AdminModePage";
 import { AdminRequestsPage } from "./pages/AdminRequestsPage";
 import { AdminRoomsPage } from "./pages/AdminRoomsPage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
@@ -23,10 +24,12 @@ import { LoginPage } from "./pages/LoginPage";
 import { MyRequestsPage } from "./pages/MyRequestsPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { SearchPage } from "./pages/SearchPage";
+import { useCanOpen } from "./ui/UiContext";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
   const { pathname, search } = useLocation();
+  const openable = useCanOpen();
   if (!ready)
     return (
       <div className="auth-wrap">
@@ -38,7 +41,7 @@ function Protected({ children }: { children: React.ReactNode }) {
   // The server refuses everything else until then, see requireAuth.
   if (user.mustChangePassword && pathname !== "/konto") return <Navigate to="/konto" replace />;
   // Pages the group may not open lead to the person's start page (the API refuses them anyway).
-  if (!canOpen(user, pathname)) return <Navigate to={homePath(user)} replace />;
+  if (!openable(pathname)) return <Navigate to={homePath(user)} replace />;
   return children;
 }
 
@@ -101,6 +104,7 @@ export function App() {
         <Route path="/admin/requests" element={<AdminRequestsPage />} />
         <Route path="/admin/borrowed" element={<AdminBorrowedPage />} />
         <Route path="/admin/gruppen" element={<AdminGroupsPage />} />
+        <Route path="/admin/modus" element={<AdminModePage />} />
         <Route path="/admin/protokoll" element={<AdminAuditPage />} />
         <Route path="/admin/erscheinungsbild" element={<AdminBrandingPage />} />
         <Route path="/admin/einstellungen" element={<AdminSettingsPage />} />

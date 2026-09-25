@@ -2399,3 +2399,51 @@ label.permission.is-forbidden {
   margin-bottom: 4px;
   font-weight: 550;
 }
+
+/* Einstellungsmodus */
+.mode-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+}
+label.mode-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 14px 42px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+label.mode-card:hover {
+  border-color: var(--border-strong);
+}
+label.mode-card.is-chosen {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+label.mode-card input {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: auto;
+  height: auto;
+}
+label.mode-card strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mode-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 6px;
+}
+.plain-list {
+  margin: 6px 0;
+  padding-left: 18px;
+}
