@@ -5,9 +5,15 @@ const prisma = new PrismaClient();
 
 async function main() {
   // The demo accounts have passwords published in the README: never in a real installation.
+  // NODE_ENV is easily left unset, so a public FRONTEND_ORIGIN counts as "real" too.
   // oxlint-disable-next-line node/no-process-env -- standalone script, outside the app's config
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("Der Demo-Seed ist in Produktion (NODE_ENV=production) nicht erlaubt.");
+  const { NODE_ENV, FRONTEND_ORIGIN, ALLOW_DEMO_SEED } = process.env;
+  const local =
+    !FRONTEND_ORIGIN || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(FRONTEND_ORIGIN);
+  if ((NODE_ENV === "production" || !local) && ALLOW_DEMO_SEED !== "true") {
+    throw new Error(
+      "Der Demo-Seed legt Konten mit öffentlich bekannten Passwörtern an und läuft nur lokal. Für eine Test-Installation ALLOW_DEMO_SEED=true setzen."
+    );
   }
   const adminPassword = await bcrypt.hash("Admin123!", 12);
   const userPassword = await bcrypt.hash("User12345!", 12);

@@ -1,0 +1,5 @@
+# Always LF in the working tree, so oxfmt/prettier agree on every machine.
+* text=auto eol=lf
+*.zip binary
+*.png binary
+*.jpg binary

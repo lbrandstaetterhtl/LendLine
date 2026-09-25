@@ -1,7 +1,8 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
+import { AccountPage } from "./pages/AccountPage";
 import { AdminAuditPage } from "./pages/AdminAuditPage";
 import { AdminBorrowedPage } from "./pages/AdminBorrowedPage";
 import { AdminBrandingPage } from "./pages/AdminBrandingPage";
@@ -21,6 +22,7 @@ import { SearchPage } from "./pages/SearchPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
+  const { pathname } = useLocation();
   if (!ready)
     return (
       <div className="auth-wrap">
@@ -28,6 +30,8 @@ function Protected({ children }: { children: React.ReactNode }) {
       </div>
     );
   if (!user) return <Navigate to="/login" replace />;
+  // The server refuses everything else until then, see requireAuth.
+  if (user.mustChangePassword && pathname !== "/konto") return <Navigate to="/konto" replace />;
   return children;
 }
 
@@ -79,6 +83,7 @@ export function App() {
         <Route path="/devices" element={<DevicesPage />} />
         <Route path="/my-requests" element={<MyRequestsPage />} />
         <Route path="/hilfe" element={<HelpPage />} />
+        <Route path="/konto" element={<AccountPage />} />
         <Route
           path="/admin"
           element={

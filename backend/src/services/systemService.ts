@@ -9,6 +9,7 @@ import { prisma } from "../lib/prisma.js";
 import { recordAudit } from "./auditService.js";
 import { uploadDir } from "./imageService.js";
 import { getMaintenance } from "./maintenanceService.js";
+import { endAllSessions } from "./sessionService.js";
 import { refreshUnitStatuses } from "./unitStatus.js";
 
 const startedAt = new Date();
@@ -139,10 +140,7 @@ export async function runMaintenanceTask(task: MaintenanceTask, actorId: string)
       break;
     }
     case "end-sessions": {
-      const { count } = await prisma.refreshToken.updateMany({
-        where: { revokedAt: null, userId: { not: actorId } },
-        data: { revokedAt: new Date() },
-      });
+      const count = await endAllSessions(prisma, { id: { not: actorId } });
       result = `${count} Sitzungen beendet. Alle anderen müssen sich neu anmelden; Ihre eigene Sitzung bleibt bestehen.`;
       break;
     }

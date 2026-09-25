@@ -8,6 +8,10 @@ import { config } from "../config.js";
 export type AccessPayload = {
   sub: string;
   role: Role;
+  /**
+   * The user's `sessionVersion` at issue time; raising it invalidates every access token at once.
+   */
+  sv: number;
 };
 
 export function signAccessToken(payload: AccessPayload): string {
@@ -22,11 +26,12 @@ export function verifyAccessToken(token: string): AccessPayload {
   if (
     typeof decoded === "string" ||
     !decoded.sub ||
-    (decoded.role !== "USER" && decoded.role !== "ADMIN")
+    (decoded.role !== "USER" && decoded.role !== "ADMIN") ||
+    typeof decoded.sv !== "number"
   ) {
     throw new Error("Ungültiges Access-Token");
   }
-  return { sub: decoded.sub, role: decoded.role };
+  return { sub: decoded.sub, role: decoded.role, sv: decoded.sv };
 }
 
 export function createRefreshToken(): string {

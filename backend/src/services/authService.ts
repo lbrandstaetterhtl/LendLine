@@ -1,5 +1,5 @@
 import type { LdapProfile } from "./ldapService.js";
-import type { Role } from "@prisma/client";
+import type { AuthSource, Role } from "@prisma/client";
 
 import { Prisma } from "@prisma/client";
 
@@ -11,6 +11,7 @@ import { createRefreshToken, hashToken, signAccessToken } from "../lib/tokens.js
 import { diff, recordAudit } from "./auditService.js";
 import { authenticateLdap } from "./ldapService.js";
 import { assertAccessDuringMaintenance } from "./maintenanceService.js";
+import { endAllSessions } from "./sessionService.js";
 
 const publicUserSelect = {
   id: true,
@@ -18,7 +19,18 @@ const publicUserSelect = {
   email: true,
   role: true,
   createdAt: true,
+  mustChangePassword: true,
+  authSource: true,
 } as const;
+
+// What issuing tokens needs on top of the public fields; never sent to the client.
+const sessionUserSelect = { ...publicUserSelect, sessionVersion: true } as const;
+
+/**
+ * A rotated token presented again after this grace period was copied: someone else holds it. Within
+ * it, two tabs simply raced for the same refresh.
+ */
+const REUSE_GRACE_MS = 60_000;
 
 // bcrypt hash of a random string (cost 12, like real hashes): compared against when the account
 // does not exist, so a missing account takes as long as a wrong password.
@@ -30,7 +42,14 @@ export type PublicUser = {
   email: string;
   role: Role;
   createdAt: Date;
+  /**
+   * An admin set the password; the client must ask for a new one before anything else.
+   */
+  mustChangePassword: boolean;
+  authSource: AuthSource;
 };
+
+type SessionUser = PublicUser & { sessionVersion: number };
 
 export type AuthResult = {
   user: PublicUser;
@@ -38,7 +57,11 @@ export type AuthResult = {
   refreshToken: string;
 };
 
-async function issueTokens(user: PublicUser): Promise<AuthResult> {
+/**
+ * `sessionStartedAt` is the login time; rotations pass it on so `SESSION_MAX_DAYS` caps the
+ * session.
+ */
+async function issueTokens(user: SessionUser, sessionStartedAt = new Date()): Promise<AuthResult> {
   const refreshToken = createRefreshToken();
   const expiresAt = new Date(Date.now() + config.jwtRefreshTtlDays * 24 * 60 * 60 * 1000);
   await prisma.refreshToken.create({
@@ -46,11 +69,13 @@ async function issueTokens(user: PublicUser): Promise<AuthResult> {
       userId: user.id,
       tokenHash: hashToken(refreshToken),
       expiresAt,
+      sessionStartedAt,
     },
   });
+  const { sessionVersion, ...publicUser } = user;
   return {
-    user,
-    accessToken: signAccessToken({ sub: user.id, role: user.role }),
+    user: publicUser,
+    accessToken: signAccessToken({ sub: user.id, role: user.role, sv: sessionVersion }),
     refreshToken,
   };
 }
@@ -75,7 +100,7 @@ export async function register(input: {
         email: input.email.toLowerCase(),
         passwordHash: await hashPassword(input.password),
       },
-      select: publicUserSelect,
+      select: sessionUserSelect,
     });
     await recordAudit({
       actorId: user.id,
@@ -94,7 +119,7 @@ export async function register(input: {
   }
 }
 
-async function upsertLdapUser(profile: LdapProfile): Promise<PublicUser> {
+async function upsertLdapUser(profile: LdapProfile): Promise<SessionUser> {
   const existing = await prisma.user.findFirst({
     where: { OR: [{ ldapDn: profile.dn }, { email: profile.email }] },
   });
@@ -108,7 +133,7 @@ async function upsertLdapUser(profile: LdapProfile): Promise<PublicUser> {
         role: profile.isAdmin ? "ADMIN" : "USER",
         passwordHash: null,
       },
-      select: publicUserSelect,
+      select: sessionUserSelect,
     });
     await recordAudit({
       actorId: created.id,
@@ -126,10 +151,7 @@ async function upsertLdapUser(profile: LdapProfile): Promise<PublicUser> {
   // e-mail) or belonged to another DN: its existing sessions must not carry over. A DN change
   // is also what a move between OUs looks like, so it is not refused.
   if (existing.authSource === "LOCAL" || existing.ldapDn !== profile.dn) {
-    await prisma.refreshToken.updateMany({
-      where: { userId: existing.id, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await endAllSessions(prisma, { id: existing.id });
   }
   const nextRole: Role =
     config.ldap.adminGroups.length > 0 ? (profile.isAdmin ? "ADMIN" : "USER") : existing.role;
@@ -142,8 +164,9 @@ async function upsertLdapUser(profile: LdapProfile): Promise<PublicUser> {
       ldapDn: profile.dn,
       role: nextRole,
       passwordHash: null,
+      mustChangePassword: false,
     },
-    select: publicUserSelect,
+    select: sessionUserSelect,
   });
   const changes = diff(existing, { ...updated, authSource: "LDAP" }, [
     { key: "name", label: "Name" },
@@ -174,7 +197,7 @@ function roleLabel(role: Role): string {
 
 export async function login(input: { email: string; password: string }): Promise<AuthResult> {
   const identifier = input.email.trim();
-  let result: { user: PublicUser; method: string };
+  let result: { user: SessionUser; method: string };
   try {
     result = await authenticate(identifier, input.password);
   } catch (error) {
@@ -216,9 +239,19 @@ export async function login(input: { email: string; password: string }): Promise
 async function authenticate(
   identifier: string,
   password: string
-): Promise<{ user: PublicUser; method: string }> {
+): Promise<{ user: SessionUser; method: string }> {
   if (config.ldap.enabled) {
-    const profile = await authenticateLdap(identifier, password);
+    let profile;
+    try {
+      profile = await authenticateLdap(identifier, password);
+    } catch (error) {
+      // A wrong directory password is answered after the bind, much faster than bcrypt: spend
+      // the same time, so the response does not reveal that the directory account exists.
+      if (error instanceof HttpError && error.status === 401) {
+        await verifyPassword(password, DUMMY_HASH);
+      }
+      throw error;
+    }
     if (profile) {
       return { user: await upsertLdapUser(profile), method: "Verzeichnis (LDAP)" };
     }
@@ -238,6 +271,9 @@ async function authenticate(
       email: user.email,
       role: user.role,
       createdAt: user.createdAt,
+      mustChangePassword: user.mustChangePassword,
+      authSource: user.authSource,
+      sessionVersion: user.sessionVersion,
     },
     method: "Lokales Konto",
   };
@@ -247,24 +283,102 @@ export async function refresh(rawToken: string | undefined): Promise<AuthResult>
   if (!rawToken) {
     throw new HttpError(401, "Keine gültige Sitzung");
   }
+  const expired = new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
   const existing = await prisma.refreshToken.findUnique({
     where: { tokenHash: hashToken(rawToken) },
-    include: { user: { select: publicUserSelect } },
+    include: { user: { select: sessionUserSelect } },
   });
-  if (!existing || existing.revokedAt || existing.expiresAt.getTime() <= Date.now()) {
-    throw new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
+  if (!existing) throw expired;
+  const now = Date.now();
+  if (existing.rotatedAt && now - existing.rotatedAt.getTime() > REUSE_GRACE_MS) {
+    await reportReuse(existing.user);
+    throw expired;
+  }
+  const maxAgeMs = config.sessionMaxDays * 24 * 60 * 60 * 1000;
+  if (
+    existing.revokedAt ||
+    existing.expiresAt.getTime() <= now ||
+    existing.sessionStartedAt.getTime() + maxAgeMs <= now
+  ) {
+    throw expired;
   }
   // Checked before rotating: the session stays valid and simply continues after maintenance.
   await assertAccessDuringMaintenance(existing.user.role);
   // Atomic: of two requests presenting the same token, only one gets a new pair.
+  const rotatedAt = new Date();
   const claimed = await prisma.refreshToken.updateMany({
     where: { id: existing.id, revokedAt: null },
-    data: { revokedAt: new Date() },
+    data: { revokedAt: rotatedAt, rotatedAt },
   });
-  if (claimed.count !== 1) {
-    throw new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
+  if (claimed.count !== 1) throw expired;
+  return issueTokens(existing.user, existing.sessionStartedAt);
+}
+
+/**
+ * An old refresh token came back: it was copied (stolen cookie, malware, backup). Nobody can tell
+ * which copy is legitimate, so every session of the account ends.
+ */
+async function reportReuse(user: SessionUser): Promise<void> {
+  const revoked = await endAllSessions(prisma, { id: user.id });
+  await recordAudit({
+    actorId: user.id,
+    action: "SESSION_REUSE_DETECTED",
+    entityType: "AUTH",
+    entityId: user.id,
+    summary: `Wiederverwendetes Sitzungs-Token von ${user.name}: alle Sitzungen beendet`,
+    details: {
+      context: {
+        Bedeutung:
+          "Ein bereits ersetztes Token wurde erneut vorgelegt; es wurde vermutlich kopiert.",
+        "Beendete Sitzungen": String(revoked),
+      },
+    },
+  });
+}
+
+/**
+ * Own password change for local accounts. Ends every session, including other devices, and starts a
+ * fresh one for the caller.
+ */
+export async function changePassword(
+  userId: string,
+  input: { currentPassword: string; newPassword: string }
+): Promise<AuthResult> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
+  if (user.authSource !== "LOCAL" || !user.passwordHash) {
+    throw new HttpError(
+      409,
+      "Verzeichniskonten ändern ihr Passwort im Verzeichnis (z. B. über Windows)."
+    );
   }
-  return issueTokens(existing.user);
+  // 400, not 401: the client would take a 401 for an expired session and refresh.
+  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+    throw new HttpError(400, "Das aktuelle Passwort ist falsch");
+  }
+  if (await verifyPassword(input.newPassword, user.passwordHash)) {
+    throw new HttpError(400, "Das neue Passwort muss sich vom bisherigen unterscheiden");
+  }
+  const passwordHash = await hashPassword(input.newPassword);
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
+    await endAllSessions(tx, { id: userId });
+    return tx.user.findUniqueOrThrow({ where: { id: userId }, select: sessionUserSelect });
+  });
+  await recordAudit({
+    actorId: userId,
+    action: "PASSWORD_CHANGED",
+    entityType: "AUTH",
+    entityId: userId,
+    summary: user.mustChangePassword
+      ? `${user.name} hat das vorläufige Passwort ersetzt`
+      : `${user.name} hat das Passwort geändert`,
+    details: { context: { Folge: "Alle anderen Sitzungen wurden beendet" } },
+  });
+  return issueTokens(updated);
 }
 
 export async function logout(rawToken: string | undefined): Promise<void> {

@@ -58,6 +58,22 @@ export class RateLimiter {
   }
 }
 
+/**
+ * The key for per-address limits. One IPv6 connection usually gets a whole /64 network, so the key
+ * is that network; otherwise every new address would start with a fresh limit.
+ */
 export function clientIp(req: Request): string {
-  return req.ip ?? "unknown";
+  const ip = req.ip ?? "unknown";
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped?.[1]) return mapped[1];
+  if (!ip.includes(":")) return ip;
+  const [head = "", tail = ""] = ip.split("::");
+  const headGroups = head ? head.split(":") : [];
+  const tailGroups = tail ? tail.split(":") : [];
+  const missing = 8 - headGroups.length - tailGroups.length;
+  const groups = [...headGroups, ...Array<string>(Math.max(missing, 0)).fill("0"), ...tailGroups];
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.toLowerCase().replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
 }

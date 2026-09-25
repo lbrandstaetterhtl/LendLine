@@ -9,6 +9,11 @@ export function setAccessToken(token: string | null): void {
  */
 export const MAINTENANCE_EVENT = "lendline:maintenance";
 
+/**
+ * Fired when the server wants a new password first (it was set by an admin).
+ */
+export const PASSWORD_CHANGE_EVENT = "lendline:password-change";
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -56,6 +61,9 @@ export async function api<T>(path: string, options: RequestInit = {}, retry = tr
     if (response.status === 503 && code === "MAINTENANCE") {
       window.dispatchEvent(new Event(MAINTENANCE_EVENT));
     }
+    if (response.status === 403 && code === "PASSWORD_CHANGE_REQUIRED") {
+      window.dispatchEvent(new Event(PASSWORD_CHANGE_EVENT));
+    }
     throw new ApiError(response.status, message, code);
   }
   if (response.status === 204) return undefined as T;
@@ -63,6 +71,15 @@ export async function api<T>(path: string, options: RequestInit = {}, retry = tr
 }
 
 async function requestRefresh(): Promise<boolean> {
+  // Tabs share the cookie. Without the lock two tabs could present the same token at once; the
+  // loser would be logged out, and a late copy looks like a stolen token to the server.
+  if ("locks" in navigator) {
+    return navigator.locks.request("lendline-refresh", sendRefresh);
+  }
+  return sendRefresh();
+}
+
+async function sendRefresh(): Promise<boolean> {
   const response = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
   if (!response.ok) {
     accessToken = null;

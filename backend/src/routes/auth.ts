@@ -8,9 +8,16 @@ import { HttpError } from "../lib/errors.js";
 import { clientIp, RateLimiter } from "../lib/rateLimit.js";
 import { requireAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
-import { login, logout, refresh, register, getMe } from "../services/authService.js";
+import {
+  changePassword,
+  getMe,
+  login,
+  logout,
+  refresh,
+  register,
+} from "../services/authService.js";
 import { getMaintenance } from "../services/maintenanceService.js";
-import { loginSchema, registerSchema } from "../validators/auth.js";
+import { changePasswordSchema, loginSchema, registerSchema } from "../validators/auth.js";
 
 export const REFRESH_COOKIE = "refreshToken";
 
@@ -18,7 +25,7 @@ function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: config.nodeEnv === "production",
+    secure: config.secureCookies,
     path: "/api/auth",
     maxAge: config.jwtRefreshTtlDays * 24 * 60 * 60 * 1000,
   };
@@ -31,9 +38,13 @@ function refreshCookie(cookies: unknown): string | undefined {
 
 // Password guessing: per address overall, and per address + account so one person's typos
 // don't lock out colleagues behind the same NAT. Successful logins are refunded (see below).
+// The third limit counts per account across all addresses: many addresses (a botnet) together
+// get 50 guesses per account in 15 minutes, not 10 each.
 const loginPerIp = new RateLimiter(50, 15 * 60 * 1000);
 const loginPerAccount = new RateLimiter(10, 15 * 60 * 1000);
+const loginPerAccountGlobal = new RateLimiter(50, 15 * 60 * 1000);
 const registerPerIp = new RateLimiter(10, 60 * 60 * 1000);
+const passwordPerUser = new RateLimiter(10, 15 * 60 * 1000);
 
 /**
  * The cookie endpoints rely on SameSite=Lax; a cross-origin Origin header is refused as well.
@@ -83,12 +94,15 @@ authRouter.post(
   validateBody(loginSchema),
   asyncHandler(async (req, res) => {
     const ip = clientIp(req);
-    const accountKey = `${ip}|${req.body.email.toLowerCase()}`;
+    const account = req.body.email.toLowerCase();
+    const accountKey = `${ip}|${account}`;
     loginPerIp.consume(ip);
     loginPerAccount.consume(accountKey);
+    loginPerAccountGlobal.consume(account);
     const result = await login(req.body);
     loginPerIp.refund(ip);
     loginPerAccount.reset(accountKey);
+    loginPerAccountGlobal.refund(account);
     res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions());
     res.json({ user: result.user, accessToken: result.accessToken });
   })
@@ -111,6 +125,18 @@ authRouter.post(
     await logout(refreshCookie(req.cookies));
     res.clearCookie(REFRESH_COOKIE, { ...cookieOptions(), maxAge: undefined });
     res.status(204).send();
+  })
+);
+
+authRouter.post(
+  "/password",
+  requireAuth,
+  validateBody(changePasswordSchema),
+  asyncHandler(async (req, res) => {
+    passwordPerUser.consume(req.user!.id);
+    const result = await changePassword(req.user!.id, req.body);
+    res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions());
+    res.json({ user: result.user, accessToken: result.accessToken });
   })
 );
 

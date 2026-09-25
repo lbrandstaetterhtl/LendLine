@@ -28,13 +28,23 @@ function first(value: unknown): string {
   return asStrings(value)[0]?.trim() || "";
 }
 
+/**
+ * DNs differ only in case and in spaces after the commas between servers and tools.
+ */
+function normalizeDn(dn: string): string {
+  return dn
+    .toLowerCase()
+    .replaceAll(/\s*,\s*/g, ",")
+    .trim();
+}
+
+/**
+ * Exact DN match only (config.ts refuses bare group names).
+ */
 function isAdmin(memberOf: string[]): boolean {
-  const groups = config.ldap.adminGroups.map((group) => group.toLowerCase());
-  if (groups.length === 0) return false;
-  return memberOf.some((entry) => {
-    const dn = entry.toLowerCase();
-    return groups.some((group) => dn === group || dn.startsWith(`cn=${group},`));
-  });
+  const groups = new Set(config.ldap.adminGroups.map(normalizeDn));
+  if (groups.size === 0) return false;
+  return memberOf.some((entry) => groups.has(normalizeDn(entry)));
 }
 
 function isInvalidCredentials(error: unknown): boolean {

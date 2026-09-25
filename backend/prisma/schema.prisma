@@ -31,16 +31,20 @@ enum RequestStatus {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  name          String
-  email         String         @unique
-  passwordHash  String?
-  authSource    AuthSource     @default(LOCAL)
-  ldapDn        String?        @unique
-  role          Role           @default(USER)
-  createdAt     DateTime       @default(now())
-  requests      BorrowRequest[]
-  refreshTokens RefreshToken[]
+  id                 String          @id @default(cuid())
+  name               String
+  email              String          @unique
+  passwordHash       String?
+  authSource         AuthSource      @default(LOCAL)
+  ldapDn             String?         @unique
+  role               Role            @default(USER)
+  createdAt          DateTime        @default(now())
+  /// Raised on revocation, password reset and role change; access tokens carry it as `sv`.
+  sessionVersion     Int             @default(0)
+  /// Set when an admin chose the password: the user must pick their own at the next login.
+  mustChangePassword Boolean         @default(false)
+  requests           BorrowRequest[]
+  refreshTokens      RefreshToken[]
 }
 
 model Category {
@@ -50,16 +54,16 @@ model Category {
 }
 
 model Device {
-    id          String          @id @default(cuid())
-    name        String
-    categoryId  String
-    category    Category        @relation(fields: [categoryId], references: [id])
-    description String          @default("")
-    createdAt   DateTime        @default(now())
-    updatedAt   DateTime        @updatedAt
-    requests    BorrowRequest[]
-    images      DeviceImage[]
-    units       DeviceUnit[]
+  id          String          @id @default(cuid())
+  name        String
+  categoryId  String
+  category    Category        @relation(fields: [categoryId], references: [id])
+  description String          @default("")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  requests    BorrowRequest[]
+  images      DeviceImage[]
+  units       DeviceUnit[]
 }
 
 model Room {
@@ -71,15 +75,15 @@ model Room {
 }
 
 model DeviceUnit {
-    id           String          @id @default(cuid())
-    deviceId     String
-    serialNumber String          @unique
-    status       DeviceStatus    @default(AVAILABLE)
-    device       Device          @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-    requests     BorrowRequest[]
+  id           String          @id @default(cuid())
+  deviceId     String
+  serialNumber String          @unique
+  status       DeviceStatus    @default(AVAILABLE)
+  device       Device          @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  requests     BorrowRequest[]
 
-    @@index([deviceId])
-    @@index([status])
+  @@index([deviceId])
+  @@index([status])
 }
 
 model DeviceImage {
@@ -96,19 +100,19 @@ model BorrowRequest {
   id              String        @id @default(cuid())
   userId          String
   deviceId        String
-    unitId          String?
-        roomId          String
-        status          RequestStatus @default(OPEN)
+  unitId          String?
+  roomId          String
+  status          RequestStatus @default(OPEN)
   requestedAt     DateTime      @default(now())
-    startsAt        DateTime
-    desiredUntil    DateTime
+  startsAt        DateTime
+  desiredUntil    DateTime
   approvedAt      DateTime?
   returnedAt      DateTime?
   comment         String        @default("")
   rejectionReason String        @default("")
   user            User          @relation(fields: [userId], references: [id])
   device          Device        @relation(fields: [deviceId], references: [id])
-    unit            DeviceUnit?   @relation(fields: [unitId], references: [id])
+  unit            DeviceUnit?   @relation(fields: [unitId], references: [id])
   room            Room          @relation(fields: [roomId], references: [id])
 
   @@index([userId])
@@ -145,13 +149,18 @@ model SystemSetting {
 }
 
 model RefreshToken {
-  id        String    @id @default(cuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String    @id @default(cuid())
+  userId           String
+  tokenHash        String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  /// Login time of the session; carried over on every rotation to cap its total lifetime.
+  sessionStartedAt DateTime  @default(now())
+  /// Set when the token was replaced by rotation (not by logout or an admin); presenting it again
+  /// later means it was copied.
+  rotatedAt        DateTime?
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

@@ -7,6 +7,7 @@ import { hashPassword } from "../lib/password.js";
 import { prisma } from "../lib/prisma.js";
 import { diff, recordAudit } from "./auditService.js";
 import { listMyRequests } from "./requestService.js";
+import { endAllSessions } from "./sessionService.js";
 
 const publicSelect = {
   id: true,
@@ -15,6 +16,7 @@ const publicSelect = {
   role: true,
   authSource: true,
   createdAt: true,
+  mustChangePassword: true,
 } as const;
 
 export async function listUsers() {
@@ -36,6 +38,8 @@ export async function createUser(
         passwordHash: await hashPassword(input.password),
         role: input.role,
         authSource: "LOCAL",
+        // The admin knows this password: the person replaces it at the first login.
+        mustChangePassword: true,
       },
       select: publicSelect,
     });
@@ -78,15 +82,14 @@ export async function updateUser(
         passwordHash,
         authSource: passwordHash ? "LOCAL" : undefined,
         ldapDn: passwordHash ? null : undefined,
+        mustChangePassword: passwordHash ? true : undefined,
       },
       select: publicSelect,
     });
-    // A reset password usually means the account was compromised: end its sessions too.
-    if (passwordHash) {
-      await tx.refreshToken.updateMany({
-        where: { userId: id, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
+    // A reset password usually means the account was compromised, and a new role must apply
+    // now, not when the current token expires: both end the sessions.
+    if (passwordHash || (input.role && input.role !== before.role)) {
+      await endAllSessions(tx, { id });
     }
     return { user: before, updated: after };
   });
@@ -226,10 +229,7 @@ export async function revokeUserSessions(id: string, actorId: string) {
   }
   const user = await prisma.user.findUnique({ where: { id }, select: { name: true } });
   if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
-  const { count } = await prisma.refreshToken.updateMany({
-    where: { userId: id, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
+  const count = await endAllSessions(prisma, { id });
   await recordAudit({
     actorId,
     action: "USER_SESSIONS_REVOKED",

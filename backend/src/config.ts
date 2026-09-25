@@ -46,15 +46,43 @@ function secret(name: string): string {
   return value;
 }
 
+/**
+ * Group DNs only: a bare name like "LendLine-Admins" would match a group of that name in any OU,
+ * which someone with rights in their own OU could create.
+ */
+function adminGroups(): string[] {
+  const groups = (env("LDAP_ADMIN_GROUP") ?? "")
+    .split(";")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const bare = groups.filter((group) => !/^cn=/i.test(group) || !group.includes(","));
+  if (bare.length > 0) {
+    throw new Error(
+      `LDAP_ADMIN_GROUP muss vollständige DNs enthalten (z. B. CN=LendLine-Admins,OU=Groups,DC=firma,DC=de), mehrere mit „;“ getrennt. Ungültig: ${bare.join(", ")}`
+    );
+  }
+  return groups.map((group) => group.toLowerCase());
+}
+
+const nodeEnv = env("NODE_ENV") ?? "development";
+const frontendOrigin = env("FRONTEND_ORIGIN") ?? "http://localhost:5173";
+
 export const config = {
   port: Number(env("PORT") ?? 3001),
-  nodeEnv: env("NODE_ENV") ?? "development",
-  frontendOrigin: env("FRONTEND_ORIGIN") ?? "http://localhost:5173",
+  nodeEnv,
+  frontendOrigin,
+  /**
+   * `Secure` on the session cookie whenever the site runs on HTTPS, not only with NODE_ENV set.
+   */
+  secureCookies: nodeEnv === "production" || frontendOrigin.startsWith("https://"),
   databaseUrl: required("DATABASE_URL"),
   jwtAccessSecret: secret("JWT_ACCESS_SECRET"),
-  jwtRefreshSecret: required("JWT_REFRESH_SECRET"),
   jwtAccessTtlSeconds: parseTtlSeconds(env("JWT_ACCESS_TTL"), 15 * 60),
   jwtRefreshTtlDays: Number(env("JWT_REFRESH_TTL_DAYS") ?? 7),
+  /**
+   * A session ends this many days after the login, however often it was refreshed.
+   */
+  sessionMaxDays: Number(env("SESSION_MAX_DAYS") ?? 30),
   ldap: {
     url: env("LDAP_URL") ?? "",
     bindDn: env("LDAP_BIND_DN") ?? "",
@@ -63,14 +91,15 @@ export const config = {
     userFilter:
       env("LDAP_USER_FILTER") ??
       "(|(mail={{username}})(sAMAccountName={{username}})(uid={{username}}))",
-    adminGroups: (env("LDAP_ADMIN_GROUP") ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
+    adminGroups: adminGroups(),
     emailAttribute: env("LDAP_ATTR_EMAIL") ?? "mail",
     nameAttribute: env("LDAP_ATTR_NAME") ?? "displayName",
     tlsRejectUnauthorized: env("LDAP_TLS_REJECT_UNAUTHORIZED") !== "false",
     allowLocalRegister: env("LDAP_ALLOW_LOCAL_REGISTER") !== "false",
+    /**
+     * Allows ldap:// without TLS and unchecked certificates in production (not recommended).
+     */
+    allowInsecure: env("LDAP_ALLOW_INSECURE") === "true",
     get enabled(): boolean {
       return Boolean(this.url && this.baseDn);
     },
@@ -84,3 +113,28 @@ export const config = {
     from: env("SMTP_FROM") ?? "LendLine <noreply@lendline.local>",
   },
 };
+
+/**
+ * Users send their directory password through this connection: plain ldap:// or an unchecked
+ * certificate exposes it on the network. Refused in production unless explicitly allowed.
+ */
+function checkLdapTransport(): void {
+  const { ldap } = config;
+  if (!ldap.enabled) return;
+  const problems = [
+    ...(ldap.url.toLowerCase().startsWith("ldaps://")
+      ? []
+      : ["LDAP_URL nutzt kein ldaps:// (Passwörter gehen unverschlüsselt über das Netz)"]),
+    ...(ldap.tlsRejectUnauthorized
+      ? []
+      : ["LDAP_TLS_REJECT_UNAUTHORIZED=false (jedes Zertifikat wird akzeptiert)"]),
+  ];
+  if (problems.length === 0) return;
+  const message = problems.join("; ");
+  if (config.nodeEnv === "production" && !ldap.allowInsecure) {
+    throw new Error(`${message}. In Produktion nur mit LDAP_ALLOW_INSECURE=true erlaubt.`);
+  }
+  console.warn(`WARNUNG: ${message}.`);
+}
+
+checkLdapTransport();

@@ -21,3 +21,8 @@ export const loginSchema = z.object({
   email: z.string().trim().min(1, "Benutzername oder E-Mail fehlt").max(200),
   password: z.string().min(1, "Passwort fehlt").max(200),
 });
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Aktuelles Passwort fehlt").max(200),
+  newPassword: newPassword,
+});

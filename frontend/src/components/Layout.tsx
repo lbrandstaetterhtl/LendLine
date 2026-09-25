@@ -254,10 +254,10 @@ export function Layout() {
           <span className="avatar" aria-hidden="true">
             {initials(user?.name)}
           </span>
-          <div className="who">
-            <strong title={user?.email}>{user?.name}</strong>
-            <span>{isAdmin ? "Verwaltung" : "Nutzer"}</span>
-          </div>
+          <NavLink to="/konto" className="who" onClick={onNavigate} title="Mein Konto">
+            <strong>{user?.name}</strong>
+            <span>{isAdmin ? "Verwaltung" : "Nutzer"} · Mein Konto</span>
+          </NavLink>
           <button
             type="button"
             className="ghost icon"

@@ -15,6 +15,7 @@ type ManagedUser = {
   email: string;
   role: Role;
   authSource: "LOCAL" | "LDAP";
+  mustChangePassword: boolean;
   createdAt: string;
 };
 
@@ -123,7 +124,14 @@ export function AdminUsersPage() {
                     <span className="tag">Nutzer</span>
                   )}
                 </td>
-                <td className="muted">{user.authSource === "LDAP" ? "Verzeichnis" : "Lokal"}</td>
+                <td className="muted">
+                  {user.authSource === "LDAP" ? "Verzeichnis" : "Lokal"}
+                  {user.mustChangePassword && (
+                    <span className="badge st-open" title="Wird bei der nächsten Anmeldung ersetzt">
+                      vorläufiges Passwort
+                    </span>
+                  )}
+                </td>
                 <td className="actions-cell">
                   <div className="actions">
                     <button type="button" className="secondary sm" onClick={() => open(user)}>

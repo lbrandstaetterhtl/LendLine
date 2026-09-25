@@ -8,6 +8,11 @@ export type User = {
   email: string;
   role: Role;
   createdAt: string;
+  /**
+   * The password was set by an admin; the app sends the person to "Mein Konto" first.
+   */
+  mustChangePassword: boolean;
+  authSource: "LOCAL" | "LDAP";
 };
 
 export type Device = {

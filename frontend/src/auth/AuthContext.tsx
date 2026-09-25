@@ -2,7 +2,13 @@ import type { User } from "../types";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { api, MAINTENANCE_EVENT, refreshSession, setAccessToken } from "../api/client";
+import {
+  api,
+  MAINTENANCE_EVENT,
+  PASSWORD_CHANGE_EVENT,
+  refreshSession,
+  setAccessToken,
+} from "../api/client";
 
 type AuthContextValue = {
   user: User | null;
@@ -10,6 +16,7 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<User>;
   register: (name: string, email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -51,6 +58,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener(MAINTENANCE_EVENT, onMaintenance);
   }, []);
 
+  // An admin reset the password while the person was signed in: "Mein Konto" asks for a new one.
+  useEffect(() => {
+    function onPasswordChange() {
+      setUser((current) => (current ? { ...current, mustChangePassword: true } : current));
+    }
+    window.addEventListener(PASSWORD_CHANGE_EVENT, onPasswordChange);
+    return () => window.removeEventListener(PASSWORD_CHANGE_EVENT, onPasswordChange);
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -77,6 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await api<void>("/api/auth/logout", { method: "POST" });
         setAccessToken(null);
         setUser(null);
+      },
+      async changePassword(currentPassword, newPassword) {
+        const result = await api<{ user: User; accessToken: string }>("/api/auth/password", {
+          method: "POST",
+          body: JSON.stringify({ currentPassword, newPassword }),
+        });
+        setAccessToken(result.accessToken);
+        setUser(result.user);
       },
     }),
     [user, ready]
