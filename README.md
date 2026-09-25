@@ -48,6 +48,14 @@ npm run dev
 
 It uses the database from `DATABASE_URL` if it is reachable; otherwise it starts the Docker container (`docker compose up -d`) or, on Windows without Docker, the local PostgreSQL service. It installs missing dependencies, applies pending migrations (never resets data) and runs API and frontend with prefixed output. Ctrl+C stops both. If port 3001 is already in use, it does not start a second API.
 
+To stop everything again (for example from another terminal):
+
+```bash
+npm run stop-dev
+```
+
+It stops running `npm run dev` processes and other LendLine dev servers of this repository (Vite, tsx). The database is only stopped if `npm run dev` started it (noted in `.dev-state.json`); a database that was running before stays untouched. Options: `-- --script-only` (only what `npm run dev` started), `-- --keep-db`, `-- --dry-run` (only show what would be stopped).
+
 ## LDAP
 
 LDAP is off as long as `LDAP_URL` is empty. To turn it on, in `backend/.env`:

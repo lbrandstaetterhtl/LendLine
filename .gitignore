@@ -5,3 +5,4 @@ backend/uploads/
 *.log
 .idea/
 .venv/
+.dev-state.json

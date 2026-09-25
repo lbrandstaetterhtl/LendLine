@@ -6,8 +6,11 @@
 //    container (docker compose) or, on Windows without Docker, a local PostgreSQL service.
 // 2. Installs missing dependencies and applies pending migrations (never resets data).
 // 3. Runs backend and frontend with prefixed output. Ctrl+C stops both.
+//
+// What it started is noted in .dev-state.json, so `npm run stop-dev` stops the database only if
+// this script started it.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,12 +87,24 @@ const dbPort = Number(database.port || 5432);
 const apiPort = Number(env.PORT || 3001);
 
 // ---- 1. database
+const stateFile = path.join(root, ".dev-state.json");
+let previous = {};
+try {
+  previous = JSON.parse(readFileSync(stateFile, "utf8"));
+} catch {
+  // No earlier run.
+}
+// "docker" or "service:<name>" when this script started the database, "external" otherwise.
+let startedDb = "external";
 if (await reachable(dbHost, dbPort)) {
   log("db", `PostgreSQL is running on ${dbHost}:${dbPort}.`);
+  // Still running from an earlier `npm run dev`: stop-dev may stop it later.
+  if (previous.db && previous.db !== "external") startedDb = previous.db;
 } else if (run("docker", ["--version"], root, { quiet: true })) {
   log("db", "Starting the PostgreSQL container (docker compose up -d) …");
   if (!run("docker", ["compose", "up", "-d"], root)) fail("docker compose up failed.");
   if (!(await waitFor(dbHost, dbPort, 60))) fail("The database container did not come up within 60 s.");
+  startedDb = "docker";
   log("db", "PostgreSQL is running.");
 } else if (windows) {
   const query = spawnSync("sc", ["query", "state=", "all"], { encoding: "utf8" });
@@ -102,10 +117,14 @@ if (await reachable(dbHost, dbPort)) {
     fail(`Could not start ${services[0]} (starting services may need an administrator terminal).`);
   }
   if (!(await waitFor(dbHost, dbPort, 30))) fail("PostgreSQL did not come up within 30 s.");
+  startedDb = `service:${services[0]}`;
   log("db", "PostgreSQL is running.");
 } else {
   fail(`No database on ${dbHost}:${dbPort} and no Docker found. Start PostgreSQL and try again.`);
 }
+
+writeFileSync(stateFile, `${JSON.stringify({ pid: process.pid, db: startedDb }, null, 2)}
+`);
 
 // ---- 2. dependencies and migrations
 for (const [name, dir] of [

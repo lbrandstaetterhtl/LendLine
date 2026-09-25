@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "node scripts/start-dev.mjs",
     "start-dev": "node scripts/start-dev.mjs",
+    "stop-dev": "node scripts/stop-dev.mjs",
     "format:docs": "prettier --check \"**/*.{json,md,yml,yaml}\"",
     "format:docs:fix": "prettier --write \"**/*.{json,md,yml,yaml}\"",
     "check": "npm --prefix backend run check && npm --prefix frontend run check && npm run format:docs"
