@@ -1,4 +1,4 @@
-import type { BorrowRequest, Period } from "../types";
+import type { BorrowRequest, DeviceField, Period } from "../types";
 
 import type { SubmitEvent } from "react";
 import { useState } from "react";
@@ -7,6 +7,12 @@ import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
+import {
+  DeviceFieldList,
+  FieldFilter,
+  type FieldFilterValue,
+  useFieldOptions,
+} from "../components/DeviceFields";
 import { DeviceImages, PieceCalendarDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
 import { RequestBadge } from "../components/StatusBadge";
@@ -20,6 +26,7 @@ type Hit = {
   name: string;
   category: string;
   description: string;
+  fields: DeviceField[];
   images: { id: string; url: string }[];
 };
 
@@ -66,10 +73,19 @@ function presets(now: Date): Preset[] {
   return list;
 }
 
-function searchPath(period: Period, categoryId: string, q: string): string {
+function searchPath(
+  period: Period,
+  categoryId: string,
+  q: string,
+  filter: FieldFilterValue = { field: "", value: "" }
+): string {
   const params = new URLSearchParams({ ...period });
   if (categoryId) params.set("categoryId", categoryId);
   if (q.trim()) params.set("q", q.trim());
+  if (filter.field && filter.value) {
+    params.set("field", filter.field);
+    params.set("value", filter.value);
+  }
   return `/api/devices/search?${params.toString()}`;
 }
 
@@ -81,6 +97,8 @@ export function SearchPage() {
   const [desiredUntil, setDesiredUntil] = useState(() => at(now, 1, 17));
   const [categoryId, setCategoryId] = useState("");
   const [q, setQ] = useState("");
+  const [fieldFilter, setFieldFilter] = useState<FieldFilterValue>({ field: "", value: "" });
+  const fieldOptions = useFieldOptions();
   // The search that produced the current hits; it starts with the pre-filled period so the page
   // shows free units right away. Its period (not the possibly edited inputs) goes to the calendar.
   const [searched, setSearched] = useState(() => {
@@ -109,7 +127,7 @@ export function SearchPage() {
       setError("Das Ende muss nach dem Start liegen.");
       return;
     }
-    const path = searchPath(period, categoryId, q);
+    const path = searchPath(period, categoryId, q, fieldFilter);
     // Same query again (e.g. "Suchen" pressed twice): fetch fresh availability anyway.
     if (path === searched.path) reloadHits();
     else setSearched({ period, path });
@@ -201,6 +219,7 @@ export function SearchPage() {
                   placeholder="z. B. ThinkPad"
                 />
               </Field>
+              <FieldFilter options={fieldOptions} filter={fieldFilter} onChange={setFieldFilter} />
             </div>
             <div className="form-actions">
               <button type="submit" disabled={busy}>
@@ -254,6 +273,7 @@ export function SearchPage() {
                               {hit.description && (
                                 <div className="muted small">{hit.description}</div>
                               )}
+                              <DeviceFieldList fields={hit.fields} />
                             </div>
                           </div>
                         </td>

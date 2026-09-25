@@ -1,0 +1,1 @@
+ALTER TABLE "Device" ADD COLUMN "fields" JSONB NOT NULL DEFAULT '[]';

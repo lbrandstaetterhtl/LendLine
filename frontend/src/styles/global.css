@@ -2202,3 +2202,38 @@ label.check input {
 .dash-grid .span-2 {
   grid-column: 1 / -1;
 }
+
+/* Device properties: tags in lists, rows in the editor. */
+.device-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.device-fields li {
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--subtle);
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.device-fields li span {
+  color: var(--muted);
+}
+.field-rows {
+  display: grid;
+  gap: 8px;
+}
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.field-row input[aria-invalid="true"] {
+  border-color: var(--bad);
+}

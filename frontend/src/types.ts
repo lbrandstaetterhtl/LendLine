@@ -15,12 +15,18 @@ export type User = {
   authSource: "LOCAL" | "LDAP";
 };
 
+/**
+ * A free property of a device model, e.g. { name: "RAM", value: "16 GB" }.
+ */
+export type DeviceField = { name: string; value: string };
+
 export type Device = {
   id: string;
   name: string;
   categoryId: string;
   category: string;
   description: string;
+  fields: DeviceField[];
   quantityTotal: number;
   quantityAvailable: number;
   quantityBorrowed?: number;

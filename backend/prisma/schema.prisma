@@ -61,6 +61,8 @@ model Device {
   categoryId  String
   category    Category        @relation(fields: [categoryId], references: [id])
   description String          @default("")
+  /// Free properties of the model, e.g. [{ name: "RAM", value: "16 GB" }].
+  fields      Json            @default("[]")
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   requests    BorrowRequest[]

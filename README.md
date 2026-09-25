@@ -57,6 +57,7 @@ Alles Firmenspezifische stellt die Verwaltung in der Oberfläche ein, ohne Neust
 
 - **Erscheinungsbild:** Logo (hell/dunkel), Akzentfarbe, Schrift, Schriftgröße, Ecken, Seitenleiste, Browser-Symbol, eigene Begriffe (z. B. „Ausrüstung“ statt „Gerät“), Überschrift, Text und Bild der Anmeldeseite.
 - **Einstellungen:** Selbstregistrierung (standardmäßig **aus**, optional nur für bestimmte E-Mail-Domains), Höchstdauer einer Ausleihe, offene Anfragen pro Person, automatische Bestätigung, Anfrageformular (Raum und Kommentar Pflicht/optional/ausgeblendet, bis zu 10 eigene Felder).
+- **Geräte:** freie Eigenschaften pro Gerät (z. B. „RAM: 16 GB“, „Anschlüsse: HDMI, USB-C“). Nutzer sehen sie im Katalog und in der Suche und können danach filtern.
 - **E-Mails:** Absendername, Logo, Anrede, Signatur, Fußzeile und ein eigener Text je Nachricht, mit Vorschau.
 
 Konten legt die Verwaltung unter „Benutzer“ an. Das dabei vergebene Passwort ist vorläufig: Bei der ersten Anmeldung muss die Person ein eigenes festlegen. Unter „Mein Konto“ kann jede Person ihr Passwort selbst ändern.

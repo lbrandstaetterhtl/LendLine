@@ -7,6 +7,7 @@ import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
+import { DeviceFieldList, FieldFilter, useFieldOptions } from "../components/DeviceFields";
 import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
 import { Alert, Field, PageHeader } from "../components/ui";
@@ -16,15 +17,27 @@ export function DevicesPage() {
   const isAdmin = useAuth().user?.role === "ADMIN";
   const [categoryId, setCategoryId] = useState("");
   const [status, setStatus] = useState<"" | DeviceStatus>("");
+  const [fieldFilter, setFieldFilter] = useState({ field: "", value: "" });
+  const fieldOptions = useFieldOptions();
   const params = new URLSearchParams();
   if (categoryId) params.set("categoryId", categoryId);
   if (status) params.set("status", status);
+  if (fieldFilter.field && fieldFilter.value) {
+    params.set("field", fieldFilter.field);
+    params.set("value", fieldFilter.value);
+  }
   const query = params.toString();
   const { data: all, error } = useApi<Device[]>(`/api/devices${query ? `?${query}` : ""}`);
   const [term, setTerm] = useState("");
   const needle = term.trim().toLowerCase();
+  // The text search also finds property values ("16 GB", "USB-C").
   const devices = needle
-    ? all?.filter((device) => `${device.name} ${device.description}`.toLowerCase().includes(needle))
+    ? all?.filter((device) =>
+        [device.name, device.description, ...device.fields.map((field) => field.value)]
+          .join(" ")
+          .toLowerCase()
+          .includes(needle)
+      )
     : all;
   const [preview, setPreview] = useState<{
     name: string;
@@ -77,6 +90,7 @@ export function DevicesPage() {
             {isAdmin && <option value="DEFECTIVE">Mindestens eins defekt</option>}
           </select>
         </Field>
+        <FieldFilter options={fieldOptions} filter={fieldFilter} onChange={setFieldFilter} />
       </div>
       <div className="table-wrap">
         <table>
@@ -106,7 +120,10 @@ export function DevicesPage() {
                 </td>
                 <td className="num">{device.quantityAvailable}</td>
                 <td className="num muted">{device.quantityTotal}</td>
-                <td className="muted">{device.description || "–"}</td>
+                <td className="muted">
+                  {device.description || (device.fields.length > 0 ? "" : "–")}
+                  <DeviceFieldList fields={device.fields} />
+                </td>
                 <td>
                   <DeviceImages
                     images={device.images}

@@ -17,6 +17,39 @@ const deviceInclude = {
 
 type UnitInput = { id?: string; serialNumber: string; status: "AVAILABLE" | "DEFECTIVE" };
 
+export type DeviceField = { name: string; value: string };
+
+export function readFields(value: Prisma.JsonValue): DeviceField[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) =>
+    item &&
+    typeof item === "object" &&
+    !Array.isArray(item) &&
+    typeof item.name === "string" &&
+    typeof item.value === "string"
+      ? [{ name: item.name, value: item.value }]
+      : []
+  );
+}
+
+/**
+ * Prisma filter for "has this property with this value" (JSONB containment).
+ */
+export function fieldFilter(field?: string, value?: string): Prisma.DeviceWhereInput {
+  return field && value ? { fields: { array_contains: [{ name: field, value }] } } : {};
+}
+
+/**
+ * Audit entries for added, changed and removed properties.
+ */
+function compareFields(before: DeviceField[], after: DeviceField[]): AuditChange[] {
+  const old = new Map(before.map((field) => [field.name, field.value]));
+  const next = new Map(after.map((field) => [field.name, field.value]));
+  return [...new Set([...old.keys(), ...next.keys()])]
+    .filter((name) => old.get(name) !== next.get(name))
+    .map((name) => ({ field: name, from: old.get(name) ?? null, to: next.get(name) ?? null }));
+}
+
 function counts(units: { status: DeviceStatus }[]) {
   return {
     quantityTotal: units.length,
@@ -41,6 +74,7 @@ function toPublic(device: DeviceWithRelations, includePieces: boolean) {
     createdAt: device.createdAt,
     updatedAt: device.updatedAt,
     category: device.category.name,
+    fields: readFields(device.fields),
     quantityTotal: stock.quantityTotal,
     quantityAvailable: stock.quantityAvailable,
     units: includePieces
@@ -62,7 +96,7 @@ function toPublic(device: DeviceWithRelations, includePieces: boolean) {
 }
 
 export async function listDevices(
-  filter: { categoryId?: string; status?: DeviceStatus | "" },
+  filter: { categoryId?: string; status?: DeviceStatus | ""; field?: string; value?: string },
   includePieces: boolean
 ) {
   if (!includePieces && filter.status === "DEFECTIVE") return [];
@@ -76,6 +110,7 @@ export async function listDevices(
     where: {
       categoryId: filter.categoryId || undefined,
       units: unitFilter,
+      ...fieldFilter(filter.field, filter.value),
     },
     include: deviceInclude,
     orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
@@ -96,7 +131,13 @@ function assertUniqueSerials(units: UnitInput[]) {
 }
 
 export async function createDevice(
-  input: { name: string; categoryId: string; description: string; units: UnitInput[] },
+  input: {
+    name: string;
+    categoryId: string;
+    description: string;
+    units: UnitInput[];
+    fields: DeviceField[];
+  },
   actorId: string
 ) {
   await assertCategory(input.categoryId);
@@ -110,6 +151,7 @@ export async function createDevice(
         name: input.name,
         categoryId: input.categoryId,
         description: input.description,
+        fields: input.fields,
         units: {
           create: input.units.map((unit) => ({
             serialNumber: unit.serialNumber,
@@ -131,6 +173,7 @@ export async function createDevice(
           Kategorie: created.category,
           Stücke: unitList(device.units),
           Beschreibung: created.description,
+          ...Object.fromEntries(created.fields.map((field) => [field.name, field.value])),
         },
       },
     });
@@ -145,7 +188,13 @@ export async function createDevice(
 
 export async function updateDevice(
   id: string,
-  input: { name?: string; categoryId?: string; description?: string; units?: UnitInput[] },
+  input: {
+    name?: string;
+    categoryId?: string;
+    description?: string;
+    units?: UnitInput[];
+    fields?: DeviceField[];
+  },
   actorId: string
 ) {
   const device = await prisma.device.findUnique({
@@ -219,6 +268,7 @@ export async function updateDevice(
           name: input.name,
           categoryId: input.categoryId,
           description: input.description,
+          fields: input.fields,
         },
         include: deviceInclude,
       });
@@ -246,6 +296,7 @@ export async function updateDevice(
               { key: "description", label: "Beschreibung" },
             ]
           ),
+          ...compareFields(readFields(device.fields), result.fields),
           ...unitChanges.changes,
         ],
         context: {
@@ -396,4 +447,21 @@ function compareUnits(before: UnitSnapshot[], after: UnitSnapshot[]) {
     tally.repaired > 0 ? `${tally.repaired} wieder verfügbar` : "",
   ].filter(Boolean);
   return { changes, summary: parts.join(", ") };
+}
+
+/**
+ * Property names with the values in use, for suggestions in the editor and the filters.
+ */
+export async function fieldOptions(): Promise<{ name: string; values: string[] }[]> {
+  const rows = await prisma.device.findMany({ select: { fields: true } });
+  const byName = new Map<string, Set<string>>();
+  for (const field of rows.flatMap((row) => readFields(row.fields))) {
+    const values = byName.get(field.name) ?? new Set<string>();
+    values.add(field.value);
+    byName.set(field.name, values);
+  }
+  const sort = (a: string, b: string) => a.localeCompare(b, "de", { numeric: true });
+  return [...byName.entries()]
+    .map(([name, values]) => ({ name, values: [...values].toSorted(sort) }))
+    .toSorted((a, b) => sort(a.name, b.name));
 }

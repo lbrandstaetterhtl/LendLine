@@ -1,4 +1,4 @@
-import type { Device, DeviceStatus } from "../types";
+import type { Device, DeviceField, DeviceStatus } from "../types";
 
 import type { SubmitEvent } from "react";
 import { useState } from "react";
@@ -7,18 +7,26 @@ import { api } from "../api/client";
 import { useApi } from "../api/useApi";
 import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
+import { DeviceFieldList, DeviceFieldsEditor, useFieldOptions } from "../components/DeviceFields";
 import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
 import { DeviceBadge } from "../components/StatusBadge";
 import { Alert, Field, Modal, PageHeader } from "../components/ui";
 
 type PieceForm = { id?: string; serialNumber: string; status: DeviceStatus };
-type DeviceForm = { name: string; categoryId: string; description: string; units: PieceForm[] };
+type DeviceForm = {
+  name: string;
+  categoryId: string;
+  description: string;
+  fields: DeviceField[];
+  units: PieceForm[];
+};
 
 const emptyForm = (): DeviceForm => ({
   name: "",
   categoryId: "",
   description: "",
+  fields: [],
   units: [{ serialNumber: "", status: "AVAILABLE" }],
 });
 
@@ -26,6 +34,7 @@ export function AdminDevicesPage() {
   const terms = useTerms();
   const { data: devices, error: loadError, reload } = useApi<Device[]>("/api/devices");
   const [form, setForm] = useState<DeviceForm>(emptyForm);
+  const fieldOptions = useFieldOptions();
   // null: closed; id null: creating; id set: editing that record.
   const [editor, setEditor] = useState<{ id: string | null } | null>(null);
   const [files, setFiles] = useState<FileList | null>(null);
@@ -54,6 +63,7 @@ export function AdminDevicesPage() {
       name: device.name,
       categoryId: device.categoryId,
       description: device.description,
+      fields: device.fields,
       units: (device.units ?? []).map((unit) => ({
         id: unit.id,
         serialNumber: unit.serialNumber,
@@ -168,6 +178,7 @@ export function AdminDevicesPage() {
                     {device.name}
                   </button>
                   {device.description && <div className="muted small">{device.description}</div>}
+                  <DeviceFieldList fields={device.fields} />
                 </td>
                 <td>
                   <span className="tag">{device.category}</span>
@@ -273,6 +284,19 @@ export function AdminDevicesPage() {
                   />
                 </Field>
               </div>
+            </section>
+
+            <section className="form-section">
+              <h3>Eigenschaften</h3>
+              <p className="hint">
+                Frei wählbar, z. B. RAM: 16 GB oder Anschlüsse: HDMI, USB-C. Nutzer sehen sie im
+                Katalog und können danach filtern.
+              </p>
+              <DeviceFieldsEditor
+                fields={form.fields}
+                options={fieldOptions}
+                onChange={(fields) => setForm({ ...form, fields })}
+              />
             </section>
 
             <section className="form-section">

@@ -9,6 +9,7 @@ import {
   createDevice,
   deleteDevice,
   deviceCalendar,
+  fieldOptions,
   listDevices,
   updateDevice,
 } from "../services/deviceService.js";
@@ -41,8 +42,17 @@ deviceRouter.get(
         desiredUntil: queryString(req.query.desiredUntil),
         categoryId: queryString(req.query.categoryId),
         q: queryString(req.query.q),
+        field: queryString(req.query.field).slice(0, 40),
+        value: queryString(req.query.value).slice(0, 200),
       })
     );
+  })
+);
+
+deviceRouter.get(
+  "/fields",
+  asyncHandler(async (_req, res) => {
+    res.json(await fieldOptions());
   })
 );
 

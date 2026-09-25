@@ -1,5 +1,6 @@
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
+import { fieldFilter, readFields } from "./deviceService.js";
 
 function parseLocal(value: string, label: string) {
   const date = new Date(value);
@@ -12,6 +13,8 @@ export async function searchFreeUnits(input: {
   desiredUntil: string;
   categoryId?: string;
   q?: string;
+  field?: string;
+  value?: string;
 }) {
   const startsAt = parseLocal(input.startsAt, "Startzeit");
   const desiredUntil = parseLocal(input.desiredUntil, "Endzeit");
@@ -24,6 +27,7 @@ export async function searchFreeUnits(input: {
       device: {
         categoryId: input.categoryId || undefined,
         ...(input.q ? { name: { contains: input.q, mode: "insensitive" } } : {}),
+        ...fieldFilter(input.field, input.value),
       },
     },
     include: {
@@ -50,6 +54,7 @@ export async function searchFreeUnits(input: {
       name: unit.device.name,
       category: unit.device.category.name,
       description: unit.device.description,
+      fields: readFields(unit.device.fields),
       images: unit.device.images.map((image) => ({
         id: image.id,
         url: `/api/uploads/devices/${image.fileName}`,
