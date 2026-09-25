@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { useBranding } from "../branding/BrandingContext";
+import { type Terms, useBranding, useTerms } from "../branding/BrandingContext";
 import { goKeyFor, goShortcuts, isTyping } from "../shortcuts";
 import { Icon, type IconName } from "./icons";
 import { BrandLogo, LogoMark, Wordmark } from "./Logo";
@@ -12,15 +12,18 @@ import { NAV_REFRESH_EVENT } from "./ui";
 
 type NavItem = {
   to: string;
-  label: string;
+  /**
+   * Text, or the text built from the company's terms ("Stück" → "Ausrüstung").
+   */
+  label: string | ((terms: Terms) => string);
   icon: IconName;
   end?: boolean;
   count?: "openRequests" | "activeLoans";
 };
 
 const lendLinks: NavItem[] = [
-  { to: "/search", label: "Stück suchen", icon: "search" },
-  { to: "/devices", label: "Gerätekatalog", icon: "box", end: true },
+  { to: "/search", label: (terms) => `${terms.unit} suchen`, icon: "search" },
+  { to: "/devices", label: (terms) => terms.catalog, icon: "box", end: true },
   { to: "/my-requests", label: "Meine Anfragen", icon: "list" },
 ];
 
@@ -31,15 +34,17 @@ const adminLinks: NavItem[] = [
 ];
 
 const adminDataLinks: NavItem[] = [
-  { to: "/admin/devices", label: "Geräte", icon: "box" },
+  { to: "/admin/devices", label: (terms) => terms.devices, icon: "box" },
   { to: "/admin/categories", label: "Kategorien", icon: "tag" },
-  { to: "/admin/rooms", label: "Räume", icon: "door" },
+  { to: "/admin/rooms", label: (terms) => terms.rooms, icon: "door" },
   { to: "/admin/users", label: "Benutzer", icon: "users" },
 ];
 
 const adminSystemLinks: NavItem[] = [
   { to: "/admin/protokoll", label: "Protokoll", icon: "file" },
   { to: "/admin/erscheinungsbild", label: "Erscheinungsbild", icon: "palette" },
+  { to: "/admin/einstellungen", label: "Einstellungen", icon: "sliders" },
+  { to: "/admin/emails", label: "E-Mails", icon: "mail" },
   { to: "/admin/wartung", label: "Wartung", icon: "tool" },
 ];
 
@@ -123,6 +128,7 @@ function initials(name = "") {
 
 function Brand() {
   const { branding } = useBranding();
+  const { subtitle } = branding.terms;
   // A company logo usually carries its own name, so it stands alone.
   if (branding.logoUrl) return <BrandLogo height={32} />;
   return (
@@ -130,7 +136,7 @@ function Brand() {
       <LogoMark size={28} />
       <span>
         <Wordmark />
-        <small>IT-Geräteausleihe</small>
+        {subtitle && <small>{subtitle}</small>}
       </span>
     </>
   );
@@ -141,6 +147,7 @@ export function Layout() {
   const isAdmin = user?.role === "ADMIN";
   const [menuOpen, setMenuOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
+  const terms = useTerms();
   useShortcuts(isAdmin);
   useFocusOnNavigation();
 
@@ -183,7 +190,7 @@ export function Layout() {
                 title={key ? `Tastenkürzel: g, dann ${key}` : undefined}
               >
                 <Icon name={item.icon} />
-                {item.label}
+                {typeof item.label === "string" ? item.label : item.label(terms)}
                 {count > 0 && (
                   <span className="nav-count" aria-label={`${count} offen`}>
                     {count}

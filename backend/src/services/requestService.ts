@@ -1,16 +1,20 @@
-import type { MailMessage } from "../emails/format.js";
+import type { MailContext, MailMessage } from "../emails/format.js";
 import type { RequestStatus } from "@prisma/client";
 
 import { Prisma } from "@prisma/client";
 
 import { formatDate } from "../emails/format.js";
 import { sendMail } from "../emails/mailer.js";
-import { deviceReturnedTemplate } from "../emails/templates/deviceReturned.js";
-import { requestApprovedTemplate } from "../emails/templates/requestApproved.js";
-import { requestRejectedTemplate } from "../emails/templates/requestRejected.js";
+import {
+  deviceReturnedTemplate,
+  mailContext,
+  requestApprovedTemplate,
+  requestRejectedTemplate,
+} from "../emails/templates.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { formatPeriod, recordAudit } from "./auditService.js";
+import { type FormField, getSetting } from "./settingsService.js";
 import { refreshUnitStatuses } from "./unitStatus.js";
 
 const requestInclude = {
@@ -20,7 +24,46 @@ const requestInclude = {
   device: { select: { id: true, name: true, category: { select: { name: true } } } },
 } as const;
 
-type PendingMail = { to: string; message: MailMessage };
+// Built only when sent, with the company's mail settings of that moment.
+type PendingMail = { to: string; build: (ctx: MailContext) => MailMessage };
+
+const UNASSIGNED_ROOM = "room-unassigned";
+
+export type FieldAnswer = { label: string; value: string };
+
+/**
+ * Checks the answers against the company's current fields and keeps them with their labels, so an
+ * old request still reads correctly after a field was renamed or removed.
+ */
+function collectFields(defs: FormField[], input: Record<string, string | boolean>): FieldAnswer[] {
+  const answers: FieldAnswer[] = [];
+  for (const def of defs) {
+    const raw = input[def.id];
+    let value: string;
+    if (def.type === "checkbox") {
+      if (def.required && raw !== true)
+        throw new HttpError(400, `„${def.label}“ muss bestätigt werden`);
+      value = raw === true ? "Ja" : "Nein";
+    } else {
+      value = typeof raw === "string" ? raw.trim() : "";
+      if (def.required && !value) throw new HttpError(400, `„${def.label}“ fehlt`);
+      if (def.type === "select" && value && !def.options.includes(value)) {
+        throw new HttpError(400, `„${def.label}“: ungültige Auswahl`);
+      }
+    }
+    if (value) answers.push({ label: def.label, value });
+  }
+  return answers;
+}
+
+function asAnswers(value: Prisma.JsonValue): FieldAnswer[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) =>
+    item && typeof item === "object" && !Array.isArray(item) && typeof item.label === "string"
+      ? [{ label: item.label, value: typeof item.value === "string" ? item.value : "" }]
+      : []
+  );
+}
 
 function mailDevice(device: { name: string; category: { name: string } }, serialNumber: string) {
   return { name: device.name, category: device.category.name, serialNumber };
@@ -30,10 +73,12 @@ function presentRequest<
   T extends {
     device: { id: string; name: string; category: { name: string } };
     unit: { serialNumber: string; status: "AVAILABLE" | "BORROWED" | "DEFECTIVE" } | null;
+    fields: Prisma.JsonValue;
   },
 >(row: T) {
   return {
     ...row,
+    fields: asAnswers(row.fields),
     device: {
       id: row.device.id,
       name: row.device.name,
@@ -51,9 +96,11 @@ function parseLocalDateTime(value: string, label: string): Date {
 }
 
 async function dispatch(mails: PendingMail[]): Promise<void> {
+  if (mails.length === 0) return;
+  const ctx = await mailContext();
   for (const mail of mails) {
     try {
-      await sendMail(mail.to, mail.message);
+      await sendMail(mail.to, mail.build(ctx));
     } catch (error) {
       console.error("E-Mail-Versand fehlgeschlagen", error);
     }
@@ -62,16 +109,45 @@ async function dispatch(mails: PendingMail[]): Promise<void> {
 
 export async function createRequest(
   userId: string,
-  input: { unitId: string; roomId: string; startsAt: string; desiredUntil: string; comment: string }
+  input: {
+    unitId: string;
+    roomId: string;
+    startsAt: string;
+    desiredUntil: string;
+    comment: string;
+    fields: Record<string, string | boolean>;
+  }
 ) {
+  const { rules, form } = await getSetting("policy");
   const startsAt = parseLocalDateTime(input.startsAt, "Startzeit");
   const desiredUntil = parseLocalDateTime(input.desiredUntil, "Endzeit");
   if (desiredUntil <= startsAt)
     throw new HttpError(400, "Die Endzeit muss nach der Startzeit liegen");
   if (desiredUntil.getTime() < Date.now())
     throw new HttpError(400, "Die Endzeit muss in der Zukunft liegen");
+  // Today counts from midnight, so "Heute" still works in the afternoon.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (startsAt < today)
+    throw new HttpError(400, "Der Start darf nicht in der Vergangenheit liegen");
+  if (desiredUntil.getTime() - startsAt.getTime() > rules.maxDays * 24 * 60 * 60 * 1000) {
+    throw new HttpError(
+      400,
+      `Eine Ausleihe dauert höchstens ${rules.maxDays} Tag${rules.maxDays === 1 ? "" : "e"}`
+    );
+  }
+  const comment = form.comment === "hidden" ? "" : input.comment;
+  if (form.comment === "required" && !comment) {
+    throw new HttpError(400, `„${form.commentLabel}“ fehlt`);
+  }
+  const roomId = form.room === "hidden" ? "" : input.roomId;
+  if (form.room === "required" && (!roomId || roomId === UNASSIGNED_ROOM)) {
+    throw new HttpError(400, "Raum fehlt");
+  }
+  const fields = collectFields(form.fields, input.fields);
+  let request;
   try {
-    return await prisma.$transaction(
+    request = await prisma.$transaction(
       async (tx) => {
         const unit = await tx.deviceUnit.findUnique({
           where: { id: input.unitId },
@@ -80,7 +156,14 @@ export async function createRequest(
         if (!unit) throw new HttpError(404, "Stück nicht gefunden");
         if (unit.status === "DEFECTIVE")
           throw new HttpError(409, "Defekte Stücke können nicht angefragt werden");
-        const room = await tx.room.findUnique({ where: { id: input.roomId } });
+        const open = await tx.borrowRequest.count({ where: { userId, status: "OPEN" } });
+        if (open >= rules.maxOpenPerUser) {
+          throw new HttpError(
+            409,
+            `Sie haben bereits ${open === 1 ? "eine offene Anfrage" : `${open} offene Anfragen`}. Mehr als ${rules.maxOpenPerUser === 1 ? "eine" : rules.maxOpenPerUser} gleichzeitig ${rules.maxOpenPerUser === 1 ? "ist" : "sind"} nicht möglich; warten Sie auf die Entscheidung oder ziehen Sie eine zurück.`
+          );
+        }
+        const room = await tx.room.findUnique({ where: { id: roomId || UNASSIGNED_ROOM } });
         if (!room) throw new HttpError(404, "Raum nicht gefunden");
         const overlapping = await tx.borrowRequest.count({
           where: {
@@ -100,7 +183,8 @@ export async function createRequest(
             roomId: room.id,
             startsAt,
             desiredUntil,
-            comment: input.comment,
+            comment,
+            fields,
           },
           include: requestInclude,
         });
@@ -126,6 +210,63 @@ export async function createRequest(
     }
     throw error;
   }
+  // Checked again by approveRequest, e.g. a unit that became defective in the meantime.
+  if (rules.autoApprove) return approveRequest(request.id, userId, { automatic: true });
+  return request;
+}
+
+/**
+ * The requester takes back an open request; it frees the unit at once.
+ */
+export async function cancelRequest(id: string, userId: string) {
+  const current = await prisma.borrowRequest.findUnique({ where: { id }, include: requestInclude });
+  // Someone else's request looks exactly like a missing one.
+  if (!current || current.userId !== userId) throw new HttpError(404, "Anfrage nicht gefunden");
+  if (current.status !== "OPEN") {
+    throw new HttpError(409, "Nur offene Anfragen können zurückgezogen werden");
+  }
+  const changed = await prisma.borrowRequest.updateMany({
+    where: { id, status: "OPEN" },
+    data: { status: "CANCELLED", cancelledAt: new Date() },
+  });
+  if (changed.count !== 1) throw new HttpError(409, "Anfrage wurde bereits bearbeitet");
+  const result = presentRequest(
+    await prisma.borrowRequest.findUniqueOrThrow({ where: { id }, include: requestInclude })
+  );
+  await recordAudit({
+    actorId: userId,
+    action: "REQUEST_CANCELLED",
+    entityType: "REQUEST",
+    entityId: id,
+    summary: `Anfrage für „${result.device.name}“ (${result.device.serialNumber}) zurückgezogen`,
+    details: {
+      changes: [{ field: "Status", from: "Offen", to: "Zurückgezogen" }],
+      context: auditContext(result),
+    },
+  });
+  return result;
+}
+
+/**
+ * Clears a flood of requests from one account in one go. No e-mails: the address may not even
+ * belong to the person who sent them.
+ */
+export async function rejectOpenRequestsOfUser(userId: string, reason: string, actorId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
+  const { count } = await prisma.borrowRequest.updateMany({
+    where: { userId, status: "OPEN" },
+    data: { status: "REJECTED", rejectionReason: reason },
+  });
+  await recordAudit({
+    actorId,
+    action: "REQUESTS_BULK_REJECTED",
+    entityType: "USER",
+    entityId: userId,
+    summary: `${count} offene Anfrage${count === 1 ? "" : "n"} von „${user.name}“ abgelehnt`,
+    details: { context: { Grund: reason || "ohne Angabe", "E-Mails": "keine" } },
+  });
+  return { rejected: count };
 }
 
 export async function listMyRequests(userId: string) {
@@ -146,7 +287,11 @@ export async function listRequests(status?: RequestStatus) {
   return rows.map(presentRequest);
 }
 
-export async function approveRequest(id: string, actorId: string) {
+export async function approveRequest(
+  id: string,
+  actorId: string,
+  options: { automatic?: boolean } = {}
+) {
   const mails: PendingMail[] = [];
   const updated = await prisma.$transaction(async (tx) => {
     const current = await tx.borrowRequest.findUnique({
@@ -180,13 +325,15 @@ export async function approveRequest(id: string, actorId: string) {
 
     mails.push({
       to: current.user.email,
-      message: requestApprovedTemplate({
-        recipientName: current.user.name,
-        device: mailDevice(current.device, unit.serialNumber),
-        startsAt: current.startsAt,
-        desiredUntil: current.desiredUntil,
-        roomName: current.room.name,
-      }),
+      build: (ctx) =>
+        requestApprovedTemplate(ctx, {
+          recipientName: current.user.name,
+          device: mailDevice(current.device, unit.serialNumber),
+          startsAt: current.startsAt,
+          desiredUntil: current.desiredUntil,
+          roomName: current.room.id === UNASSIGNED_ROOM ? undefined : current.room.name,
+          fields: asAnswers(current.fields),
+        }),
     });
 
     return tx.borrowRequest.findUniqueOrThrow({ where: { id }, include: requestInclude });
@@ -200,7 +347,9 @@ export async function approveRequest(id: string, actorId: string) {
     action: "REQUEST_APPROVED",
     entityType: "REQUEST",
     entityId: result.id,
-    summary: `Ausleihe von „${result.device.name}“ (${result.device.serialNumber}) für ${result.user.name} bestätigt`,
+    summary: options.automatic
+      ? `Ausleihe von „${result.device.name}“ (${result.device.serialNumber}) für ${result.user.name} automatisch bestätigt`
+      : `Ausleihe von „${result.device.name}“ (${result.device.serialNumber}) für ${result.user.name} bestätigt`,
     details: {
       changes: [{ field: "Status", from: "Offen", to: "Bestätigt" }],
       context: auditContext(result),
@@ -228,11 +377,12 @@ export async function rejectRequest(id: string, rejectionReason: string, actorId
   await dispatch([
     {
       to: updated.user.email,
-      message: requestRejectedTemplate({
-        recipientName: updated.user.name,
-        device: mailDevice(updated.device, updated.unit?.serialNumber ?? "–"),
-        rejectionReason,
-      }),
+      build: (ctx) =>
+        requestRejectedTemplate(ctx, {
+          recipientName: updated.user.name,
+          device: mailDevice(updated.device, updated.unit?.serialNumber ?? "–"),
+          rejectionReason,
+        }),
     },
   ]);
   const result = presentRequest(updated);
@@ -271,11 +421,12 @@ export async function returnRequest(id: string, actorId: string) {
   await dispatch([
     {
       to: current.user.email,
-      message: deviceReturnedTemplate({
-        recipientName: current.user.name,
-        device: mailDevice(current.device, current.unit?.serialNumber ?? "–"),
-        returnedAt,
-      }),
+      build: (ctx) =>
+        deviceReturnedTemplate(ctx, {
+          recipientName: current.user.name,
+          device: mailDevice(current.device, current.unit?.serialNumber ?? "–"),
+          returnedAt,
+        }),
     },
   ]);
   const result = presentRequest(current);
@@ -307,8 +458,10 @@ function auditContext(request: {
   startsAt: Date;
   desiredUntil: Date;
   comment: string;
+  fields: FieldAnswer[];
 }): Record<string, string> {
   return {
+    ...Object.fromEntries(request.fields.map((answer) => [answer.label, answer.value])),
     Gerät: `${request.device.name} (${request.device.serialNumber}), ${request.device.category}`,
     Person: `${request.user.name} <${request.user.email}>`,
     Zeitraum: formatPeriod(request.startsAt, request.desiredUntil),

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { formatDate } from "../emails/format.js";
 import { HttpError } from "../lib/errors.js";
+import { looksLikeImage } from "../lib/imageSniff.js";
 import { prisma } from "../lib/prisma.js";
 import { recordAudit } from "./auditService.js";
 
@@ -14,6 +15,17 @@ export function imageUrl(fileName: string): string {
 
 export async function addImages(deviceId: string, files: Express.Multer.File[], actorId: string) {
   if (files.length === 0) throw new HttpError(400, "Keine Bilder ausgewählt");
+  const checks = await Promise.all(
+    files.map(async (file) => looksLikeImage(file.path, path.extname(file.filename)))
+  );
+  const fake = files.filter((_file, index) => !checks[index]);
+  if (fake.length > 0) {
+    await Promise.all(files.map(async (file) => fs.unlink(file.path).catch(() => undefined)));
+    throw new HttpError(
+      400,
+      `Kein gültiges Bild: ${fake.map((file) => file.originalname).join(", ")}`
+    );
+  }
   const device = await prisma.device.findUnique({
     where: { id: deviceId },
     include: { _count: { select: { images: true } } },

@@ -3,6 +3,19 @@ import type { MailMessage } from "./format.js";
 import { createTransport } from "nodemailer";
 
 import { config } from "../config.js";
+import { getSetting } from "../services/settingsService.js";
+
+/**
+ * SMTP_FROM with the company's display name, if one is set. The address itself stays in the server
+ * configuration: it must match what the mail server allows to send.
+ */
+async function sender(): Promise<string | { name: string; address: string }> {
+  const { senderName } = await getSetting("mail");
+  const name = senderName.replaceAll(/[\r\n"<>]/g, "").trim();
+  if (!name) return config.smtp.from;
+  const address = /<([^>]+)>/.exec(config.smtp.from)?.[1] ?? config.smtp.from;
+  return { name, address };
+}
 
 function smtpConfigured(): boolean {
   return Boolean(config.smtp.host);
@@ -24,7 +37,7 @@ export async function sendMail(to: string, message: MailMessage): Promise<void> 
   });
 
   await transporter.sendMail({
-    from: config.smtp.from,
+    from: await sender(),
     to,
     subject: message.subject,
     text: message.text,

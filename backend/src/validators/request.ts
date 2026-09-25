@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export const createRequestSchema = z.object({
   unitId: z.string().min(1, "Stück fehlt"),
-  roomId: z.string().min(1, "Raum fehlt"),
+  // Required or not depends on the company's form settings (requestService checks it).
+  roomId: z.string().max(60).optional().default(""),
   startsAt: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Startzeit im Format JJJJ-MM-TTTHH:MM angeben"),
@@ -10,6 +11,17 @@ export const createRequestSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Endzeit im Format JJJJ-MM-TTTHH:MM angeben"),
   comment: z.string().trim().max(1000).optional().default(""),
+  /**
+   * Answers to the company's own fields by field id.
+   */
+  fields: z
+    .record(z.string().max(40), z.union([z.string().trim().max(500), z.boolean()]))
+    .optional()
+    .default({}),
+});
+
+export const rejectOpenSchema = z.object({
+  reason: z.string().trim().max(1000).optional().default(""),
 });
 
 export const rejectRequestSchema = z.object({
@@ -17,5 +29,5 @@ export const rejectRequestSchema = z.object({
 });
 
 export const requestQuerySchema = z.object({
-  status: z.enum(["OPEN", "APPROVED", "REJECTED", "RETURNED", ""]).optional(),
+  status: z.enum(["OPEN", "APPROVED", "REJECTED", "RETURNED", "CANCELLED", ""]).optional(),
 });

@@ -4,10 +4,12 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
 import { Alert, PageHeader, refreshNav } from "../components/ui";
 import { formatDate } from "../types";
 
 export function AdminBorrowedPage() {
+  const terms = useTerms();
   const {
     data: requests,
     error: loadError,
@@ -19,7 +21,7 @@ export function AdminBorrowedPage() {
   async function markReturned(item: BorrowRequest) {
     if (
       !window.confirm(
-        `Rückgabe erfassen?\n\n${item.device.name} (${item.device.serialNumber}) von ${item.user.name}\nDas Stück ist danach wieder verfügbar.`
+        `Rückgabe erfassen?\n\n${item.device.name} (${item.device.serialNumber}) von ${item.user.name}\nDanach ist es wieder verfügbar.`
       )
     )
       return;
@@ -50,10 +52,10 @@ export function AdminBorrowedPage() {
         <table>
           <thead>
             <tr>
-              <th>Gerät</th>
+              <th>{terms.device}</th>
               <th>Person</th>
               <th>Zeitraum</th>
-              <th>Raum</th>
+              <th>{terms.room}</th>
               <th>Bestätigt</th>
               <th>
                 <span className="sr-only">Aktionen</span>

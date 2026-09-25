@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { HttpError } from "../lib/errors.js";
+import { looksLikeImage } from "../lib/imageSniff.js";
 import { prisma } from "../lib/prisma.js";
 import { recordAudit } from "./auditService.js";
 
@@ -10,17 +11,78 @@ const KEY = "branding";
 
 export const brandingDir = path.join(process.cwd(), "uploads", "branding");
 
-export const logoVariants = ["light", "dark"] as const;
-export type LogoVariant = (typeof logoVariants)[number];
+/**
+ * Uploadable images: logo for light and dark backgrounds, browser icon, login page picture.
+ */
+export const imageSlots = ["light", "dark", "favicon", "login"] as const;
+export type ImageSlot = (typeof imageSlots)[number];
+
+const slotField = {
+  light: "logo",
+  dark: "logoDark",
+  favicon: "favicon",
+  login: "loginImage",
+} as const satisfies Record<ImageSlot, string>;
+
+const slotLabel: Record<ImageSlot, string> = {
+  light: "Logo",
+  dark: "Logo für den Dunkelmodus",
+  favicon: "Browser-Symbol",
+  login: "Bild der Anmeldeseite",
+};
+
+const term = (fallback: string) => z.string().trim().min(1).max(40).default(fallback);
+
+export const appearanceSchema = z.object({
+  font: z.enum(["standard", "system", "humanist", "serif", "rounded"]).default("standard"),
+  fontSize: z.enum(["small", "normal", "large"]).default("normal"),
+  radius: z.enum(["square", "standard", "round"]).default("standard"),
+  sidebar: z.enum(["standard", "tinted", "accent"]).default("standard"),
+});
+
+/**
+ * Words the interface uses for the company's things, e.g. "Ausrüstung" instead of "Gerät".
+ */
+export const termsSchema = z.object({
+  subtitle: z.string().trim().max(60).default("IT-Geräteausleihe"),
+  catalog: term("Gerätekatalog"),
+  device: term("Gerät"),
+  devices: term("Geräte"),
+  unit: term("Stück"),
+  units: term("Stücke"),
+  room: term("Raum"),
+  rooms: term("Räume"),
+});
+
+export const loginTextSchema = z.object({
+  title: z.string().trim().min(1).max(80).default("Anmelden"),
+  text: z.string().trim().max(400).default(""),
+});
 
 const storedSchema = z.object({
-  accent: z.string().nullable(),
-  logo: z.string().nullable(),
-  logoDark: z.string().nullable(),
+  accent: z.string().nullable().default(null),
+  logo: z.string().nullable().default(null),
+  logoDark: z.string().nullable().default(null),
+  favicon: z.string().nullable().default(null),
+  loginImage: z.string().nullable().default(null),
+  appearance: appearanceSchema.default({}),
+  terms: termsSchema.default({}),
+  login: loginTextSchema.default({}),
 });
 type Stored = z.infer<typeof storedSchema>;
 
-const EMPTY: Stored = { accent: null, logo: null, logoDark: null };
+export const brandingPatchSchema = z.object({
+  accent: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Farbe im Format #RRGGBB angeben")
+    .transform((value) => value.toLowerCase())
+    .nullable()
+    .optional(),
+  appearance: appearanceSchema.partial().optional(),
+  terms: termsSchema.partial().optional(),
+  login: loginTextSchema.partial().optional(),
+});
+type BrandingPatch = z.infer<typeof brandingPatchSchema>;
 
 export type Branding = {
   /**
@@ -32,6 +94,11 @@ export type Branding = {
    * Variant for dark mode; the frontend falls back to `logoUrl`.
    */
   logoDarkUrl: string | null;
+  faviconUrl: string | null;
+  loginImageUrl: string | null;
+  appearance: Stored["appearance"];
+  terms: Stored["terms"];
+  login: Stored["login"];
 };
 
 function fileUrl(fileName: string | null): string | null {
@@ -40,8 +107,8 @@ function fileUrl(fileName: string | null): string | null {
 
 async function readStored(): Promise<Stored> {
   const row = await prisma.systemSetting.findUnique({ where: { key: KEY } });
-  const parsed = storedSchema.safeParse(row?.value);
-  return parsed.success ? parsed.data : EMPTY;
+  const parsed = storedSchema.safeParse(row?.value ?? {});
+  return parsed.success ? parsed.data : storedSchema.parse({});
 }
 
 function toBranding(stored: Stored): Branding {
@@ -49,6 +116,11 @@ function toBranding(stored: Stored): Branding {
     accent: stored.accent,
     logoUrl: fileUrl(stored.logo),
     logoDarkUrl: fileUrl(stored.logoDark),
+    faviconUrl: fileUrl(stored.favicon),
+    loginImageUrl: fileUrl(stored.loginImage),
+    appearance: stored.appearance,
+    terms: stored.terms,
+    login: stored.login,
   };
 }
 
@@ -64,43 +136,73 @@ async function removeFile(fileName: string | null): Promise<void> {
   if (fileName) await fs.unlink(path.join(brandingDir, fileName)).catch(() => undefined);
 }
 
-function variantLabel(variant: LogoVariant): string {
-  return variant === "light" ? "Logo" : "Logo für den Dunkelmodus";
-}
-
 export async function getBranding(): Promise<Branding> {
   return toBranding(await readStored());
 }
 
-export async function setAccent(accent: string | null, actorId: string): Promise<Branding> {
+/**
+ * The logo file on disk for the e-mails, if it is a format mail programs show (not SVG).
+ */
+export async function mailLogoFile(): Promise<string | null> {
+  const { logo } = await readStored();
+  return logo && !logo.endsWith(".svg") ? logo : null;
+}
+
+const flat = (value: object) =>
+  Object.entries(value).map(([key, item]) => [key, String(item)] as const);
+
+export async function updateBranding(patch: BrandingPatch, actorId: string): Promise<Branding> {
   const before = await readStored();
-  const value = { ...before, accent };
+  const value: Stored = {
+    ...before,
+    accent: patch.accent === undefined ? before.accent : patch.accent,
+    appearance: { ...before.appearance, ...patch.appearance },
+    terms: { ...before.terms, ...patch.terms },
+    login: { ...before.login, ...patch.login },
+  };
   await writeStored(value, actorId);
-  await recordAudit({
-    actorId,
-    action: "BRANDING_UPDATED",
-    entityType: "SYSTEM",
-    summary: accent ? `Akzentfarbe auf ${accent} geändert` : "Akzentfarbe zurückgesetzt",
-    details: {
-      changes: [
-        { field: "Akzentfarbe", from: before.accent ?? "Standard", to: accent ?? "Standard" },
-      ],
-    },
-  });
+  const changes = [
+    { field: "Akzentfarbe", from: before.accent ?? "Standard", to: value.accent ?? "Standard" },
+    ...(["appearance", "terms", "login"] as const).flatMap((group) =>
+      flat(value[group]).map(([key, to]) => ({
+        field: `${group}.${key}`,
+        from: String((before[group] as Record<string, unknown>)[key]),
+        to,
+      }))
+    ),
+  ].filter((change) => change.from !== change.to);
+  if (changes.length > 0) {
+    await recordAudit({
+      actorId,
+      action: "BRANDING_UPDATED",
+      entityType: "SYSTEM",
+      summary:
+        changes.length === 1 && changes[0]?.field === "Akzentfarbe"
+          ? value.accent
+            ? `Akzentfarbe auf ${value.accent} geändert`
+            : "Akzentfarbe zurückgesetzt"
+          : `Erscheinungsbild geändert (${changes.length} Einstellung${changes.length === 1 ? "" : "en"})`,
+      details: { changes },
+    });
+  }
   return toBranding(value);
 }
 
 /**
- * Stores an uploaded logo file and deletes the one it replaces.
+ * Stores an uploaded image and deletes the one it replaces.
  */
-export async function setLogo(
-  variant: LogoVariant,
+export async function setImage(
+  slot: ImageSlot,
   file: Express.Multer.File | undefined,
   actorId: string
 ): Promise<Branding> {
   if (!file) throw new HttpError(400, "Keine Datei ausgewählt");
+  if (!(await looksLikeImage(file.path, path.extname(file.filename)))) {
+    await fs.unlink(file.path).catch(() => undefined);
+    throw new HttpError(400, "Die Datei ist kein gültiges Bild");
+  }
   const before = await readStored();
-  const field = variant === "light" ? "logo" : "logoDark";
+  const field = slotField[slot];
   const value = { ...before, [field]: file.filename };
   await writeStored(value, actorId);
   await removeFile(before[field]);
@@ -108,7 +210,7 @@ export async function setLogo(
     actorId,
     action: "BRANDING_UPDATED",
     entityType: "SYSTEM",
-    summary: `${variantLabel(variant)} ${before[field] ? "ersetzt" : "hochgeladen"}`,
+    summary: `${slotLabel[slot]} ${before[field] ? "ersetzt" : "hochgeladen"}`,
     details: {
       context: { Datei: file.originalname, Größe: `${Math.ceil(file.size / 1024)} KB` },
     },
@@ -116,9 +218,9 @@ export async function setLogo(
   return toBranding(value);
 }
 
-export async function removeLogo(variant: LogoVariant, actorId: string): Promise<Branding> {
+export async function removeImage(slot: ImageSlot, actorId: string): Promise<Branding> {
   const before = await readStored();
-  const field = variant === "light" ? "logo" : "logoDark";
+  const field = slotField[slot];
   if (!before[field]) return toBranding(before);
   const value = { ...before, [field]: null };
   await writeStored(value, actorId);
@@ -127,7 +229,7 @@ export async function removeLogo(variant: LogoVariant, actorId: string): Promise
     actorId,
     action: "BRANDING_UPDATED",
     entityType: "SYSTEM",
-    summary: `${variantLabel(variant)} entfernt`,
+    summary: `${slotLabel[slot]} entfernt`,
   });
   return toBranding(value);
 }

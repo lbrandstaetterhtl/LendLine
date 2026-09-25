@@ -53,6 +53,9 @@ const actionLabels: Record<string, string> = {
   MAINTENANCE_UPDATED: "Wartungshinweis geändert",
   MAINTENANCE_TASK: "Wartungsaufgabe",
   BRANDING_UPDATED: "Erscheinungsbild geändert",
+  SETTINGS_UPDATED: "Einstellungen geändert",
+  REQUEST_CANCELLED: "Anfrage zurückgezogen",
+  REQUESTS_BULK_REJECTED: "Offene Anfragen gesammelt abgelehnt",
 };
 
 function actionLabel(action: string) {

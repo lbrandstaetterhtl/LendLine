@@ -2,10 +2,12 @@ import { Router } from "express";
 
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { routeParam } from "../lib/params.js";
+import { RateLimiter } from "../lib/rateLimit.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import {
   approveRequest,
+  cancelRequest,
   createRequest,
   listMyRequests,
   listRequests,
@@ -17,6 +19,9 @@ import {
   rejectRequestSchema,
   requestQuerySchema,
 } from "../validators/request.js";
+
+// Generous for real use, but a script cannot fill the calendar in a minute.
+const createPerUser = new RateLimiter(30, 60 * 60 * 1000);
 
 export const requestRouter = Router();
 
@@ -42,7 +47,15 @@ requestRouter.post(
   "/",
   validateBody(createRequestSchema),
   asyncHandler(async (req, res) => {
+    createPerUser.consume(req.user!.id);
     res.status(201).json(await createRequest(req.user!.id, req.body));
+  })
+);
+
+requestRouter.post(
+  "/:id/cancel",
+  asyncHandler(async (req, res) => {
+    res.json(await cancelRequest(routeParam(req, "id"), req.user!.id));
   })
 );
 

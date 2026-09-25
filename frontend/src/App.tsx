@@ -8,10 +8,12 @@ import { AdminBorrowedPage } from "./pages/AdminBorrowedPage";
 import { AdminBrandingPage } from "./pages/AdminBrandingPage";
 import { AdminCategoriesPage } from "./pages/AdminCategoriesPage";
 import { AdminDevicesPage } from "./pages/AdminDevicesPage";
+import { AdminEmailsPage } from "./pages/AdminEmailsPage";
 import { AdminHomePage } from "./pages/AdminHomePage";
 import { AdminMaintenancePage } from "./pages/AdminMaintenancePage";
 import { AdminRequestsPage } from "./pages/AdminRequestsPage";
 import { AdminRoomsPage } from "./pages/AdminRoomsPage";
+import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { HelpPage } from "./pages/HelpPage";
@@ -153,6 +155,22 @@ export function App() {
           element={
             <AdminOnly>
               <AdminBrandingPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="/admin/einstellungen"
+          element={
+            <AdminOnly>
+              <AdminSettingsPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="/admin/emails"
+          element={
+            <AdminOnly>
+              <AdminEmailsPage />
             </AdminOnly>
           }
         />

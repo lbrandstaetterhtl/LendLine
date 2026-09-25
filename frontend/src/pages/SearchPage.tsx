@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
 import { DeviceImages, PieceCalendarDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
@@ -73,6 +74,7 @@ function searchPath(period: Period, categoryId: string, q: string): string {
 }
 
 export function SearchPage() {
+  const terms = useTerms();
   const [now] = useState(() => new Date());
   const [quickPeriods] = useState(() => presets(now));
   const [startsAt, setStartsAt] = useState(() => at(now, 1, 8));
@@ -132,8 +134,8 @@ export function SearchPage() {
   return (
     <>
       <PageHeader
-        title="Stück suchen"
-        description="Zeitraum wählen, freies Stück finden und im Kalender anfragen."
+        title={`${terms.unit} suchen`}
+        description={`Zeitraum wählen, freie ${terms.units} finden und im Kalender anfragen.`}
       />
       <Alert>{error || searchError}</Alert>
 
@@ -188,7 +190,7 @@ export function SearchPage() {
                   emptyLabel="Alle Kategorien"
                 />
               </Field>
-              <Field label="Gerätename" htmlFor="q" optional>
+              <Field label="Name" htmlFor="q" optional>
                 <input
                   id="q"
                   data-shortcut="search"
@@ -202,7 +204,7 @@ export function SearchPage() {
             </div>
             <div className="form-actions">
               <button type="submit" disabled={busy}>
-                <Icon name="search" /> {busy ? "Suche…" : "Freie Stücke suchen"}
+                <Icon name="search" /> {busy ? "Suche…" : `Freie ${terms.units} suchen`}
               </button>
             </div>
           </form>
@@ -212,15 +214,14 @@ export function SearchPage() {
               <div className="section-title">
                 <h2>Ergebnisse</h2>
                 <span className="muted small">
-                  {hits.length} freie{hits.length === 1 ? "s" : ""} Stück
-                  {hits.length === 1 ? "" : "e"}
+                  {hits.length} {hits.length === 1 ? terms.unit : terms.units} frei
                 </span>
               </div>
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Gerät</th>
+                      <th>{terms.device}</th>
                       <th>Seriennummer</th>
                       <th>Kategorie</th>
                       <th>
@@ -232,8 +233,8 @@ export function SearchPage() {
                     {hits.length === 0 && (
                       <tr>
                         <td colSpan={4} className="empty">
-                          Kein freies Stück in diesem Zeitraum. Versuchen Sie einen anderen Zeitraum
-                          oder eine andere Kategorie.
+                          Nichts frei in diesem Zeitraum. Versuchen Sie einen anderen Zeitraum oder
+                          eine andere Kategorie.
                         </td>
                       </tr>
                     )}
@@ -301,7 +302,11 @@ export function SearchPage() {
                     <div className="muted small">
                       {formatDate(item.startsAt)} – {formatDate(item.desiredUntil)}
                     </div>
-                    {item.room && <div className="muted small">Raum {item.room.name}</div>}
+                    {item.room && (
+                      <div className="muted small">
+                        {terms.room} {item.room.name}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -314,7 +319,7 @@ export function SearchPage() {
             </div>
             <ol className="steps">
               <li>Zeitraum wählen oder eine Schnellauswahl nutzen.</li>
-              <li>Beim passenden Stück den Kalender öffnen und Raum angeben.</li>
+              <li>Den Kalender des passenden Eintrags öffnen und anfragen.</li>
               <li>Die Verwaltung bestätigt, Sie erhalten eine E-Mail.</li>
             </ol>
           </section>

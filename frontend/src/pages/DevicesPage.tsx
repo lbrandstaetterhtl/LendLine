@@ -5,12 +5,14 @@ import { Link } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
 import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
 import { Alert, Field, PageHeader } from "../components/ui";
 
 export function DevicesPage() {
+  const terms = useTerms();
   const isAdmin = useAuth().user?.role === "ADMIN";
   const [categoryId, setCategoryId] = useState("");
   const [status, setStatus] = useState<"" | DeviceStatus>("");
@@ -34,11 +36,11 @@ export function DevicesPage() {
   return (
     <>
       <PageHeader
-        title="Gerätekatalog"
-        description="Alle Geräte mit aktuellem Bestand. Für eine Ausleihe den Zeitraum über die Suche wählen."
+        title={terms.catalog}
+        description={`Alle ${terms.devices} mit aktuellem Bestand. Für eine Ausleihe den Zeitraum über die Suche wählen.`}
         actions={
           <Link className="btn" to="/search">
-            <Icon name="search" /> Stück suchen
+            <Icon name="search" /> {terms.unit} suchen
           </Link>
         }
       />
@@ -52,7 +54,7 @@ export function DevicesPage() {
             type="search"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder="Gerätename oder Beschreibung"
+            placeholder="Name oder Beschreibung"
           />
         </Field>
         <Field label="Kategorie" htmlFor="category">
@@ -70,9 +72,9 @@ export function DevicesPage() {
             onChange={(e) => setStatus(e.target.value as "" | DeviceStatus)}
           >
             <option value="">Alle</option>
-            <option value="AVAILABLE">Mit freien Stücken</option>
-            <option value="BORROWED">Mit ausgeliehenen Stücken</option>
-            {isAdmin && <option value="DEFECTIVE">Mit defekten Stücken</option>}
+            <option value="AVAILABLE">Mindestens eins frei</option>
+            <option value="BORROWED">Mindestens eins ausgeliehen</option>
+            {isAdmin && <option value="DEFECTIVE">Mindestens eins defekt</option>}
           </select>
         </Field>
       </div>
@@ -80,7 +82,7 @@ export function DevicesPage() {
         <table>
           <thead>
             <tr>
-              <th>Gerät</th>
+              <th>{terms.device}</th>
               <th>Kategorie</th>
               <th className="num">Verfügbar</th>
               <th className="num">Gesamt</th>
@@ -120,7 +122,7 @@ export function DevicesPage() {
                     className="secondary sm"
                     onClick={() => setPieceDevice(device)}
                   >
-                    Stücke
+                    {terms.units}
                   </button>
                 </td>
               </tr>
@@ -128,7 +130,7 @@ export function DevicesPage() {
             {devices?.length === 0 && (
               <tr>
                 <td colSpan={7} className="empty">
-                  Keine Geräte gefunden.
+                  Keine {terms.devices} gefunden.
                 </td>
               </tr>
             )}

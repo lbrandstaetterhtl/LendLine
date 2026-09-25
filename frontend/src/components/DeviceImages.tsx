@@ -1,10 +1,11 @@
-import type { BorrowRequest, DeviceStatus, Period } from "../types";
+import type { BorrowRequest, DeviceStatus, FormField, Period, RequestForm } from "../types";
 
 import type { KeyboardEvent } from "react";
 import { useMemo, useRef, useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
 import { requestStatusLabel, toLocalInput } from "../types";
 import { Icon } from "./icons";
 import { DeviceBadge } from "./StatusBadge";
@@ -196,6 +197,9 @@ export function PieceCalendarDialog({
   const [startsAt, setStartsAt] = useState(period?.startsAt ?? "");
   const [desiredUntil, setDesiredUntil] = useState(period?.desiredUntil ?? "");
   const [comment, setComment] = useState("");
+  const [fieldValues, setFieldValues] = useState<Record<string, string | boolean>>({});
+  const { data: form } = useApi<RequestForm>("/api/settings/request-form");
+  const terms = useTerms();
   const [formError, setFormError] = useState("");
   const [info, setInfo] = useState("");
   const [requestOpen, setRequestOpen] = useState(false);
@@ -311,15 +315,25 @@ export function PieceCalendarDialog({
     try {
       await api("/api/requests", {
         method: "POST",
-        body: JSON.stringify({ unitId: current.id, roomId, startsAt, desiredUntil, comment }),
+        body: JSON.stringify({
+          unitId: current.id,
+          roomId: form?.room === "hidden" ? "" : roomId,
+          startsAt,
+          desiredUntil,
+          comment: form?.comment === "hidden" ? "" : comment,
+          fields: fieldValues,
+        }),
       });
       reloadCalendar();
       reloadMyRequests();
       onRequested?.();
       setInfo(
-        "Anfrage gesendet. Die Verwaltung prüft sie. Den Stand sehen Sie unter „Meine Anfragen“."
+        form?.autoApprove
+          ? "Ausleihe bestätigt. Die Bestätigung erhalten Sie auch per E-Mail."
+          : "Anfrage gesendet. Die Verwaltung prüft sie. Den Stand sehen Sie unter „Meine Anfragen“."
       );
       setComment("");
+      setFieldValues({});
       setRequestOpen(false);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Anfrage fehlgeschlagen");
@@ -329,10 +343,15 @@ export function PieceCalendarDialog({
   }
 
   const monthLabel = cursor.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+  // The server refuses longer loans; the picker already stops at the limit.
+  const latestEnd =
+    form && startsAt
+      ? toLocalInput(new Date(new Date(startsAt).getTime() + form.maxDays * 24 * 60 * 60 * 1000))
+      : undefined;
 
   return (
     <Modal
-      title={`Stück ${current.serialNumber}`}
+      title={`${terms.unit} ${current.serialNumber}`}
       description={
         <>
           {deviceName} · <DeviceBadge status={current.status} />
@@ -354,7 +373,7 @@ export function PieceCalendarDialog({
             </strong>
           </div>
           {unitBusy(current, highlight) ? (
-            <span className="muted small">Dieses Stück ist in diesem Zeitraum schon belegt.</span>
+            <span className="muted small">In diesem Zeitraum schon belegt.</span>
           ) : (
             <button type="button" onClick={() => openRequest(highlight, chosen?.roomId)}>
               Für diesen Zeitraum anfragen
@@ -481,9 +500,7 @@ export function PieceCalendarDialog({
         <h2>Zeiträume</h2>
       </div>
       <ul className="period-list">
-        {current.bookings.length === 0 && (
-          <li className="muted">Keine Buchungen für dieses Stück.</li>
-        )}
+        {current.bookings.length === 0 && <li className="muted">Noch keine Buchungen.</li>}
         {current.bookings.map((booking) => (
           <li key={booking.id}>
             <span>
@@ -498,7 +515,7 @@ export function PieceCalendarDialog({
       {requestOpen && (
         <Modal
           title="Ausleihe anfragen"
-          description={`${deviceName} · Stück ${current.serialNumber}`}
+          description={`${deviceName} · ${terms.unit} ${current.serialNumber}`}
           onClose={() => setRequestOpen(false)}
           size="sm"
           footer={
@@ -535,45 +552,139 @@ export function PieceCalendarDialog({
                 id="cal-until"
                 type="datetime-local"
                 min={startsAt}
+                max={latestEnd}
                 value={desiredUntil}
                 onChange={(event) => setDesiredUntil(event.target.value)}
                 required
               />
             </Field>
-            <Field
-              label="Raum"
-              htmlFor="cal-room"
-              className="span-full"
-              hint="Wo das Gerät eingesetzt wird."
-            >
-              <select
-                id="cal-room"
-                value={roomId}
-                onChange={(event) => setRoomId(event.target.value)}
-                required
+            {form?.room !== "hidden" && (
+              <Field
+                label={terms.room}
+                htmlFor="cal-room"
+                className="span-full"
+                optional={form?.room === "optional"}
+                hint="Wo es eingesetzt wird."
               >
-                <option value="">Raum wählen…</option>
-                {rooms.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    {room.name}
-                    {room.building ? ` · ${room.building}` : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Kommentar" htmlFor="cal-comment" optional className="span-full">
-              <textarea
-                id="cal-comment"
-                value={comment}
-                onChange={(event) => setComment(event.target.value)}
-                maxLength={1000}
-                placeholder="z. B. Zweck oder Zubehörwunsch"
+                <select
+                  id="cal-room"
+                  value={roomId}
+                  onChange={(event) => setRoomId(event.target.value)}
+                  required={form?.room !== "optional"}
+                >
+                  <option value="">{terms.room} wählen…</option>
+                  {rooms.map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.name}
+                      {room.building ? ` · ${room.building}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {form?.fields.map((field) => (
+              <CustomField
+                key={field.id}
+                field={field}
+                value={fieldValues[field.id]}
+                onChange={(value) => setFieldValues((values) => ({ ...values, [field.id]: value }))}
               />
-            </Field>
+            ))}
+            {form?.comment !== "hidden" && (
+              <Field
+                label={form?.commentLabel ?? "Kommentar"}
+                htmlFor="cal-comment"
+                optional={form?.comment !== "required"}
+                className="span-full"
+              >
+                <textarea
+                  id="cal-comment"
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  maxLength={1000}
+                  required={form?.comment === "required"}
+                  placeholder={form?.commentHint ?? "z. B. Zweck oder Zubehörwunsch"}
+                />
+              </Field>
+            )}
           </form>
         </Modal>
       )}
     </Modal>
+  );
+}
+
+/**
+ * One of the company's own request fields (settings → Anfrageformular).
+ */
+function CustomField({
+  field,
+  value,
+  onChange,
+}: {
+  field: FormField;
+  value: string | boolean | undefined;
+  onChange: (value: string | boolean) => void;
+}) {
+  const id = `cal-field-${field.id}`;
+  if (field.type === "checkbox") {
+    return (
+      <div className="field span-full">
+        <label className="check" htmlFor={id}>
+          <input
+            id={id}
+            type="checkbox"
+            checked={value === true}
+            required={field.required}
+            onChange={(event) => onChange(event.target.checked)}
+          />
+          {field.label}
+        </label>
+        {field.hint && <p className="hint">{field.hint}</p>}
+      </div>
+    );
+  }
+  const text = typeof value === "string" ? value : "";
+  return (
+    <Field
+      label={field.label}
+      htmlFor={id}
+      optional={!field.required}
+      hint={field.hint || undefined}
+      className="span-full"
+    >
+      {field.type === "select" ? (
+        <select
+          id={id}
+          value={text}
+          required={field.required}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">Bitte wählen…</option>
+          {field.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      ) : field.type === "textarea" ? (
+        <textarea
+          id={id}
+          value={text}
+          maxLength={500}
+          required={field.required}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : (
+        <input
+          id={id}
+          value={text}
+          maxLength={500}
+          required={field.required}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+    </Field>
   );
 }
 
@@ -586,6 +697,7 @@ export function PieceListDialog({
   name: string;
   onClose: () => void;
 }) {
+  const terms = useTerms();
   const [selected, setSelected] = useState<CalendarUnit | null>(null);
   const { data, error } = useApi<{ units: CalendarUnit[] }>(`/api/devices/${deviceId}/calendar`);
   const units = data?.units;
@@ -593,7 +705,7 @@ export function PieceListDialog({
   return (
     <Modal
       title={name}
-      description="Stücke dieses Geräts. Öffnen Sie den Kalender, um ein Stück anzufragen."
+      description={`Alle ${terms.units}. Zum Anfragen den Kalender öffnen.`}
       onClose={onClose}
     >
       <Alert>{error}</Alert>
@@ -612,7 +724,7 @@ export function PieceListDialog({
             {units?.length === 0 && (
               <tr>
                 <td colSpan={3} className="empty">
-                  Keine Stücke vorhanden.
+                  Keine {terms.units} vorhanden.
                 </td>
               </tr>
             )}

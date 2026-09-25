@@ -20,6 +20,8 @@ export const goShortcuts: GoShortcut[] = [
   { key: "b", to: "/admin/users", label: "Benutzer", admin: true },
   { key: "p", to: "/admin/protokoll", label: "Protokoll", admin: true },
   { key: "e", to: "/admin/erscheinungsbild", label: "Erscheinungsbild", admin: true },
+  { key: "i", to: "/admin/einstellungen", label: "Einstellungen", admin: true },
+  { key: "v", to: "/admin/emails", label: "E-Mail-Vorlagen", admin: true },
   { key: "w", to: "/admin/wartung", label: "Wartung", admin: true },
 ];
 

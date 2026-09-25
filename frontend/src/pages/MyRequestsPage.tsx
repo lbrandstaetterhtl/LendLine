@@ -3,7 +3,10 @@ import type { BorrowRequest, RequestStatus } from "../types";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { useApi } from "../api/useApi";
+import { api } from "../api/client";
+import { errorMessage, useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
+import { FieldAnswers } from "../components/FieldAnswers";
 import { Icon } from "../components/icons";
 import { RequestBadge } from "../components/StatusBadge";
 import { Alert, PageHeader } from "../components/ui";
@@ -18,13 +21,30 @@ const filters: { value: Filter; label: string; matches: (status: RequestStatus) 
   {
     value: "DONE",
     label: "Abgeschlossen",
-    matches: (status) => status === "REJECTED" || status === "RETURNED",
+    matches: (status) => status === "REJECTED" || status === "RETURNED" || status === "CANCELLED",
   },
 ];
 
 export function MyRequestsPage() {
-  const { data: all, error } = useApi<BorrowRequest[]>("/api/requests/mine");
+  const { data: all, error, reload } = useApi<BorrowRequest[]>("/api/requests/mine");
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [actionError, setActionError] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const terms = useTerms();
+
+  async function cancel(item: BorrowRequest) {
+    if (!window.confirm(`Anfrage für „${item.device.name}“ zurückziehen?`)) return;
+    setBusy(item.id);
+    setActionError("");
+    try {
+      await api(`/api/requests/${item.id}/cancel`, { method: "POST" });
+      reload();
+    } catch (err) {
+      setActionError(errorMessage(err, "Zurückziehen fehlgeschlagen"));
+    } finally {
+      setBusy(null);
+    }
+  }
   const matches = filters.find((item) => item.value === filter)?.matches ?? (() => true);
   const requests = all?.filter((item) => matches(item.status));
 
@@ -32,14 +52,14 @@ export function MyRequestsPage() {
     <>
       <PageHeader
         title="Meine Anfragen"
-        description="Offen: Die Verwaltung hat noch nicht entschieden. Bestätigt: Das Stück ist für Sie reserviert."
+        description="Offen: Die Verwaltung hat noch nicht entschieden. Bestätigt: für Sie reserviert."
         actions={
           <Link className="btn" to="/search">
             <Icon name="plus" /> Neue Anfrage
           </Link>
         }
       />
-      <Alert>{error}</Alert>
+      <Alert>{error || actionError}</Alert>
       <fieldset className="segmented">
         <legend className="sr-only">Nach Status filtern</legend>
         {filters.map((item) => (
@@ -60,12 +80,15 @@ export function MyRequestsPage() {
         <table>
           <thead>
             <tr>
-              <th>Gerät</th>
+              <th>{terms.device}</th>
               <th>Status</th>
               <th>Zeitraum</th>
-              <th>Raum</th>
+              <th>{terms.room}</th>
               <th>Angefragt</th>
               <th>Hinweis</th>
+              <th>
+                <span className="sr-only">Aktionen</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -82,22 +105,35 @@ export function MyRequestsPage() {
                   {formatDate(item.startsAt)}
                   <div className="muted">bis {formatDate(item.desiredUntil)}</div>
                 </td>
-                <td>{item.room?.name || "–"}</td>
+                <td>{item.room && item.room.id !== "room-unassigned" ? item.room.name : "–"}</td>
                 <td className="muted nowrap">{formatDate(item.requestedAt)}</td>
                 <td className="muted">
                   {item.rejectionReason ||
                     (item.returnedAt
                       ? `Zurückgegeben ${formatDate(item.returnedAt)}`
-                      : item.comment || "–")}
+                      : item.comment || (item.fields?.length ? "" : "–"))}
+                  <FieldAnswers fields={item.fields} />
+                </td>
+                <td className="nowrap">
+                  {item.status === "OPEN" && (
+                    <button
+                      type="button"
+                      className="ghost sm"
+                      disabled={busy !== null}
+                      onClick={() => void cancel(item)}
+                    >
+                      {busy === item.id ? "…" : "Zurückziehen"}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
             {requests?.length === 0 && (
               <tr>
-                <td colSpan={6} className="empty">
+                <td colSpan={7} className="empty">
                   {all?.length === 0 ? (
                     <>
-                      Noch keine Anfragen. <Link to="/search">Jetzt ein Stück suchen</Link>
+                      Noch keine Anfragen. <Link to="/search">Jetzt suchen</Link>
                     </>
                   ) : (
                     "Keine Anfragen mit diesem Status."

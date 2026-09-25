@@ -7,7 +7,7 @@ import { api } from "../api/client";
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Icon } from "../components/icons";
-import { Alert, Field, Modal, PageHeader } from "../components/ui";
+import { Alert, Field, Modal, PageHeader, refreshNav } from "../components/ui";
 
 type ManagedUser = {
   id: string;
@@ -62,6 +62,39 @@ export function AdminUsersPage() {
       reload();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+    }
+  }
+
+  /**
+   * Immediate measures for a misused or compromised account.
+   */
+  async function emergency(user: ManagedUser, action: "sessions" | "requests") {
+    const question =
+      action === "sessions"
+        ? `„${user.name}“ auf allen Geräten sofort abmelden?`
+        : `Alle offenen Anfragen von „${user.name}“ ablehnen? Es werden keine E-Mails verschickt.`;
+    if (!window.confirm(question)) return;
+    setFormError("");
+    try {
+      if (action === "sessions") {
+        const result = await api<{ revoked: number }>(`/api/users/${user.id}/sessions/revoke`, {
+          method: "POST",
+        });
+        setInfo(`„${user.name}“ abgemeldet (${result.revoked} Sitzungen).`);
+      } else {
+        const result = await api<{ rejected: number }>(
+          `/api/users/${user.id}/requests/reject-open`,
+          {
+            method: "POST",
+            body: JSON.stringify({ reason: "Von der Verwaltung gesammelt abgelehnt" }),
+          }
+        );
+        setInfo(`${result.rejected} offene Anfragen von „${user.name}“ abgelehnt.`);
+        refreshNav();
+      }
+      setEditor(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Aktion fehlgeschlagen");
     }
   }
 
@@ -235,6 +268,31 @@ export function AdminUsersPage() {
               </select>
             </Field>
           </form>
+          {editing && editing.id !== me?.id && (
+            <div className="modal-section">
+              <h3>Sofortmaßnahmen</h3>
+              <p className="muted small">
+                Bei Verdacht auf Missbrauch: Die Person verliert sofort den Zugang bzw. ihre offenen
+                Anfragen blockieren keine Stücke mehr.
+              </p>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="secondary sm"
+                  onClick={() => void emergency(editing, "sessions")}
+                >
+                  Überall abmelden
+                </button>
+                <button
+                  type="button"
+                  className="danger sm"
+                  onClick={() => void emergency(editing, "requests")}
+                >
+                  Offene Anfragen ablehnen
+                </button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
     </>

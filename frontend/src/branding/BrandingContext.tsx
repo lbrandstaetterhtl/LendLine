@@ -1,12 +1,50 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client";
-import { accentCss } from "./palette";
+import { type Appearance, appearanceCss } from "./appearance";
+
+export type Terms = {
+  subtitle: string;
+  catalog: string;
+  device: string;
+  devices: string;
+  unit: string;
+  units: string;
+  room: string;
+  rooms: string;
+};
 
 export type Branding = {
   accent: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
+  faviconUrl: string | null;
+  loginImageUrl: string | null;
+  appearance: Appearance;
+  terms: Terms;
+  login: { title: string; text: string };
+};
+
+export const DEFAULT_TERMS: Terms = {
+  subtitle: "IT-Geräteausleihe",
+  catalog: "Gerätekatalog",
+  device: "Gerät",
+  devices: "Geräte",
+  unit: "Stück",
+  units: "Stücke",
+  room: "Raum",
+  rooms: "Räume",
+};
+
+const DEFAULT: Branding = {
+  accent: null,
+  logoUrl: null,
+  logoDarkUrl: null,
+  faviconUrl: null,
+  loginImageUrl: null,
+  appearance: { font: "standard", fontSize: "normal", radius: "standard", sidebar: "standard" },
+  terms: DEFAULT_TERMS,
+  login: { title: "Anmelden", text: "" },
 };
 
 type BrandingContextValue = {
@@ -17,24 +55,32 @@ type BrandingContextValue = {
   setBranding: (branding: Branding) => void;
 };
 
-const DEFAULT: Branding = { accent: null, logoUrl: null, logoDarkUrl: null };
-
-// index.html reads CSS_KEY before the first paint; keep both names in sync with it.
+// index.html reads CSS_KEY and ICON_KEY before the first paint; keep the names in sync with it.
 const STORAGE_KEY = "lendline-branding";
 const CSS_KEY = "lendline-branding-css";
+const ICON_KEY = "lendline-branding-icon";
 const STYLE_ID = "lendline-branding";
+const DEFAULT_ICON = "/favicon.svg";
 
 function readCached(): Branding {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...DEFAULT, ...(JSON.parse(raw) as Partial<Branding>) } : DEFAULT;
+    if (!raw) return DEFAULT;
+    const cached = JSON.parse(raw) as Partial<Branding>;
+    // A cache from an older version lacks the newer groups.
+    return {
+      ...DEFAULT,
+      ...cached,
+      appearance: { ...DEFAULT.appearance, ...cached.appearance },
+      terms: { ...DEFAULT_TERMS, ...cached.terms },
+      login: { ...DEFAULT.login, ...cached.login },
+    };
   } catch {
     return DEFAULT;
   }
 }
 
-function applyAccent(accent: string | null): string {
-  const css = accent ? accentCss(accent) : "";
+function applyCss(css: string): void {
   let style = document.getElementById(STYLE_ID);
   if (!style) {
     style = document.createElement("style");
@@ -42,7 +88,15 @@ function applyAccent(accent: string | null): string {
     document.head.append(style);
   }
   style.textContent = css;
-  return css;
+}
+
+function applyIcon(url: string | null): void {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) return;
+  link.href = url ?? DEFAULT_ICON;
+  // An SVG type on a PNG icon makes some browsers ignore it.
+  if (url) link.removeAttribute("type");
+  else link.type = "image/svg+xml";
 }
 
 function store(branding: Branding, css: string): void {
@@ -50,6 +104,8 @@ function store(branding: Branding, css: string): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(branding));
     if (css) localStorage.setItem(CSS_KEY, css);
     else localStorage.removeItem(CSS_KEY);
+    if (branding.faviconUrl) localStorage.setItem(ICON_KEY, branding.faviconUrl);
+    else localStorage.removeItem(ICON_KEY);
   } catch {
     // Storage blocked: the branding still loads from the API, just after the first paint.
   }
@@ -62,7 +118,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
 
   const setBranding = useCallback((next: Branding) => {
     setState(next);
-    store(next, applyAccent(next.accent));
+    const css = appearanceCss(next.accent, next.appearance);
+    applyCss(css);
+    applyIcon(next.faviconUrl);
+    store(next, css);
   }, []);
 
   useEffect(() => {
@@ -88,4 +147,11 @@ export function useBranding(): BrandingContextValue {
   const ctx = useContext(BrandingContext);
   if (!ctx) throw new Error("BrandingProvider fehlt");
   return ctx;
+}
+
+/**
+ * The company's words for devices, pieces and rooms.
+ */
+export function useTerms(): Terms {
+  return useBranding().branding.terms;
 }

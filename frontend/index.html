@@ -13,13 +13,19 @@
       try {
         var theme = localStorage.getItem("lendline-theme");
         if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-        // Company accent colour, cached by src/branding/BrandingContext.tsx.
+        // Company colours, font and icon, cached by src/branding/BrandingContext.tsx.
         var brandingCss = localStorage.getItem("lendline-branding-css");
         if (brandingCss) {
           var style = document.createElement("style");
           style.id = "lendline-branding";
           style.textContent = brandingCss;
           document.head.appendChild(style);
+        }
+        var brandingIcon = localStorage.getItem("lendline-branding-icon");
+        var iconLink = document.querySelector('link[rel="icon"]');
+        if (brandingIcon && iconLink) {
+          iconLink.removeAttribute("type");
+          iconLink.href = brandingIcon;
         }
       } catch (error) {}
     </script>

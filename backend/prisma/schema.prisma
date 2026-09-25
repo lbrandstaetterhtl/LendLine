@@ -28,6 +28,8 @@ enum RequestStatus {
   APPROVED
   REJECTED
   RETURNED
+  /// Withdrawn by the requester before a decision.
+  CANCELLED
 }
 
 model User {
@@ -110,6 +112,9 @@ model BorrowRequest {
   returnedAt      DateTime?
   comment         String        @default("")
   rejectionReason String        @default("")
+  cancelledAt     DateTime?
+  /// Answers to the company's own form fields, as [{ label, value }] at the time of the request.
+  fields          Json          @default("[]")
   user            User          @relation(fields: [userId], references: [id])
   device          Device        @relation(fields: [deviceId], references: [id])
   unit            DeviceUnit?   @relation(fields: [unitId], references: [id])

@@ -17,6 +17,7 @@ import {
   register,
 } from "../services/authService.js";
 import { getMaintenance } from "../services/maintenanceService.js";
+import { getSetting } from "../services/settingsService.js";
 import { changePasswordSchema, loginSchema, registerSchema } from "../validators/auth.js";
 
 export const REFRESH_COOKIE = "refreshToken";
@@ -66,10 +67,14 @@ authRouter.get(
   "/options",
   asyncHandler(async (_req, res) => {
     const maintenance = await getMaintenance();
+    const { registration } = await getSetting("policy");
     res.json({
       ldapEnabled: config.ldap.enabled,
       allowLocalRegister:
-        !maintenance.enabled && (!config.ldap.enabled || config.ldap.allowLocalRegister),
+        registration.enabled &&
+        !maintenance.enabled &&
+        (!config.ldap.enabled || config.ldap.allowLocalRegister),
+      registrationDomains: registration.domains,
       // Public: only what the login page shows, not who switched it on.
       maintenance: maintenance.enabled
         ? { enabled: true, message: maintenance.message, until: maintenance.until }

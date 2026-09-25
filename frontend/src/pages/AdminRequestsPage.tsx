@@ -5,10 +5,13 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
+import { FieldAnswers } from "../components/FieldAnswers";
 import { Alert, Field, Modal, PageHeader, refreshNav } from "../components/ui";
 import { formatDate } from "../types";
 
 export function AdminRequestsPage() {
+  const terms = useTerms();
   const {
     data: requests,
     error: loadError,
@@ -62,7 +65,7 @@ export function AdminRequestsPage() {
     <>
       <PageHeader
         title="Offene Anfragen"
-        description="Bestätigen reserviert das angefragte Stück. Ablehnungen brauchen einen Grund, der per E-Mail mitgeschickt wird."
+        description="Bestätigen reserviert die Anfrage. Ablehnungen brauchen einen Grund, der per E-Mail mitgeschickt wird."
       />
       <Alert>{error || loadError}</Alert>
       <Alert tone="ok">{info}</Alert>
@@ -70,10 +73,10 @@ export function AdminRequestsPage() {
         <table>
           <thead>
             <tr>
-              <th>Gerät</th>
+              <th>{terms.device}</th>
               <th>Anfragende Person</th>
               <th>Zeitraum</th>
-              <th>Raum</th>
+              <th>{terms.room}</th>
               <th>Kommentar</th>
               <th>
                 <span className="sr-only">Aktionen</span>
@@ -96,7 +99,10 @@ export function AdminRequestsPage() {
                   <div className="muted">bis {formatDate(item.desiredUntil)}</div>
                 </td>
                 <td>{item.room?.name || "–"}</td>
-                <td className="muted">{item.comment || "–"}</td>
+                <td className="muted">
+                  {item.comment || (item.fields?.length ? "" : "–")}
+                  <FieldAnswers fields={item.fields} />
+                </td>
                 <td className="actions-cell">
                   <div className="actions">
                     <button

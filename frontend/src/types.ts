@@ -1,6 +1,6 @@
 export type Role = "USER" | "ADMIN";
 export type DeviceStatus = "AVAILABLE" | "BORROWED" | "DEFECTIVE";
-export type RequestStatus = "OPEN" | "APPROVED" | "REJECTED" | "RETURNED";
+export type RequestStatus = "OPEN" | "APPROVED" | "REJECTED" | "RETURNED" | "CANCELLED";
 
 export type User = {
   id: string;
@@ -42,6 +42,11 @@ export type BorrowRequest = {
   returnedAt: string | null;
   comment: string;
   rejectionReason: string;
+  cancelledAt?: string | null;
+  /**
+   * Answers to the company's own form fields, with the labels they had at the time.
+   */
+  fields?: { label: string; value: string }[];
   user: { id: string; name: string; email: string };
   room?: { id: string; name: string; building: string };
   device: {
@@ -64,12 +69,37 @@ export const requestStatusLabel: Record<RequestStatus, string> = {
   APPROVED: "Bestätigt",
   REJECTED: "Abgelehnt",
   RETURNED: "Zurückgegeben",
+  CANCELLED: "Zurückgezogen",
 };
 
 /**
  * A period as entered in `<input type="datetime-local">` (`YYYY-MM-DDTHH:MM`).
  */
 export type Period = { startsAt: string; desiredUntil: string };
+
+export type FormFieldMode = "required" | "optional" | "hidden";
+
+export type FormField = {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "checkbox";
+  required: boolean;
+  options: string[];
+  hint: string;
+};
+
+/**
+ * The company's request form (GET /api/settings/request-form).
+ */
+export type RequestForm = {
+  room: FormFieldMode;
+  comment: FormFieldMode;
+  commentLabel: string;
+  commentHint: string;
+  fields: FormField[];
+  maxDays: number;
+  autoApprove: boolean;
+};
 
 /**
  * Formats a date for `<input type="datetime-local">` (`YYYY-MM-DDTHH:MM`, local time).

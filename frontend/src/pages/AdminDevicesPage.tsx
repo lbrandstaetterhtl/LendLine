@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
 import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceImages";
 import { Icon } from "../components/icons";
@@ -22,6 +23,7 @@ const emptyForm = (): DeviceForm => ({
 });
 
 export function AdminDevicesPage() {
+  const terms = useTerms();
   const { data: devices, error: loadError, reload } = useApi<Device[]>("/api/devices");
   const [form, setForm] = useState<DeviceForm>(emptyForm);
   // null: closed; id null: creating; id set: editing that record.
@@ -131,7 +133,7 @@ export function AdminDevicesPage() {
   return (
     <>
       <PageHeader
-        title="Geräte"
+        title={terms.devices}
         description="Ein Gerät ist ein Modell. Jedes Stück hat eine eigene Seriennummer und einen eigenen Status."
         actions={
           <button type="button" onClick={openNew} data-shortcut="new" title="Tastenkürzel: n">

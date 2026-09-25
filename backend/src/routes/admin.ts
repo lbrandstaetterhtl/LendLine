@@ -3,22 +3,25 @@ import type { Request } from "express";
 import { Router } from "express";
 import { z } from "zod";
 
+import { mailContext, previewTemplate } from "../emails/templates.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { HttpError } from "../lib/errors.js";
 import { routeParam } from "../lib/params.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
-import { uploadLogo } from "../middleware/upload.js";
+import { uploadBrandingImage } from "../middleware/upload.js";
 import { validateBody } from "../middleware/validate.js";
 import { adminSummary } from "../services/adminSummaryService.js";
 import { listAudit, listAuditActors } from "../services/auditService.js";
 import {
-  type LogoVariant,
-  logoVariants,
-  removeLogo,
-  setAccent,
-  setLogo,
+  brandingPatchSchema,
+  type ImageSlot,
+  imageSlots,
+  removeImage,
+  setImage,
+  updateBranding,
 } from "../services/brandingService.js";
 import { setMaintenance } from "../services/maintenanceService.js";
+import { mailSchema, getSetting, setSetting } from "../services/settingsService.js";
 import { maintenanceTasks, runMaintenanceTask, systemStatus } from "../services/systemService.js";
 import { auditQuerySchema } from "../validators/audit.js";
 
@@ -33,18 +36,10 @@ const maintenanceSchema = z.object({
     .transform((value) => (value ? new Date(value).toISOString() : null)),
 });
 
-const brandingSchema = z.object({
-  accent: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Farbe im Format #RRGGBB angeben")
-    .transform((value) => value.toLowerCase())
-    .nullable(),
-});
-
-function logoVariant(req: Request): LogoVariant {
-  const variant = logoVariants.find((name) => name === routeParam(req, "variant"));
-  if (!variant) throw new HttpError(404, "Unbekannte Logo-Variante");
-  return variant;
+function imageSlot(req: Request): ImageSlot {
+  const slot = imageSlots.find((name) => name === routeParam(req, "slot"));
+  if (!slot) throw new HttpError(404, "Unbekanntes Bild");
+  return slot;
 }
 
 export const adminRouter = Router();
@@ -96,30 +91,61 @@ adminRouter.post(
   })
 );
 
+const settingKeys = ["policy", "mail"] as const;
+
+function settingKey(req: Request) {
+  const key = settingKeys.find((name) => name === routeParam(req, "key"));
+  if (!key) throw new HttpError(404, "Unbekannte Einstellung");
+  return key;
+}
+
+// Before the generic route: shows unsaved mail settings with sample data.
+adminRouter.post(
+  "/settings/mail/preview",
+  asyncHandler(async (req, res) => {
+    const ctx = await mailContext();
+    res.json(previewTemplate({ ...ctx, settings: mailSchema.parse(req.body) }));
+  })
+);
+
+adminRouter.get(
+  "/settings/:key",
+  asyncHandler(async (req, res) => {
+    res.json(await getSetting(settingKey(req)));
+  })
+);
+
+adminRouter.put(
+  "/settings/:key",
+  asyncHandler(async (req, res) => {
+    res.json(await setSetting(settingKey(req), req.body, req.user!.id));
+  })
+);
+
 adminRouter.put(
   "/branding",
-  validateBody(brandingSchema),
+  validateBody(brandingPatchSchema),
   asyncHandler(async (req, res) => {
-    res.json(await setAccent(req.body.accent, req.user!.id));
+    res.json(await updateBranding(req.body, req.user!.id));
   })
 );
 
 adminRouter.post(
-  "/branding/logo/:variant",
+  "/branding/image/:slot",
   // Checked before multer writes the file, so a wrong URL leaves nothing on disk.
   (req, _res, next) => {
-    logoVariant(req);
+    imageSlot(req);
     next();
   },
-  uploadLogo,
+  uploadBrandingImage,
   asyncHandler(async (req, res) => {
-    res.json(await setLogo(logoVariant(req), req.file, req.user!.id));
+    res.json(await setImage(imageSlot(req), req.file, req.user!.id));
   })
 );
 
 adminRouter.delete(
-  "/branding/logo/:variant",
+  "/branding/image/:slot",
   asyncHandler(async (req, res) => {
-    res.json(await removeLogo(logoVariant(req), req.user!.id));
+    res.json(await removeImage(imageSlot(req), req.user!.id));
   })
 );

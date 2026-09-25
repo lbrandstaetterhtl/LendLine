@@ -49,7 +49,17 @@ LDAP_BASE_DN=ou=people,dc=example,dc=edu
 LDAP_ADMIN_GROUP=CN=LendLine-Admins,OU=Groups,DC=example,DC=edu
 ```
 
-Die Anmeldung akzeptiert dann E-Mail, `sAMAccountName` oder `uid`. Ein Treffer wird lokal angelegt (`authSource=LDAP`). Die Rolle kommt aus `LDAP_ADMIN_GROUP` (`memberOf`), sofern gesetzt. Lokale Demo-Konten bleiben gültig, wenn der Benutzer im Verzeichnis nicht gefunden wird. `LDAP_ALLOW_LOCAL_REGISTER=false` schaltet die Selbstregistrierung ab.
+Die Anmeldung akzeptiert dann E-Mail, `sAMAccountName` oder `uid`. Ein Treffer wird lokal angelegt (`authSource=LDAP`). Die Rolle kommt aus `LDAP_ADMIN_GROUP` (`memberOf`), sofern gesetzt. `LDAP_ADMIN_GROUP` muss vollständige DNs enthalten, mehrere werden mit `;` getrennt; ein bloßer Gruppenname verhindert den Start. In Produktion (`NODE_ENV=production`) startet die API nur mit `ldaps://` und geprüftem Zertifikat, außer mit `LDAP_ALLOW_INSECURE=true`. Lokale Demo-Konten bleiben gültig, wenn der Benutzer im Verzeichnis nicht gefunden wird. `LDAP_ALLOW_LOCAL_REGISTER=false` schaltet die Selbstregistrierung ab.
+
+## Anpassen
+
+Alles Firmenspezifische stellt die Verwaltung in der Oberfläche ein, ohne Neustart:
+
+- **Erscheinungsbild:** Logo (hell/dunkel), Akzentfarbe, Schrift, Schriftgröße, Ecken, Seitenleiste, Browser-Symbol, eigene Begriffe (z. B. „Ausrüstung“ statt „Gerät“), Überschrift, Text und Bild der Anmeldeseite.
+- **Einstellungen:** Selbstregistrierung (standardmäßig **aus**, optional nur für bestimmte E-Mail-Domains), Höchstdauer einer Ausleihe, offene Anfragen pro Person, automatische Bestätigung, Anfrageformular (Raum und Kommentar Pflicht/optional/ausgeblendet, bis zu 10 eigene Felder).
+- **E-Mails:** Absendername, Logo, Anrede, Signatur, Fußzeile und ein eigener Text je Nachricht, mit Vorschau.
+
+Konten legt die Verwaltung unter „Benutzer“ an. Das dabei vergebene Passwort ist vorläufig: Bei der ersten Anmeldung muss die Person ein eigenes festlegen. Unter „Mein Konto“ kann jede Person ihr Passwort selbst ändern.
 
 ## Demo-Konten
 
@@ -57,6 +67,8 @@ Die Anmeldung akzeptiert dann E-Mail, `sAMAccountName` oder `uid`. Ein Treffer w
 | ---------- | -------------------- | ---------- |
 | Verwaltung | admin@lendline.local | Admin123!  |
 | Nutzer     | user@lendline.local  | User12345! |
+
+Der Demo-Seed läuft nur, solange `FRONTEND_ORIGIN` auf `localhost` zeigt (für eine Test-Installation: `ALLOW_DEMO_SEED=true`).
 
 ## E-Mail
 

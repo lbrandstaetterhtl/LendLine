@@ -5,6 +5,7 @@ import { asyncHandler } from "../lib/asyncHandler.js";
 import { routeParam } from "../lib/params.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
+import { rejectOpenRequestsOfUser } from "../services/requestService.js";
 import {
   createUser,
   deleteUser,
@@ -14,6 +15,7 @@ import {
   updateUser,
 } from "../services/userAdminService.js";
 import { newPassword } from "../validators/auth.js";
+import { rejectOpenSchema } from "../validators/request.js";
 
 const role = z.enum(["USER", "ADMIN"]);
 
@@ -69,6 +71,14 @@ userRouter.get(
   "/:id/profile",
   asyncHandler(async (req, res) => {
     res.json(await getUserProfile(routeParam(req, "id")));
+  })
+);
+
+userRouter.post(
+  "/:id/requests/reject-open",
+  validateBody(rejectOpenSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await rejectOpenRequestsOfUser(routeParam(req, "id"), req.body.reason, req.user!.id));
   })
 );
 

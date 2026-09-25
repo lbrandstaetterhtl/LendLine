@@ -6,6 +6,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { asyncHandler } from "./lib/asyncHandler.js";
 import { requestContext } from "./lib/requestContext.js";
+import { requireAuth } from "./middleware/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { adminRouter } from "./routes/admin.js";
 import { authRouter } from "./routes/auth.js";
@@ -15,6 +16,7 @@ import { requestRouter } from "./routes/requests.js";
 import { roomRouter } from "./routes/rooms.js";
 import { userRouter } from "./routes/users.js";
 import { getBranding } from "./services/brandingService.js";
+import { requestFormConfig } from "./services/settingsService.js";
 
 export function createApp() {
   const app = express();
@@ -56,6 +58,13 @@ export function createApp() {
     "/api/branding",
     asyncHandler(async (_req, res) => {
       res.json(await getBranding());
+    })
+  );
+  app.get(
+    "/api/settings/request-form",
+    requireAuth,
+    asyncHandler(async (_req, res) => {
+      res.json(await requestFormConfig());
     })
   );
   app.use("/api/auth", authRouter);

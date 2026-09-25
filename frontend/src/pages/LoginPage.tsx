@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { useBranding } from "../branding/BrandingContext";
 import { BrandLogo } from "../components/Logo";
 import { Alert, Field } from "../components/ui";
 import { formatDate } from "../types";
@@ -22,8 +23,10 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const { data: options } = useApi<AuthOptions>("/api/auth/options");
+  const { login: texts, loginImageUrl } = useBranding().branding;
   const ldapEnabled = options?.ldapEnabled ?? false;
-  const allowRegister = options?.allowLocalRegister ?? true;
+  // Off until the server says otherwise: registration is closed by default.
+  const allowRegister = options?.allowLocalRegister ?? false;
   const maintenance = options?.maintenance.enabled ? options.maintenance : null;
 
   async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
@@ -41,12 +44,16 @@ export function LoginPage() {
   }
 
   return (
-    <div className="auth-wrap">
+    <div className={`auth-wrap${loginImageUrl ? " has-image" : ""}`}>
+      {loginImageUrl && (
+        <div className="auth-image" style={{ backgroundImage: `url("${loginImageUrl}")` }} />
+      )}
       <div className="auth-card">
         <div className="auth-brand">
           <BrandLogo height={32} />
         </div>
-        <h1>Anmelden</h1>
+        <h1>{texts.title}</h1>
+        {texts.text && <p className="auth-welcome">{texts.text}</p>}
         <p className="lead">
           {ldapEnabled ? "Mit Ihrem Verzeichnis- oder lokalen Konto." : "Mit Ihrem LendLine-Konto."}
         </p>

@@ -1,0 +1,4 @@
+ALTER TYPE "RequestStatus" ADD VALUE 'CANCELLED';
+
+ALTER TABLE "BorrowRequest" ADD COLUMN "cancelledAt" TIMESTAMP(3);
+ALTER TABLE "BorrowRequest" ADD COLUMN "fields" JSONB NOT NULL DEFAULT '[]';

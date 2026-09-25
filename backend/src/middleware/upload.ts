@@ -36,7 +36,8 @@ const upload = multer({
 });
 
 // Logos may be SVG; `/api/uploads` is served with a CSP that keeps scripts in them from running.
-const logoTypes = new Set([".png", ".jpg", ".jpeg", ".webp", ".svg"]);
+// The content is checked against the extension after the upload (lib/imageSniff.ts).
+const logoTypes = new Set([".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico"]);
 
 const logoUpload = multer({
   storage: multer.diskStorage({
@@ -45,11 +46,12 @@ const logoUpload = multer({
       callback(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`);
     },
   }),
-  limits: { fileSize: 1024 * 1024, files: 1 },
+  // The login picture is usually a photo, hence more than a logo would need.
+  limits: { fileSize: 3 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!file.mimetype.startsWith("image/") || !logoTypes.has(ext)) {
-      callback(new Error("Nur SVG, PNG, JPG oder WEBP"));
+      callback(new Error("Nur SVG, PNG, JPG, WEBP oder ICO"));
       return;
     }
     callback(null, true);
@@ -75,6 +77,6 @@ export function uploadDeviceImages(req: Request, res: Response, next: NextFuncti
   upload.array("images", 8)(req, res, toHttpError(next));
 }
 
-export function uploadLogo(req: Request, res: Response, next: NextFunction) {
-  logoUpload.single("logo")(req, res, toHttpError(next));
+export function uploadBrandingImage(req: Request, res: Response, next: NextFunction) {
+  logoUpload.single("image")(req, res, toHttpError(next));
 }

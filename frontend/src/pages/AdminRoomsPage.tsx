@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
 import { Icon } from "../components/icons";
 import { Alert, Field, Modal, PageHeader } from "../components/ui";
 
@@ -11,6 +12,7 @@ type Room = { id: string; name: string; building: string; description: string };
 const empty = { name: "", building: "", description: "" };
 
 export function AdminRoomsPage() {
+  const terms = useTerms();
   const { data: rooms, error: loadError, reload } = useApi<Room[]>("/api/rooms");
   const [form, setForm] = useState(empty);
   // null: closed; id null: creating; id set: editing that record.
@@ -66,7 +68,7 @@ export function AdminRoomsPage() {
   return (
     <>
       <PageHeader
-        title="Räume"
+        title={terms.rooms}
         description="Jede Ausleihe wird für einen Raum angefragt."
         actions={
           <button type="button" onClick={() => open()} data-shortcut="new" title="Tastenkürzel: n">

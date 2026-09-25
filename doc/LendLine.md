@@ -202,32 +202,36 @@ Adopted from a shared lint bundle and adapted to this project (2026-09-24). Run 
 
 ## 4. Configuration (environment variables)
 
-All read in `backend/src/config.ts`. `DATABASE_URL`, `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are required — the process throws on startup if they are missing.
+All read in `backend/src/config.ts`. `DATABASE_URL` and `JWT_ACCESS_SECRET` are required — the process throws on startup if they are missing. `JWT_REFRESH_SECRET` is no longer read (refresh tokens are random values, §8); an old entry does no harm.
+
+Company settings that admins change in the UI (registration, loan rules, request form, e-mail texts, appearance) are not environment variables; they live in `SystemSetting` (§13.6, §13.7).
 
 `JWT_ACCESS_SECRET` must not start with `change-me` (the placeholder in `.env.example`, which is public): that aborts the start in every environment, because `NODE_ENV` is easily left unset. It must also be at least 32 characters; a shorter value aborts with `NODE_ENV=production` and only prints a warning otherwise. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 
-| Variable                              | Default                                                                  | Meaning                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `DATABASE_URL`                        | — (required)                                                             | PostgreSQL connection string                                             |
-| `JWT_ACCESS_SECRET`                   | — (required)                                                             | HMAC secret for access tokens (HS256); ≥ 32 characters, see above        |
-| `JWT_REFRESH_SECRET`                  | — (required)                                                             | Read but **not used** (refresh tokens are random opaque strings, see §8) |
-| `JWT_ACCESS_TTL`                      | `15m`                                                                    | Access token lifetime; format `<n>[s                                     | m   | h   | d]`, invalid → 15 min |
-| `JWT_REFRESH_TTL_DAYS`                | `7`                                                                      | Refresh token/cookie lifetime in days                                    |
-| `PORT`                                | `3001`                                                                   | API port (always bound to `127.0.0.1`)                                   |
-| `NODE_ENV`                            | `development`                                                            | `production`: refresh cookie `secure`, short secret aborts, seed refused |
-| `FRONTEND_ORIGIN`                     | `http://localhost:5173`                                                  | CORS origin (credentials allowed)                                        |
-| `SMTP_HOST`                           | empty                                                                    | Empty → e-mails are only logged to the console                           |
-| `SMTP_PORT` / `SMTP_SECURE`           | `587` / `false`                                                          |                                                                          |
-| `SMTP_USER` / `SMTP_PASS`             | empty                                                                    | Auth is used only if `SMTP_USER` is set                                  |
-| `SMTP_FROM`                           | `LendLine <noreply@lendline.local>`                                      |                                                                          |
-| `LDAP_URL`                            | empty                                                                    | LDAP is enabled only when **both** `LDAP_URL` and `LDAP_BASE_DN` are set |
-| `LDAP_BIND_DN` / `LDAP_BIND_PASSWORD` | empty                                                                    | Service account for the search (anonymous search if empty)               |
-| `LDAP_BASE_DN`                        | empty                                                                    | Search base                                                              |
-| `LDAP_USER_FILTER`                    | `(\|(mail={{username}})(sAMAccountName={{username}})(uid={{username}}))` | `{{username}}` is replaced with the escaped login name                   |
-| `LDAP_ADMIN_GROUP`                    | empty                                                                    | Comma-separated group DNs or CNs; membership (`memberOf`) → `ADMIN`      |
-| `LDAP_ATTR_EMAIL` / `LDAP_ATTR_NAME`  | `mail` / `displayName`                                                   | Attribute mapping (name falls back to `cn`, then the login name)         |
-| `LDAP_TLS_REJECT_UNAUTHORIZED`        | `true`                                                                   | Set `false` to accept self-signed certificates                           |
-| `LDAP_ALLOW_LOCAL_REGISTER`           | `true`                                                                   | `false` disables self-registration while LDAP is enabled                 |
+| Variable                              | Default                                                                  | Meaning                                                                                                   |
+| ------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                        | — (required)                                                             | PostgreSQL connection string                                                                              |
+| `JWT_ACCESS_SECRET`                   | — (required)                                                             | HMAC secret for access tokens (HS256); ≥ 32 characters, see above                                         |
+| `SESSION_MAX_DAYS`                    | `30`                                                                     | A session ends this many days after the login, however often it is refreshed                              |
+| `JWT_ACCESS_TTL`                      | `15m`                                                                    | Access token lifetime; format `<n>[s                                                                      | m   | h   | d]`, invalid → 15 min |
+| `JWT_REFRESH_TTL_DAYS`                | `7`                                                                      | Refresh token/cookie lifetime in days                                                                     |
+| `PORT`                                | `3001`                                                                   | API port (always bound to `127.0.0.1`)                                                                    |
+| `NODE_ENV`                            | `development`                                                            | `production`: short secret aborts, insecure LDAP aborts, seed refused, `Secure` cookie                    |
+| `FRONTEND_ORIGIN`                     | `http://localhost:5173`                                                  | CORS origin; `https://…` also sets the `Secure` cookie flag; base URL of the logo in e-mails              |
+| `SMTP_HOST`                           | empty                                                                    | Empty → e-mails are only logged to the console                                                            |
+| `SMTP_PORT` / `SMTP_SECURE`           | `587` / `false`                                                          |                                                                                                           |
+| `SMTP_USER` / `SMTP_PASS`             | empty                                                                    | Auth is used only if `SMTP_USER` is set                                                                   |
+| `SMTP_FROM`                           | `LendLine <noreply@lendline.local>`                                      |                                                                                                           |
+| `LDAP_URL`                            | empty                                                                    | LDAP is enabled only when **both** `LDAP_URL` and `LDAP_BASE_DN` are set                                  |
+| `LDAP_BIND_DN` / `LDAP_BIND_PASSWORD` | empty                                                                    | Service account for the search (anonymous search if empty)                                                |
+| `LDAP_BASE_DN`                        | empty                                                                    | Search base                                                                                               |
+| `LDAP_USER_FILTER`                    | `(\|(mail={{username}})(sAMAccountName={{username}})(uid={{username}}))` | `{{username}}` is replaced with the escaped login name                                                    |
+| `LDAP_ADMIN_GROUP`                    | empty                                                                    | Full group DNs, several separated by `;`; membership (`memberOf`) → `ADMIN`. A bare name aborts the start |
+| `LDAP_ATTR_EMAIL` / `LDAP_ATTR_NAME`  | `mail` / `displayName`                                                   | Attribute mapping (name falls back to `cn`, then the login name)                                          |
+| `LDAP_TLS_REJECT_UNAUTHORIZED`        | `true`                                                                   | `false` accepts any certificate (warning; start refused in production)                                    |
+| `LDAP_ALLOW_INSECURE`                 | `false`                                                                  | `true` allows `ldap://` or unchecked certificates in production                                           |
+| `LDAP_ALLOW_LOCAL_REGISTER`           | `true`                                                                   | `false` disables self-registration while LDAP is enabled                                                  |
+| `ALLOW_DEMO_SEED`                     | —                                                                        | Only for `prisma/seed.ts`: `true` allows the demo accounts outside localhost                              |
 
 `docker-compose.yml` reads `POSTGRES_PASSWORD` (default `lendline`); keep `DATABASE_URL` in step with it.
 
@@ -345,7 +349,7 @@ erDiagram
 - **Device ("Gerät")** is a _device type/model_ (e.g. "ThinkPad T14"). It has a category, a description and up to 8 images.
 - **DeviceUnit ("Stück")** is a _physical piece_ with its own unique serial number and status. **Requests are always for a specific unit.** Device-level stock numbers (`quantityTotal`, `quantityAvailable`, …) are computed from its units at read time.
 - **Room ("Raum")** — every request names the room in which the device will be used ("Raumbuch").
-- **SystemSetting** — key/value store for runtime switches. Keys: `maintenance` = `{ enabled, message, until }` (§8, Maintenance mode) and `branding` = `{ accent, logo, logoDark }` (§13.6).
+- **SystemSetting** — key/value store for runtime switches. Keys: `maintenance` = `{ enabled, message, until }` (§8, Maintenance mode), `branding` (logo, colours, font, terms, login page; §13.6), `policy` and `mail` (registration, loan rules, request form, e-mail texts; §13.7).
 - **BorrowRequest** — a booking of one unit for a time window `[startsAt, desiredUntil)` in one room. `deviceId` is denormalized from the unit.
 - **AuditEvent** — append-only log; `actorName` is copied at write time, so entries survive user deletion.
 - IDs are `cuid()` strings (migrations used `md5(...)`/fixed IDs for backfilled rows, e.g. `room-unassigned`).
@@ -382,10 +386,17 @@ There is no cancel operation for users and no way to reopen/undo.
 Runs in a **Serializable** transaction; a serialization conflict (`P2034`) becomes a 409 "please retry".
 
 1. `startsAt` and `desiredUntil` must match `YYYY-MM-DDTHH:MM` (the format of `<input type="datetime-local">`).
-2. `desiredUntil > startsAt` and `desiredUntil` must not be in the past (a start in the past is allowed).
-3. The unit must exist and not be `DEFECTIVE`.
-4. The room must exist.
-5. **No overlap:** no other `OPEN` or `APPROVED` request for the same unit with `startsAt < new.desiredUntil AND desiredUntil > new.startsAt`. Because open requests also block, two users cannot request the same unit for overlapping times.
+2. `desiredUntil > startsAt`, `desiredUntil` not in the past, `startsAt` not before today 00:00, and at most `rules.maxDays` (default 30) between them.
+3. Room and comment follow the company's form settings (required / optional / hidden). An optional or hidden room is stored as `room-unassigned`. Answers to the company's own fields are checked (required, valid choice) and stored with their labels in `BorrowRequest.fields` (`[{ label, value }]`).
+4. The person may have at most `rules.maxOpenPerUser` (default 10) `OPEN` requests — counted inside the transaction.
+5. The unit must exist and not be `DEFECTIVE`; the room must exist.
+6. **No overlap:** no other `OPEN` or `APPROVED` request for the same unit with `startsAt < new.desiredUntil AND desiredUntil > new.startsAt`. Because open requests also block, two users cannot request the same unit for overlapping times.
+
+7. With `rules.autoApprove` the new request goes straight through `approveRequest` (audit: "automatisch bestätigt", approval e-mail).
+
+`POST /requests` is limited to 30 per hour per person.
+
+**Withdrawing:** the requester can withdraw an own `OPEN` request (`POST /requests/:id/cancel` → status `CANCELLED`, `cancelledAt`); it frees the unit at once. Someone else's request answers 404. **Bulk rejection:** `POST /users/:id/requests/reject-open` rejects all open requests of one person without e-mails (for a flood of requests from a misused account).
 
 ### 7.3 Approving (`approveRequest`)
 
@@ -442,14 +453,18 @@ Additional user rules: you cannot remove your own admin role; the last admin can
 
 | Token         | Format                                                                      | Storage                                                                                  | Lifetime                        |
 | ------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------- |
-| Access token  | JWT (HS256, pinned on sign and verify), payload `{ sub: userId, role }`     | JS memory in the frontend (`api/client.ts`), sent as `Authorization: Bearer …`           | `JWT_ACCESS_TTL` (15 min)       |
+| Access token  | JWT (HS256, pinned on sign and verify), payload `{ sub: userId, role, sv }` | JS memory in the frontend (`api/client.ts`), sent as `Authorization: Bearer …`           | `JWT_ACCESS_TTL` (15 min)       |
 | Refresh token | 48 random bytes, hex; only its **SHA-256 hash** is stored in `RefreshToken` | httpOnly cookie `refreshToken`, `SameSite=Lax`, `Path=/api/auth`, `Secure` in production | `JWT_REFRESH_TTL_DAYS` (7 days) |
 
 **Rotation:** every `/api/auth/refresh` revokes the presented token and issues a new pair. The revocation is atomic (`updateMany … where revokedAt = null`): of two requests presenting the same token only one gets a new pair, the other gets 401. Logout revokes the current token. Expired/revoked rows stay until an admin runs _Abgelaufene Sitzungen bereinigen_ on `/admin/wartung`.
 
 `/auth/refresh` and `/auth/logout` rely on the `SameSite=Lax` cookie and additionally refuse (403) an `Origin` header that is neither `FRONTEND_ORIGIN` nor the request's own host.
 
-**The role is read from the database, not from the JWT:** `requireAuth` loads the user on every request. A deleted account gets 401 at once, a demoted admin loses admin rights at once. Ending sessions (`/users/:id/sessions/revoke`, the maintenance task, a password reset) revokes refresh tokens only; an already issued access token of an account that still exists stays valid until it expires (≤ `JWT_ACCESS_TTL`).
+**Role and session version come from the database, not from the JWT:** `requireAuth` loads the user on every request and compares `User.sessionVersion` with the token's `sv`. `services/sessionService.ts → endAllSessions()` raises the version and revokes the refresh tokens; it is used by `/users/:id/sessions/revoke`, the maintenance task "end all sessions", an admin password reset, a role change, the own password change and an LDAP takeover. The affected person is signed out **at once**, not after `JWT_ACCESS_TTL`.
+
+**Reuse detection:** a rotation sets `rotatedAt` on the old token. If such a token comes back more than 60 s later, it was copied (stolen cookie, backup, malware): all sessions of the account end and the log records `SESSION_REUSE_DETECTED`. Within the 60 s it is just a lost race and answers 401. Tokens revoked by logout or an admin have no `rotatedAt` and never trigger this. The frontend serialises refreshes across tabs with the Web Locks API (`navigator.locks`, `api/client.ts`), so two tabs no longer race.
+
+**Maximum lifetime:** every refresh token carries the login time (`sessionStartedAt`), passed on by each rotation. After `SESSION_MAX_DAYS` (30) the session ends and the person logs in again.
 
 ### Flow
 
@@ -486,16 +501,24 @@ On page load `AuthProvider` calls `/api/auth/refresh` and then `/api/auth/me` to
 
 In memory, per API process (`lib/rateLimit.ts`, applied in `routes/auth.ts`); over the limit → 429 `{ error, code: "RATE_LIMITED" }`.
 
-| Endpoint              | Limit                                                                                                                             |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /auth/login`    | 10 attempts / 15 min per IP + account, 50 / 15 min per IP. A successful login is refunded (per IP) and resets the account counter |
-| `POST /auth/register` | 10 / hour per IP                                                                                                                  |
+| Endpoint              | Limit                                                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /auth/login`    | 10 attempts / 15 min per IP + account, 50 / 15 min per IP, 50 / 15 min per account across all addresses. A successful login is refunded and resets the IP + account counter |
+| `POST /auth/password` | 10 / 15 min per user                                                                                                                                                        |
+| `POST /requests`      | 30 / hour per user                                                                                                                                                          |
+| `POST /auth/register` | 10 / hour per IP                                                                                                                                                            |
 
-Every attempt is counted before the password check, so parallel requests cannot slip past. The counters reset on restart, and each process counts on its own. Keys use `req.ip`, which is only the real client address behind a proxy on loopback that appends `X-Forwarded-For` (Vite in development; configure the production reverse proxy the same way).
+Every attempt is counted before the password check, so parallel requests cannot slip past. The counters reset on restart, and each process counts on its own. IPv6 addresses are counted per /64 network (one connection usually owns a whole /64), IPv4-mapped addresses as IPv4. Keys use `req.ip`, which is only the real client address behind a proxy on loopback that appends `X-Forwarded-For` (Vite in development; configure the production reverse proxy the same way).
 
 ### Registration
 
-`POST /api/auth/register` creates a `LOCAL` `USER`. It is blocked (403) when LDAP is enabled and `LDAP_ALLOW_LOCAL_REGISTER=false`. `GET /api/auth/options` tells the login page whether to show the register link. The e-mail address is not verified.
+`POST /api/auth/register` creates a `LOCAL` `USER`. **Registration is off by default** (Einstellungen → Registrierung, `policy.registration.enabled`): an installation reachable from the internet must not accept strangers. Admins can switch it on and limit it to e-mail domains (`policy.registration.domains`, e.g. `firma.de`). It is also blocked when LDAP is enabled and `LDAP_ALLOW_LOCAL_REGISTER=false`. `GET /api/auth/options` tells the login page whether to show the register link. The e-mail address is not verified.
+
+### Own password and temporary passwords
+
+Every local account can change its password on "Mein Konto" (`/konto`, `POST /api/auth/password` with the current password). That ends all sessions and starts a fresh one for the caller. Directory (LDAP) accounts change their password in the directory.
+
+A password an admin chose (new account or reset) is **temporary** (`User.mustChangePassword`): until the person picks their own, `requireAuth` answers every request except `/auth/me` and `/auth/password` with 403 `PASSWORD_CHANGE_REQUIRED`, and the frontend sends them to `/konto`. The user list marks such accounts ("vorläufiges Passwort").
 
 New passwords (registration, admin create/reset) must be 8 characters to 72 bytes UTF-8 — bcrypt ignores everything after 72 bytes. The login password is capped at 200 characters, so older, longer passwords keep working.
 
@@ -527,27 +550,32 @@ Errors: `{ "error": "<German message>" }` with 400/401/403/404/409/413/500, plus
 | Method | Path                                                                          | Auth | Description                                                                                                                                                                                                                                       |
 | ------ | ----------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/health`                                                                     | 🔓   | `{ ok: true }`                                                                                                                                                                                                                                    |
-| GET    | `/branding`                                                                   | 🔓   | `{ accent, logoUrl, logoDarkUrl }` (all nullable), read by every page including the login page                                                                                                                                                    |
+| GET    | `/branding`                                                                   | 🔓   | `{ accent, logoUrl, logoDarkUrl, faviconUrl, loginImageUrl, appearance, terms, login }`, read by every page including the login page (§13.6)                                                                                                      |
+| GET    | `/settings/request-form`                                                      | 👤   | `{ room, comment, commentLabel, commentHint, fields, maxDays, autoApprove }` for the request dialog                                                                                                                                               |
 | GET    | `/admin/summary`                                                              | 🛡    | `{ users, categories, devices, devicesAvailable, devicesBorrowed, devicesDefective, openRequests, activeLoans, maintenance }` (unit counts by stored status; does not refresh statuses first)                                                     |
 | GET    | `/admin/audit?q=&category=&action=&actorId=&userId=&from=&to=&cursor=&limit=` | 🛡    | `{ items, nextCursor }`, newest first (default 50, max 200). `category`: requests, devices, masterdata, users, auth, system; `userId`: everything about one person (own actions, account, their requests); `from`/`to`: `YYYY-MM-DD` (whole days) |
 | GET    | `/admin/audit/actors`                                                         | 🛡    | People who appear in the log, for the person filter                                                                                                                                                                                               |
 | GET    | `/admin/maintenance`                                                          | 🛡    | System status: `{ maintenance, database, app, integrations, counts, sessions, uploads, audit }` (DB latency, uptime, version, SMTP/LDAP, session and orphaned-upload counts)                                                                      |
 | PUT    | `/admin/maintenance/mode`                                                     | 🛡    | `{ enabled, message (≤ 500, empty → default text), until ("YYYY-MM-DDTHH:MM" local time or null) }` → the new mode                                                                                                                                |
 | POST   | `/admin/maintenance/tasks/:task`                                              | 🛡    | Runs one task → `{ message }`: `cleanup-sessions`, `cleanup-uploads`, `refresh-units`, `test-mail`, `end-sessions` (all except the caller's own); unknown task → 404                                                                              |
-| PUT    | `/admin/branding`                                                             | 🛡    | `{ accent: "#rrggbb" \| null }` (stored lower-case; null → built-in accent) → branding                                                                                                                                                            |
-| POST   | `/admin/branding/logo/:variant`                                               | 🛡    | `variant` = `light` \| `dark`; multipart field `logo`, SVG/PNG/JPG/WEBP, ≤ 1 MB → branding. Replaces and deletes the previous file                                                                                                                |
-| DELETE | `/admin/branding/logo/:variant`                                               | 🛡    | Removes that logo and its file → branding                                                                                                                                                                                                         |
+| PUT    | `/admin/branding`                                                             | 🛡    | Partial `{ accent?: "#rrggbb" \| null, appearance?, terms?, login? }` → branding                                                                                                                                                                  |
+| POST   | `/admin/branding/image/:slot`                                                 | 🛡    | `slot` = `light` \| `dark` \| `favicon` \| `login`; multipart field `image`, SVG/PNG/JPG/WEBP/ICO, ≤ 3 MB, content checked by magic bytes (`lib/imageSniff.ts`) → branding. Replaces and deletes the previous file                                |
+| DELETE | `/admin/branding/image/:slot`                                                 | 🛡    | Removes that image and its file → branding                                                                                                                                                                                                        |
+| GET    | `/admin/settings/:key`                                                        | 🛡    | `key` = `policy` (registration, rules, request form) \| `mail` (sender name, texts, signature); defaults for everything not saved                                                                                                                 |
+| PUT    | `/admin/settings/:key`                                                        | 🛡    | Full object; missing fields fall back to their defaults (`{}` = everything back to default) → stored settings                                                                                                                                     |
+| POST   | `/admin/settings/mail/preview`                                                | 🛡    | Unsaved mail settings → `{ subject, html, text }` of the approval mail with sample data                                                                                                                                                           |
 
 ### Auth — `/auth`
 
-| Method | Path             | Auth   | Body / notes                                                                                                               |
-| ------ | ---------------- | ------ | -------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/options`  | 🔓     | `{ ldapEnabled, allowLocalRegister, maintenance: { enabled, message?, until? } }` (does not reveal who switched it on)     |
-| POST   | `/auth/register` | 🔓     | `{ name (2–120), email, password (8 chars – 72 bytes) }` → 201 `{ user, accessToken }` + cookie; 409 duplicate e-mail; 429 |
-| POST   | `/auth/login`    | 🔓     | `{ email (e-mail or LDAP user name), password (≤ 200) }` → `{ user, accessToken }` + cookie; 429 when rate-limited         |
-| POST   | `/auth/refresh`  | cookie | Rotates the refresh token → `{ user, accessToken }`; 403 on a foreign `Origin`                                             |
-| POST   | `/auth/logout`   | cookie | Revokes the token, clears the cookie → 204; 403 on a foreign `Origin`                                                      |
-| GET    | `/auth/me`       | 👤     | `{ id, name, email, role, createdAt }`                                                                                     |
+| Method | Path             | Auth   | Body / notes                                                                                                                     |
+| ------ | ---------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/options`  | 🔓     | `{ ldapEnabled, allowLocalRegister, registrationDomains, maintenance: { enabled, message?, until? } }`                           |
+| POST   | `/auth/register` | 🔓     | `{ name (2–120), email, password (8 chars – 72 bytes) }` → 201 `{ user, accessToken }` + cookie; 409 duplicate e-mail; 429       |
+| POST   | `/auth/login`    | 🔓     | `{ email (e-mail or LDAP user name), password (≤ 200) }` → `{ user, accessToken }` + cookie; 429 when rate-limited               |
+| POST   | `/auth/refresh`  | cookie | Rotates the refresh token → `{ user, accessToken }`; 403 on a foreign `Origin`                                                   |
+| POST   | `/auth/logout`   | cookie | Revokes the token, clears the cookie → 204; 403 on a foreign `Origin`                                                            |
+| POST   | `/auth/password` | 👤     | `{ currentPassword, newPassword }` → `{ user, accessToken }` + new cookie; ends all other sessions; 400 wrong password; 409 LDAP |
+| GET    | `/auth/me`       | 👤     | `{ id, name, email, role, createdAt, mustChangePassword, authSource }`                                                           |
 
 ### Categories — `/categories`
 
@@ -600,14 +628,15 @@ Device response shape (admin):
 
 ### Requests — `/requests`
 
-| Method | Path                    | Auth | Notes                                                                                                        |
-| ------ | ----------------------- | ---- | ------------------------------------------------------------------------------------------------------------ |
-| GET    | `/requests/mine`        | 👤   | Own requests, newest first                                                                                   |
-| GET    | `/requests?status=`     | 🛡    | All (or filtered) requests, oldest first                                                                     |
-| POST   | `/requests`             | 👤   | `{ unitId, roomId, startsAt: "YYYY-MM-DDTHH:MM", desiredUntil: "YYYY-MM-DDTHH:MM", comment? (≤1000) }` → 201 |
-| POST   | `/requests/:id/approve` | 🛡    | → updated request                                                                                            |
-| POST   | `/requests/:id/reject`  | 🛡    | `{ rejectionReason? (≤1000) }`                                                                               |
-| POST   | `/requests/:id/return`  | 🛡    | → updated request                                                                                            |
+| Method | Path                    | Auth | Notes                                                                                                                                      |
+| ------ | ----------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/requests/mine`        | 👤   | Own requests, newest first                                                                                                                 |
+| GET    | `/requests?status=`     | 🛡    | All (or filtered) requests, oldest first                                                                                                   |
+| POST   | `/requests`             | 👤   | `{ unitId, roomId?, startsAt: "YYYY-MM-DDTHH:MM", desiredUntil, comment? (≤1000), fields? { [fieldId]: string \| boolean } }` → 201 (§7.2) |
+| POST   | `/requests/:id/cancel`  | 👤   | Own `OPEN` request → `CANCELLED`                                                                                                           |
+| POST   | `/requests/:id/approve` | 🛡    | → updated request                                                                                                                          |
+| POST   | `/requests/:id/reject`  | 🛡    | `{ rejectionReason? (≤1000) }`                                                                                                             |
+| POST   | `/requests/:id/return`  | 🛡    | → updated request                                                                                                                          |
 
 Request response shape: all `BorrowRequest` columns plus
 `user { id, name, email }`, `unit { id, serialNumber, status } | null`, `room { id, name, building }` and a flattened
@@ -624,14 +653,15 @@ Request response shape: all `BorrowRequest` columns plus
 
 ### Users — `/users` (all 🛡)
 
-| Method | Path                         | Notes                                                                                                          |
-| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| GET    | `/users`                     | `{ id, name, email, role, authSource, createdAt }[]`, admins first                                             |
-| POST   | `/users`                     | `{ name, email, password (8 chars – 72 bytes), role? }` → creates a `LOCAL` user                               |
-| PATCH  | `/users/:id`                 | `{ name?, role?, password? }` (e-mail is immutable); a new password ends the user's sessions                   |
-| DELETE | `/users/:id`                 | Rules in §7.8                                                                                                  |
-| GET    | `/users/:id/profile`         | `{ user, activeSessions, lastLogin { createdAt, ip, userAgent }, lastActivityAt, stats, requests }` (API only) |
-| POST   | `/users/:id/sessions/revoke` | Revokes all refresh tokens of that user (not your own) → `{ revoked }` (API only)                              |
+| Method | Path                              | Notes                                                                                                          |
+| ------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| GET    | `/users`                          | `{ id, name, email, role, authSource, createdAt }[]`, admins first                                             |
+| POST   | `/users`                          | `{ name, email, password (8 chars – 72 bytes), role? }` → creates a `LOCAL` user with a temporary password     |
+| PATCH  | `/users/:id`                      | `{ name?, role?, password? }` (e-mail is immutable); a new password ends the user's sessions                   |
+| DELETE | `/users/:id`                      | Rules in §7.8                                                                                                  |
+| GET    | `/users/:id/profile`              | `{ user, activeSessions, lastLogin { createdAt, ip, userAgent }, lastActivityAt, stats, requests }` (API only) |
+| POST   | `/users/:id/sessions/revoke`      | Signs that user out everywhere at once (not yourself) → `{ revoked }` (UI: user editor → Sofortmaßnahmen)      |
+| POST   | `/users/:id/requests/reject-open` | `{ reason? }` → rejects all open requests of that user without e-mails → `{ rejected }`                        |
 
 ---
 
@@ -673,15 +703,18 @@ Request response shape: all `BorrowRequest` columns plus
 
 ## 11. E-mail notifications
 
-`emails/mailer.ts` creates a nodemailer (v10) transport per message. Without `SMTP_HOST` the message is printed to the console (`[mail] SMTP nicht konfiguriert…`).
+`emails/mailer.ts` creates a nodemailer (v10) transport per message. Without `SMTP_HOST` the message is printed to the console (`[mail] SMTP nicht konfiguriert…`). The sender is `SMTP_FROM`; a company display name from the e-mail settings replaces its name part (the address stays, it must match what the mail server allows).
 
-| Trigger | Template             | Subject                        | Contents                                                                     |
-| ------- | -------------------- | ------------------------------ | ---------------------------------------------------------------------------- |
-| Approve | `requestApproved.ts` | `Ausleihe bestätigt: <device>` | device, category, serial, period, room, pickup instructions (bring photo ID) |
-| Reject  | `requestRejected.ts` | `Ausleihe abgelehnt: <device>` | device data + reason (or "no reason given")                                  |
-| Return  | `deviceReturned.ts`  | `Rückgabe erfasst: <device>`   | device data + return time                                                    |
+All mails are built by `emails/format.ts → composeMail()` from `emails/templates.ts`: greeting, one sentence, a table of facts, the company's own text, signature and footer. `mailContext()` loads the company's settings once per sending: mail settings (`SystemSetting` key `mail`), terms (e.g. "Ausrüstung" instead of "Gerät" in the table) and the logo. The logo is shown only if it is PNG/JPG/WEBP (many mail programs do not show SVG) and is linked absolutely via `FRONTEND_ORIGIN`. Company texts are plain text: line breaks are kept, everything is escaped.
 
-Each template produces plain text and HTML (`format.ts → layout()`, values escaped with `escapeHtml`). No mail is sent when a request is created, and admins get no notification of new requests.
+| Trigger                        | Subject                        | Contents                                                                                                             |
+| ------------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Approve (also auto-approve)    | `Ausleihe bestätigt: <device>` | device, category, serial, period, room (if any), custom field answers, `approvedText` (default: pickup instructions) |
+| Reject                         | `Ausleihe abgelehnt: <device>` | device data, reason (or "no reason given"), `rejectedText`                                                           |
+| Return                         | `Rückgabe erfasst: <device>`   | device data, return time, `returnedText`                                                                             |
+| Maintenance task "Test-E-Mail" | `LendLine: Test-E-Mail`        | greeting, signature, footer                                                                                          |
+
+No mail is sent when a request is created, withdrawn or bulk-rejected, and admins get no notification of new requests. Admins edit the texts at `/admin/emails` with a live preview (`/admin/settings/mail/preview`, rendered in a `sandbox` iframe).
 
 ---
 
@@ -709,6 +742,10 @@ Each entry stores:
 | `MAINTENANCE_ON` / `_OFF` / `_UPDATED`                      | SYSTEM          | Message and expected end                                                                                                |
 | `MAINTENANCE_TASK`                                          | SYSTEM          | Task id and result; deleted file names, test-mail recipient and transport                                               |
 | `BRANDING_UPDATED`                                          | SYSTEM          | Accent colour old → new; uploaded logo file name and size; logo removed                                                 |
+| `SETTINGS_UPDATED`                                          | SYSTEM          | Changed settings as `path: old → new` (e.g. `rules.maxDays`)                                                            |
+| `REQUEST_CANCELLED`                                         | REQUEST         | Withdrawn by the requester                                                                                              |
+| `REQUESTS_BULK_REJECTED`                                    | USER            | Count and reason of the bulk rejection                                                                                  |
+| `PASSWORD_CHANGED` / `SESSION_REUSE_DETECTED`               | AUTH            | Own password change; copied refresh token detected (all sessions ended)                                                 |
 
 Token refreshes are not logged (too frequent to be useful).
 
@@ -737,6 +774,7 @@ Token refreshes are not logged (too frequent to be useful).
 | `/devices`                | `DevicesPage`          | users  | Catalog with availability counts, text search, filters, images; clicking a name opens the unit list/calendar                                                                                                                      |
 | `/my-requests`            | `MyRequestsPage`       | users  | Own requests with status filter tabs (Alle/Offen/Bestätigt/Abgeschlossen), period, room, rejection reason / return time                                                                                                           |
 | `/hilfe`                  | `HelpPage`             | users  | „Bedienung“: mouse/touchpad notes, keyboard basics, all shortcuts (the `g` table lists admin pages only for admins), calendar and image keys                                                                                      |
+| `/konto`                  | `AccountPage`          | users  | „Mein Konto“: account data and own password change; forced while the password is temporary                                                                                                                                        |
 | `/admin`                  | `AdminHomePage`        | admin  | Summary counts, the 5 oldest open requests, returns due today/overdue, latest 8 audit entries                                                                                                                                     |
 | `/admin/devices`          | `AdminDevicesPage`     | admin  | Create/edit devices, manage units (serial + status), upload/remove images                                                                                                                                                         |
 | `/admin/categories`       | `AdminCategoriesPage`  | admin  | Category CRUD                                                                                                                                                                                                                     |
@@ -745,7 +783,9 @@ Token refreshes are not logged (too frequent to be useful).
 | `/admin/requests`         | `AdminRequestsPage`    | admin  | Open requests: approve, or reject with a mandatory reason                                                                                                                                                                         |
 | `/admin/borrowed`         | `AdminBorrowedPage`    | admin  | Approved loans: "Als zurückgegeben markieren"                                                                                                                                                                                     |
 | `/admin/protokoll`        | `AdminAuditPage`       | admin  | Audit log with action filter                                                                                                                                                                                                      |
-| `/admin/erscheinungsbild` | `AdminBrandingPage`    | admin  | Company logo (light and optional dark-mode variant) and accent colour, with live preview in both modes                                                                                                                            |
+| `/admin/erscheinungsbild` | `AdminBrandingPage`    | admin  | Logo (light/dark), accent colour, font, size, corners, sidebar, browser icon, terms, login page text and picture                                                                                                                  |
+| `/admin/einstellungen`    | `AdminSettingsPage`    | admin  | Registration (on/off, allowed domains), loan rules (maximum days, open requests per person, auto-approve), request form (room, comment, own fields)                                                                               |
+| `/admin/emails`           | `AdminEmailsPage`      | admin  | Sender name, logo, greeting, signature, footer and a text per mail type, with live preview                                                                                                                                        |
 | `/admin/wartung`          | `AdminMaintenancePage` | admin  | Maintenance mode (message, expected end), system status, maintenance tasks (clean up sessions and orphaned images, recompute unit status, test e-mail, end all other sessions)                                                    |
 | `*`                       | → `/search`            |        |                                                                                                                                                                                                                                   |
 
@@ -766,7 +806,7 @@ After login, admins land on `/admin` and users on `/search`.
 | Component          | Notes                                                                                                                                                                                                                                                                                                |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Layout`           | Fixed sidebar (brand, nav groups "Ausleihe" / "Verwaltung" / "Stammdaten" / "System" / "Hilfe" with icons, open-request/loan counters and shortcut tooltips, user card with logout); mobile top bar + slide-in menu (Escape closes it); global shortcuts; focus to the page heading after navigation |
-| `ui.tsx`           | `PageHeader`, `Field` (label, "optional" marker, hint), `Alert` (scrolls into view), `Modal` (native `<dialog>`, `variant="sheet"` for side panels; see §13.7), `refreshNav()`                                                                                                                       |
+| `ui.tsx`           | `PageHeader`, `Field` (label, "optional" marker, hint), `Alert` (scrolls into view), `Modal` (native `<dialog>`, `variant="sheet"` for side panels; see §13.8), `refreshNav()`                                                                                                                       |
 | `Logo.tsx`         | `LogoMark` (brand mark "Rücklauf-Schleife": an L whose foot loops back as an arrow; below 20 px without arrowhead) and `Wordmark` ("**Lend**Line"). Favicon: `public/favicon.svg`; e-mails use the text wordmark (SVG is blocked by many mail clients)                                               |
 | `icons.tsx`        | Inline SVG icon set (`<Icon name="…" />`)                                                                                                                                                                                                                                                            |
 | `CategorySelect`   | Category `<select>` loaded via `useApi`; `emptyLabel` for filters ("Alle Kategorien")                                                                                                                                                                                                                |
@@ -785,16 +825,27 @@ Pointer targets: buttons 36 px high (`.sm` 32 px, icon buttons 36/32 px square),
 
 ### 13.6 Branding ("Erscheinungsbild")
 
-LendLine is rented out as **one instance per company** (own installation and database). Each instance's admins set their company's logo and accent colour at `/admin/erscheinungsbild`; there is no tenant model.
+LendLine is rented out as **one instance per company** (own installation and database). Each instance's admins adapt it at `/admin/erscheinungsbild`; there is no tenant model. The product name "LendLine" stays.
 
-- **Storage:** `SystemSetting` key `branding` holds the accent and the logo file names. Files live in `backend/uploads/branding/` (random UUID names, so a new upload never hits a cached old one) and are served under `/api/uploads/branding/`.
-- **SVG safety:** everything under `/api/uploads` is sent with `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` and `nosniff`, so scripts inside an uploaded SVG cannot run even when the file is opened directly.
-- **Logo:** `BrandLogo` (`components/Logo.tsx`) shows the company logo up to 32 px high in the sidebar, the mobile top bar and the login/registration pages. It replaces the LendLine mark and wordmark completely. The optional dark variant swaps in under the same two conditions as the dark palette (CSS at the end of `global.css`); without one, the light logo is used in dark mode too.
-- **Accent:** `branding/palette.ts` derives `--accent`, `--accent-hover` and `--accent-contrast` for both modes. The colour is darkened (light mode) or lightened (dark mode) until it has ≥ 3:1 contrast with the surface; the label colour (white or `#18181b`) is whichever contrasts more. The rules use `html:root`, so they outrank `global.css` whatever the order of the style elements. Saving the default black means "no custom accent", which keeps the white accent in dark mode.
-- **No flash:** `BrandingProvider` (`branding/BrandingContext.tsx`) starts from the branding cached in `localStorage` (`lendline-branding`), loads `/api/branding` on start and after every save. The generated CSS is cached as `lendline-branding-css`, which the inline script in `index.html` injects before the first paint.
-- **Not yet customisable:** company name (browser title, e-mail subjects, texts still say "LendLine"), favicon, e-mail logo and sender.
+- **Storage:** `SystemSetting` key `branding` (`services/brandingService.ts`): accent, image file names and the groups `appearance`, `terms`, `login`, each with defaults, so older rows keep working. Images live in `backend/uploads/branding/` (random UUID names, so a new upload never hits a cached old one), served under `/api/uploads/branding/`.
+- **Images:** logo (light, optional dark variant), browser icon (favicon; also `.ico`), login picture (≤ 3 MB). The content must match the extension (`lib/imageSniff.ts`), so an HTML file named `.svg` is refused. Everything under `/api/uploads` is sent with `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` and `nosniff`.
+- **Logo:** `BrandLogo` (`components/Logo.tsx`) shows the company logo up to 32 px high in the sidebar, the mobile top bar and the login/registration pages, replacing mark and wordmark. The dark variant swaps in under the same two conditions as the dark palette.
+- **Accent:** `branding/palette.ts` derives `--accent`, `--accent-hover` and `--accent-contrast` for both modes, darkened/lightened until ≥ 3:1 against the surface; the label colour is whichever of white/`#18181b` contrasts more. Saving the default black means "no custom accent".
+- **Appearance** (`branding/appearance.ts`): font (standard, system, "Freundlich" = Calibri, serif, rounded; local fonts only, nothing is downloaded), size (`zoom` 0.93/1/1.1 on `body`, because `global.css` sizes in px), corners (`--radius`/`--radius-sm`), sidebar (neutral, tinted, or in the accent colour — then the sidebar gets its own token set).
+- **Terms:** subtitle under "LendLine", catalogue name, device/devices, unit/units, room/rooms (`useTerms()`). Used where a word stands alone: navigation, page titles, table headers, the request dialog, e-mail tables. Sentences with articles were rephrased neutrally so that any word fits ("Nichts frei in diesem Zeitraum").
+- **Login page:** title, welcome text and a picture left of the form (hidden below 820 px).
+- **No flash:** `BrandingProvider` starts from the branding cached in `localStorage` (`lendline-branding`), loads `/api/branding` on start and after every save. The generated CSS (`lendline-branding-css`) and the icon URL (`lendline-branding-icon`) are applied by the inline script in `index.html` before the first paint. The CSS uses `html:root` / `html .x`, so it outranks `global.css` whatever the order of the style elements.
 
-### 13.7 Keyboard
+### 13.7 Company settings (`/admin/einstellungen`, `/admin/emails`)
+
+`services/settingsService.ts` stores two more `SystemSetting` rows, validated with zod, each field with a default and cached for 5 s:
+
+- `policy`: `registration { enabled (false), domains [] }`, `rules { maxDays (30), maxOpenPerUser (10), autoApprove (false) }`, `form { room, comment (required | optional | hidden), commentLabel, commentHint, fields [] }`. Up to 10 own fields: text, multi-line text, choice list or checkbox; required or optional; with a hint. A field keeps its id when renamed; answers are stored with the label of that moment (§7.2).
+- `mail`: `senderName`, `showLogo`, `greeting`, `signature`, `footer`, `approvedText`, `rejectedText`, `returnedText` (§11).
+
+Every change is logged as `SETTINGS_UPDATED` with the changed paths. A row that no longer validates (e.g. edited by hand) falls back to the defaults.
+
+### 13.8 Keyboard
 
 Everything is reachable with Tab/Shift+Tab; every action is a real `<button>` or link. The help page `/hilfe` explains it for users.
 
@@ -810,27 +861,30 @@ Rules: shortcuts never fire while typing in a field (`isTyping`) or while a dial
 
 ## 14. Migration history
 
-The migrations are dated 2026-09-23/24 and show how the model evolved:
+The migrations are dated 2026-09-23 to 25 and show how the model evolved:
 
-| Migration                        | Change                                                                                                                                                                                                                                  |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `…000000_init`                   | `User`, `Device` (with `category` text, `serialNumber`, `status`), `BorrowRequest`, `RefreshToken`                                                                                                                                      |
-| `…120000_ldap`                   | `AuthSource` enum, `User.authSource`, `User.ldapDn`; `passwordHash` nullable                                                                                                                                                            |
-| `…140000_categories`             | `Category` table, backfilled from `Device.category`; `Device.categoryId` FK + index; drops the text column                                                                                                                              |
-| `…160000_device_images`          | `DeviceImage`                                                                                                                                                                                                                           |
-| `…180000_audit`                  | `AuditEvent`                                                                                                                                                                                                                            |
-| `…190000_device_stock`           | Temporary `quantityTotal`/`quantityBorrowed` counters on `Device`                                                                                                                                                                       |
-| `…200000_device_units`           | **`DeviceUnit`** introduced: one unit per former device plus generated `<serial>-n` units for extra stock; approved requests are mapped to borrowed units; `BorrowRequest.unitId`; removes serial/status/quantity columns from `Device` |
-| `…210000_request_times`          | `BorrowRequest.startsAt` (backfilled from `requestedAt`)                                                                                                                                                                                |
-| `…220000_rooms`                  | `Room` table + 4 rows; `BorrowRequest.roomId` (existing rows → `room-unassigned`)                                                                                                                                                       |
-| `20260924120000_audit_details`   | `AuditEvent.details`, `ip`, `userAgent`                                                                                                                                                                                                 |
-| `20260924150000_system_settings` | `SystemSetting` (key/value, used for the maintenance mode)                                                                                                                                                                              |
+| Migration                         | Change                                                                                                                                                                                                                                  |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `…000000_init`                    | `User`, `Device` (with `category` text, `serialNumber`, `status`), `BorrowRequest`, `RefreshToken`                                                                                                                                      |
+| `…120000_ldap`                    | `AuthSource` enum, `User.authSource`, `User.ldapDn`; `passwordHash` nullable                                                                                                                                                            |
+| `…140000_categories`              | `Category` table, backfilled from `Device.category`; `Device.categoryId` FK + index; drops the text column                                                                                                                              |
+| `…160000_device_images`           | `DeviceImage`                                                                                                                                                                                                                           |
+| `…180000_audit`                   | `AuditEvent`                                                                                                                                                                                                                            |
+| `…190000_device_stock`            | Temporary `quantityTotal`/`quantityBorrowed` counters on `Device`                                                                                                                                                                       |
+| `…200000_device_units`            | **`DeviceUnit`** introduced: one unit per former device plus generated `<serial>-n` units for extra stock; approved requests are mapped to borrowed units; `BorrowRequest.unitId`; removes serial/status/quantity columns from `Device` |
+| `…210000_request_times`           | `BorrowRequest.startsAt` (backfilled from `requestedAt`)                                                                                                                                                                                |
+| `…220000_rooms`                   | `Room` table + 4 rows; `BorrowRequest.roomId` (existing rows → `room-unassigned`)                                                                                                                                                       |
+| `20260924120000_audit_details`    | `AuditEvent.details`, `ip`, `userAgent`                                                                                                                                                                                                 |
+| `20260924150000_system_settings`  | `SystemSetting` (key/value, used for the maintenance mode)                                                                                                                                                                              |
+| `20260925100000_session_security` | `User.sessionVersion`, `User.mustChangePassword`, `RefreshToken.sessionStartedAt`                                                                                                                                                       |
+| `20260925110000_token_rotation`   | `RefreshToken.rotatedAt` (reuse detection)                                                                                                                                                                                              |
+| `20260925120000_request_form`     | `RequestStatus.CANCELLED`, `BorrowRequest.cancelledAt`, `BorrowRequest.fields` (JSON)                                                                                                                                                   |
 
 ---
 
 ## 15. Known issues, gaps & inconsistencies
 
-State after the security audit and fixes of 2026-09-24 (details in `security-audit-2.md`). `npm run
+State after security audit 3 and its fixes of 2026-09-25 (details in `security-audit-3.md` and `fix-report-3.md`). `npm run
 check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 
 ### Functional inconsistencies
@@ -841,18 +895,15 @@ check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 - Schema drift: migration `…140000_categories` creates `Device_categoryId_idx`, but `schema.prisma` has no `@@index([categoryId])` on `Device`. The next `prisma migrate dev` will try to drop that index.
 - Admin category creation with a duplicate name returns the existing category with HTTP 201 instead of 409.
 - `npm run prisma:seed` does not load `.env` (use `npx prisma db seed`, §3).
-- Two tabs refreshing at the same moment: one gets 401 and shows the login page (a reload helps) — a side effect of the atomic token rotation (§8).
-- `/users/:id/profile` and `/users/:id/sessions/revoke` exist in the API but have no UI.
+- `/users/:id/profile` exists in the API but has no UI.
 
 ### Security / operational notes
 
-- **`NODE_ENV` matters:** it defaults to `development`. The placeholder secret is refused everywhere, but the short-secret abort, the `Secure` cookie flag and the seed guard only apply with `NODE_ENV=production`. Always set it on real installations, and never run the demo seed there.
-- Ending sessions or resetting a password leaves an already issued access token valid for up to `JWT_ACCESS_TTL` (needs a `sessionVersion` column).
-- LDAP: accounts are still matched by e-mail as a fallback; a second directory entry with the same `mail` takes over the account's data and role (sessions are revoked). `ldap://` without TLS and `LDAP_TLS_REJECT_UNAUTHORIZED=false` are accepted without warning.
-- Rate limits are in memory and per process (§8); no reuse detection for refresh tokens.
-- `JWT_REFRESH_SECRET` is required but unused.
-- Uploaded images are publicly readable under `/api/uploads/…` without authentication (intended for logos, which the login page needs; device photos are public too). Upload content is not checked beyond extension and MIME type (mitigated by `nosniff` + `sandbox` CSP).
-- Registration does not verify the e-mail address.
+- **`NODE_ENV` matters:** it defaults to `development`. The placeholder secret is refused everywhere; the `Secure` cookie follows `FRONTEND_ORIGIN` (https) and the demo seed refuses any non-local origin. The short-secret abort and the insecure-LDAP abort still need `NODE_ENV=production`, so always set it on real installations.
+- LDAP: accounts are still matched by e-mail as a fallback; a second directory entry with the same `mail` takes over the account's data and role (sessions are revoked). Needs a stable directory key (`objectGUID`/`entryUUID`) and a migration.
+- Rate limits are in memory and per process (§8).
+- Uploaded images are publicly readable under `/api/uploads/…` without authentication (intended for logos, which the login page needs; device photos are public too).
+- Registration (off by default) does not verify the e-mail address; the domain list limits who can register.
 - `prisma` (dev dependency) pulls in `deepmerge-ts < 8` (GHSA-ggr8-5vv4-36mx); CLI only.
 - The API binds to `127.0.0.1` only; a production deployment needs a reverse proxy that also serves the built frontend (no production serving setup exists).
 - Time handling depends on the server time zone (§10).

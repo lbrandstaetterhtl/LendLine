@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "../config.js";
-import { escapeHtml, formatDate, layout } from "../emails/format.js";
 import { sendMail } from "../emails/mailer.js";
+import { mailContext, testMailTemplate } from "../emails/templates.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { recordAudit } from "./auditService.js";
@@ -26,8 +26,12 @@ async function appVersion(): Promise<string> {
   }
 }
 
+// Multer writes the file before addImages creates its row: a younger file may still be in flight.
+const ORPHAN_MIN_AGE_MS = 10 * 60 * 1000;
+
 /**
  * Upload files on disk that no DeviceImage row points to (left over from failed or old uploads).
+ * Only files older than ORPHAN_MIN_AGE_MS count, so a running upload is never deleted.
  */
 async function uploadFiles() {
   let names: string[];
@@ -40,12 +44,18 @@ async function uploadFiles() {
     (await prisma.deviceImage.findMany({ select: { fileName: true } })).map((row) => row.fileName)
   );
   const sizes = await Promise.all(
-    names.map(async (name) => ({ name, bytes: (await fs.stat(path.join(uploadDir, name))).size }))
+    names.map(async (name) => {
+      const stat = await fs.stat(path.join(uploadDir, name));
+      return { name, bytes: stat.size, modifiedAt: stat.mtimeMs };
+    })
   );
+  const cutoff = Date.now() - ORPHAN_MIN_AGE_MS;
   return {
     files: sizes.length,
     bytes: sizes.reduce((sum, file) => sum + file.bytes, 0),
-    orphans: sizes.filter((file) => !known.has(file.name)),
+    orphans: sizes
+      .filter((file) => !known.has(file.name) && file.modifiedAt < cutoff)
+      .map(({ name, bytes }) => ({ name, bytes })),
   };
 }
 
@@ -147,15 +157,10 @@ export async function runMaintenanceTask(task: MaintenanceTask, actorId: string)
     case "test-mail": {
       const actor = await prisma.user.findUnique({ where: { id: actorId } });
       if (!actor) throw new HttpError(404, "Benutzer nicht gefunden");
-      const sentAt = formatDate(new Date());
-      await sendMail(actor.email, {
-        subject: "LendLine: Test-E-Mail",
-        text: `Guten Tag ${actor.name},\n\ndiese Test-E-Mail wurde am ${sentAt} aus dem Wartungsbereich gesendet. Der E-Mail-Versand funktioniert.`,
-        html: layout(
-          "Test-E-Mail",
-          `<p>Guten Tag ${escapeHtml(actor.name)},</p><p>diese Test-E-Mail wurde am ${sentAt} aus dem Wartungsbereich gesendet. Der E-Mail-Versand funktioniert.</p>`
-        ),
-      });
+      await sendMail(
+        actor.email,
+        testMailTemplate(await mailContext(), { recipientName: actor.name })
+      );
       result = config.smtp.host
         ? `Test-E-Mail an ${actor.email} gesendet.`
         : `SMTP ist nicht eingerichtet: Die Test-E-Mail an ${actor.email} wurde nur in der Server-Konsole ausgegeben.`;

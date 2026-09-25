@@ -12,6 +12,7 @@ import { diff, recordAudit } from "./auditService.js";
 import { authenticateLdap } from "./ldapService.js";
 import { assertAccessDuringMaintenance } from "./maintenanceService.js";
 import { endAllSessions } from "./sessionService.js";
+import { getSetting } from "./settingsService.js";
 
 const publicUserSelect = {
   id: true,
@@ -91,6 +92,20 @@ export async function register(input: {
     throw new HttpError(
       403,
       "Registrierung ist deaktiviert. Bitte das Verzeichnis-Konto verwenden."
+    );
+  }
+  const { registration } = await getSetting("policy");
+  if (!registration.enabled) {
+    throw new HttpError(
+      403,
+      "Die Registrierung ist ausgeschaltet. Ein Konto legt die Verwaltung für Sie an."
+    );
+  }
+  const domain = input.email.toLowerCase().split("@").pop() ?? "";
+  if (registration.domains.length > 0 && !registration.domains.includes(domain)) {
+    throw new HttpError(
+      403,
+      `Registrieren können sich nur Adressen von ${registration.domains.map((item) => `@${item}`).join(", ")}.`
     );
   }
   try {
