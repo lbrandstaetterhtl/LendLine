@@ -1,8 +1,11 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
 import { homePath } from "./auth/permissions";
+import { useTerms } from "./branding/BrandingContext";
 import { Layout } from "./components/Layout";
+import { useI18n } from "./i18n";
 import { AccountPage } from "./pages/AccountPage";
 import { AdminAuditPage } from "./pages/AdminAuditPage";
 import { AdminBorrowedPage } from "./pages/AdminBorrowedPage";
@@ -30,10 +33,11 @@ function Protected({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
   const { pathname, search } = useLocation();
   const openable = useCanOpen();
+  const { m } = useI18n();
   if (!ready)
     return (
       <div className="auth-wrap">
-        <p className="muted">Laden…</p>
+        <p className="muted">{m.common.loading}</p>
       </div>
     );
   // The login page brings the person back here afterwards (bookmark, link from an e-mail).
@@ -55,10 +59,11 @@ function RoleHome() {
 
 function GuestOnly({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
+  const { m } = useI18n();
   if (!ready)
     return (
       <div className="auth-wrap">
-        <p className="muted">Laden…</p>
+        <p className="muted">{m.common.loading}</p>
       </div>
     );
   if (user) return <Navigate to={homePath(user)} replace />;
@@ -66,6 +71,11 @@ function GuestOnly({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
+  const { subtitle } = useTerms();
+  // The tab title follows the company's subtitle in the current language.
+  useEffect(() => {
+    document.title = subtitle ? `LendLine · ${subtitle}` : "LendLine";
+  }, [subtitle]);
   return (
     <Routes>
       <Route

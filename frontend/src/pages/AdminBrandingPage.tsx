@@ -7,12 +7,21 @@ import { useRef, useState } from "react";
 import { api } from "../api/client";
 import { errorMessage } from "../api/useApi";
 import { fontStacks } from "../branding/appearance";
-import { type Branding, DEFAULT_TERMS, type Terms, useBranding } from "../branding/BrandingContext";
+import {
+  type Branding,
+  DEFAULT_TERMS,
+  localizeTerms,
+  type Terms,
+  useBranding,
+  useTerms,
+} from "../branding/BrandingContext";
 import { accentPalette } from "../branding/palette";
 import { Icon } from "../components/icons";
 import { LogoMark } from "../components/Logo";
 import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader } from "../components/ui";
+import { format, localizedDefault, useI18n } from "../i18n";
+import { de } from "../i18n/de";
 import { useFeature } from "../ui/UiContext";
 
 type Slot = "light" | "dark" | "favicon" | "login";
@@ -21,15 +30,15 @@ const DEFAULT_ACCENT = "#18181b";
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const presets = [
-  { hex: "#18181b", name: "Schwarz" },
-  { hex: "#2563eb", name: "Blau" },
-  { hex: "#0f766e", name: "Petrol" },
-  { hex: "#16a34a", name: "Grün" },
-  { hex: "#ea580c", name: "Orange" },
-  { hex: "#dc2626", name: "Rot" },
-  { hex: "#9333ea", name: "Violett" },
-  { hex: "#db2777", name: "Pink" },
-];
+  { hex: "#18181b", name: "black" },
+  { hex: "#2563eb", name: "blue" },
+  { hex: "#0f766e", name: "petrol" },
+  { hex: "#16a34a", name: "green" },
+  { hex: "#ea580c", name: "orange" },
+  { hex: "#dc2626", name: "red" },
+  { hex: "#9333ea", name: "violet" },
+  { hex: "#db2777", name: "pink" },
+] as const;
 
 type Saved = (branding: Branding, message: string) => void;
 type Failed = (err: unknown, fallback: string) => void;
@@ -43,6 +52,8 @@ export function AdminBrandingPage() {
   const extended = useFeature("appearance.extended");
   const [info, setInfo] = useState("");
   const [error, setError] = useState("");
+  const { m } = useI18n();
+  const t = m.branding;
 
   function saved(next: Branding, message: string) {
     setBranding(next);
@@ -61,39 +72,29 @@ export function AdminBrandingPage() {
   return (
     <>
       <SettingsTabs />
-      <PageHeader
-        title="Erscheinungsbild"
-        description="Logo, Farben, Schrift und Begriffe Ihrer Firma. Änderungen gelten sofort für alle, auch auf der Anmeldeseite."
-      />
+      <PageHeader title={t.title} description={t.description} />
       <Alert>{error}</Alert>
       <Alert tone="ok">{info}</Alert>
 
       <div className="dash-grid branding-grid">
         <section className="card">
           <div className="card-title">
-            <h2>Logo</h2>
+            <h2>{t.logo}</h2>
           </div>
-          <p className="muted small">
-            Erscheint in der Seitenleiste, auf der Anmeldeseite und (außer SVG) in den E-Mails, bis
-            zu 32 px hoch. Am besten ein SVG oder PNG mit transparentem Hintergrund.
-          </p>
+          <p className="muted small">{t.logoHint}</p>
           <div className="logo-slots">
             <ImageSlot
               slot="light"
-              label="Hell"
-              hint="für helle Hintergründe"
+              label={t.light}
+              hint={t.lightHint}
               url={branding.logoUrl}
               onSaved={saved}
               onError={failed}
             />
             <ImageSlot
               slot="dark"
-              label="Dunkelmodus"
-              hint={
-                branding.logoDarkUrl
-                  ? "für dunkle Hintergründe"
-                  : "optional, sonst wird das helle Logo verwendet"
-              }
+              label={t.darkMode}
+              hint={branding.logoDarkUrl ? t.darkHint : t.darkFallback}
               url={branding.logoDarkUrl}
               fallbackUrl={branding.logoUrl}
               onSaved={saved}
@@ -120,17 +121,14 @@ export function AdminBrandingPage() {
 
             <section className="card">
               <div className="card-title">
-                <h2>Browser-Symbol</h2>
+                <h2>{t.favicon}</h2>
               </div>
-              <p className="muted small">
-                Das kleine Bild im Browser-Tab und in Lesezeichen. Quadratisch, am besten SVG oder
-                PNG ab 64 × 64 px; ICO geht auch.
-              </p>
+              <p className="muted small">{t.faviconHint}</p>
               <div className="logo-slots">
                 <ImageSlot
                   slot="favicon"
-                  label="Symbol"
-                  hint="quadratisch"
+                  label={t.icon}
+                  hint={t.square}
                   url={branding.faviconUrl}
                   onSaved={saved}
                   onError={failed}
@@ -172,16 +170,12 @@ type SlotProps = {
   onError: Failed;
 };
 
-const slotNames: Record<Slot, string> = {
-  light: "Logo (Hell)",
-  dark: "Logo (Dunkelmodus)",
-  favicon: "Browser-Symbol",
-  login: "Bild der Anmeldeseite",
-};
-
 function ImageSlot({ slot, label, hint, url, fallbackUrl, onSaved, onError }: SlotProps) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const { m } = useI18n();
+  const t = m.branding;
+  const slotName = t.slots[slot];
 
   async function upload(file: File) {
     setBusy(true);
@@ -192,9 +186,9 @@ function ImageSlot({ slot, label, hint, url, fallbackUrl, onSaved, onError }: Sl
         method: "POST",
         body,
       });
-      onSaved(next, `${slotNames[slot]} gespeichert.`);
+      onSaved(next, format(t.slotSaved, { slot: slotName }));
     } catch (err) {
-      onError(err, "Hochladen fehlgeschlagen");
+      onError(err, t.uploadFailed);
     } finally {
       setBusy(false);
       if (input.current) input.current.value = "";
@@ -202,13 +196,13 @@ function ImageSlot({ slot, label, hint, url, fallbackUrl, onSaved, onError }: Sl
   }
 
   async function remove() {
-    if (!window.confirm(`${slotNames[slot]} entfernen?`)) return;
+    if (!window.confirm(format(t.confirmRemove, { slot: slotName }))) return;
     setBusy(true);
     try {
       const next = await api<Branding>(`/api/admin/branding/image/${slot}`, { method: "DELETE" });
-      onSaved(next, `${slotNames[slot]} entfernt.`);
+      onSaved(next, format(t.slotRemoved, { slot: slotName }));
     } catch (err) {
-      onError(err, "Entfernen fehlgeschlagen");
+      onError(err, t.removeFailed);
     } finally {
       setBusy(false);
     }
@@ -229,13 +223,13 @@ function ImageSlot({ slot, label, hint, url, fallbackUrl, onSaved, onError }: Sl
         {shown ? (
           <img
             src={shown}
-            alt={slotNames[slot]}
+            alt={slotName}
             className={`${url ? "" : "is-fallback"}${slot === "favicon" ? " icon-preview" : ""}`}
           />
         ) : (
           <span className="logo-preview-empty">
             {slot === "login" ? <Icon name="image" /> : <LogoMark size={28} />}
-            <span>{slot === "login" ? "Kein Bild" : "Standard"}</span>
+            <span>{slot === "login" ? t.noImage : t.standard}</span>
           </span>
         )}
       </div>
@@ -260,11 +254,11 @@ function ImageSlot({ slot, label, hint, url, fallbackUrl, onSaved, onError }: Sl
           disabled={busy}
           onClick={() => input.current?.click()}
         >
-          <Icon name="upload" /> {busy ? "Lädt…" : url ? "Ersetzen" : "Hochladen"}
+          <Icon name="upload" /> {busy ? t.uploading : url ? t.replace : t.upload}
         </button>
         {url && (
           <button type="button" className="ghost sm" disabled={busy} onClick={() => void remove()}>
-            Entfernen
+            {t.remove}
           </button>
         )}
       </div>
@@ -272,13 +266,7 @@ function ImageSlot({ slot, label, hint, url, fallbackUrl, onSaved, onError }: Sl
   );
 }
 
-const fontLabels: Record<Appearance["font"], string> = {
-  standard: "Standard (Inter / Segoe UI)",
-  system: "Systemschrift",
-  humanist: "Freundlich (Calibri)",
-  serif: "Mit Serifen (Georgia)",
-  rounded: "Rund (wo verfügbar)",
-};
+const fonts: Appearance["font"][] = ["standard", "system", "humanist", "serif", "rounded"];
 
 function StyleForm({
   appearance,
@@ -292,14 +280,17 @@ function StyleForm({
   const [draft, setDraft] = useState(appearance);
   const [saving, setSaving] = useState(false);
   const changed = JSON.stringify(draft) !== JSON.stringify(appearance);
+  const { m } = useI18n();
+  const t = m.branding;
+  const terms = useTerms();
 
   async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
-      onSaved(await saveBranding({ appearance: draft }), "Schrift und Form gespeichert.");
+      onSaved(await saveBranding({ appearance: draft }), t.styleSaved);
     } catch (err) {
-      onError(err, "Speichern fehlgeschlagen");
+      onError(err, t.saveFailed);
       setSaving(false);
     }
   }
@@ -311,18 +302,18 @@ function StyleForm({
   return (
     <section className="card">
       <div className="card-title">
-        <h2>Schrift und Form</h2>
+        <h2>{t.style}</h2>
       </div>
       <form className="form-stack" onSubmit={(event) => void onSubmit(event)}>
-        <Field label="Schriftart" htmlFor="style-font">
+        <Field label={t.font} htmlFor="style-font">
           <select
             id="style-font"
             value={draft.font}
             onChange={(event) => set("font", event.target.value as Appearance["font"])}
           >
-            {Object.entries(fontLabels).map(([value, label]) => (
+            {fonts.map((value) => (
               <option key={value} value={value}>
-                {label}
+                {t.fonts[value]}
               </option>
             ))}
           </select>
@@ -331,44 +322,44 @@ function StyleForm({
           className="font-sample"
           style={draft.font === "standard" ? undefined : { fontFamily: fontStacks[draft.font] }}
         >
-          Ausleihe bestätigt: ThinkPad T14, 3 Stücke frei.
+          {format(t.fontSample, { units: terms.units })}
         </p>
-        <Field label="Schriftgröße" htmlFor="style-size" hint="Vergrößert Text und Bedienelemente.">
+        <Field label={t.fontSize} htmlFor="style-size" hint={t.fontSizeHint}>
           <select
             id="style-size"
             value={draft.fontSize}
             onChange={(event) => set("fontSize", event.target.value as Appearance["fontSize"])}
           >
-            <option value="small">Kompakt</option>
-            <option value="normal">Normal</option>
-            <option value="large">Groß</option>
+            <option value="small">{t.sizes.small}</option>
+            <option value="normal">{t.sizes.normal}</option>
+            <option value="large">{t.sizes.large}</option>
           </select>
         </Field>
-        <Field label="Ecken" htmlFor="style-radius">
+        <Field label={t.corners} htmlFor="style-radius">
           <select
             id="style-radius"
             value={draft.radius}
             onChange={(event) => set("radius", event.target.value as Appearance["radius"])}
           >
-            <option value="square">Eckig</option>
-            <option value="standard">Leicht abgerundet</option>
-            <option value="round">Rund</option>
+            <option value="square">{t.radii.square}</option>
+            <option value="standard">{t.radii.standard}</option>
+            <option value="round">{t.radii.round}</option>
           </select>
         </Field>
-        <Field label="Seitenleiste" htmlFor="style-sidebar">
+        <Field label={t.sidebar} htmlFor="style-sidebar">
           <select
             id="style-sidebar"
             value={draft.sidebar}
             onChange={(event) => set("sidebar", event.target.value as Appearance["sidebar"])}
           >
-            <option value="standard">Neutral</option>
-            <option value="tinted">Leicht in der Akzentfarbe getönt</option>
-            <option value="accent">In der Akzentfarbe</option>
+            <option value="standard">{t.sidebars.standard}</option>
+            <option value="tinted">{t.sidebars.tinted}</option>
+            <option value="accent">{t.sidebars.accent}</option>
           </select>
         </Field>
         <div className="form-actions">
           <button type="submit" disabled={saving || !changed}>
-            Speichern
+            {m.common.save}
           </button>
         </div>
       </form>
@@ -376,32 +367,36 @@ function StyleForm({
   );
 }
 
-const termFields: { key: keyof Terms; label: string; hint?: string }[] = [
-  {
-    key: "subtitle",
-    label: "Untertitel unter „LendLine“",
-    hint: "Leer lassen für keinen Untertitel.",
-  },
-  { key: "catalog", label: "Katalog" },
-  { key: "device", label: "Gerät (Einzahl)" },
-  { key: "devices", label: "Geräte (Mehrzahl)" },
-  { key: "unit", label: "Stück (Einzahl)" },
-  { key: "units", label: "Stücke (Mehrzahl)" },
-  { key: "room", label: "Raum (Einzahl)" },
-  { key: "rooms", label: "Räume (Mehrzahl)" },
+const termKeys: (keyof Terms)[] = [
+  "subtitle",
+  "catalog",
+  "device",
+  "devices",
+  "unit",
+  "units",
+  "room",
+  "rooms",
 ];
 
 function TermsForm({ terms, onSaved, onError }: { terms: Terms; onSaved: Saved; onError: Failed }) {
-  const [draft, setDraft] = useState(terms);
+  const { m } = useI18n();
+  const t = m.branding;
+  // Built-in words appear in the reader's language and are stored as the built-in (German) ones,
+  // so they stay translated for everyone.
+  const shown = localizeTerms(terms, m);
+  const [draft, setDraft] = useState(shown);
   const [saving, setSaving] = useState(false);
-  const changed = JSON.stringify(draft) !== JSON.stringify(terms);
+  const changed = JSON.stringify(draft) !== JSON.stringify(shown);
 
   async function save(next: Terms, message: string) {
     setSaving(true);
+    const stored = Object.fromEntries(
+      termKeys.map((key) => [key, next[key] === m.terms[key] ? DEFAULT_TERMS[key] : next[key]])
+    );
     try {
-      onSaved(await saveBranding({ terms: next }), message);
+      onSaved(await saveBranding({ terms: stored }), message);
     } catch (err) {
-      onError(err, "Speichern fehlgeschlagen");
+      onError(err, t.saveFailed);
       setSaving(false);
     }
   }
@@ -409,48 +404,46 @@ function TermsForm({ terms, onSaved, onError }: { terms: Terms; onSaved: Saved; 
   return (
     <section className="card">
       <div className="card-title">
-        <h2>Texte und Begriffe</h2>
+        <h2>{t.terms}</h2>
       </div>
-      <p className="muted small">
-        Eigene Wörter für Navigation, Seitentitel, Anfrageformular und E-Mails, z. B. „Ausrüstung“
-        statt „Gerät“ oder „Standort“ statt „Raum“.
-      </p>
+      <p className="muted small">{t.termsHint}</p>
+      <p className="muted small">{t.termsLanguageHint}</p>
       <form
         className="form-grid cols-2"
         onSubmit={(event) => {
           event.preventDefault();
-          void save(draft, "Begriffe gespeichert.");
+          void save(draft, t.termsSaved);
         }}
       >
-        {termFields.map((field) => (
+        {termKeys.map((key) => (
           <Field
-            key={field.key}
-            label={field.label}
-            htmlFor={`term-${field.key}`}
-            hint={field.hint}
-            className={field.key === "subtitle" ? "span-full" : undefined}
+            key={key}
+            label={t.termLabels[key]}
+            htmlFor={`term-${key}`}
+            hint={key === "subtitle" ? t.subtitleHint : undefined}
+            className={key === "subtitle" ? "span-full" : undefined}
           >
             <input
-              id={`term-${field.key}`}
-              value={draft[field.key]}
-              maxLength={field.key === "subtitle" ? 60 : 40}
-              required={field.key !== "subtitle"}
-              placeholder={DEFAULT_TERMS[field.key]}
-              onChange={(event) => setDraft({ ...draft, [field.key]: event.target.value })}
+              id={`term-${key}`}
+              value={draft[key]}
+              maxLength={key === "subtitle" ? 60 : 40}
+              required={key !== "subtitle"}
+              placeholder={m.terms[key]}
+              onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
             />
           </Field>
         ))}
         <div className="form-actions span-full">
           <button type="submit" disabled={saving || !changed}>
-            Speichern
+            {m.common.save}
           </button>
           <button
             type="button"
             className="ghost"
             disabled={saving || JSON.stringify(terms) === JSON.stringify(DEFAULT_TERMS)}
-            onClick={() => void save(DEFAULT_TERMS, "Standardbegriffe wiederhergestellt.")}
+            onClick={() => void save(DEFAULT_TERMS, t.termsRestored)}
           >
-            Standard wiederherstellen
+            {t.restore}
           </button>
         </div>
       </form>
@@ -469,18 +462,22 @@ function LoginForm({
   onSaved: Saved;
   onError: Failed;
 }) {
-  const [title, setTitle] = useState(login.title);
+  const { m } = useI18n();
+  const t = m.branding;
+  const shownTitle = localizedDefault(login.title, (d) => d.terms.loginTitle);
+  const [title, setTitle] = useState(shownTitle);
   const [text, setText] = useState(login.text);
   const [saving, setSaving] = useState(false);
-  const changed = title !== login.title || text !== login.text;
+  const changed = title !== shownTitle || text !== login.text;
 
   async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
-      onSaved(await saveBranding({ login: { title, text } }), "Anmeldeseite gespeichert.");
+      const storedTitle = title === m.terms.loginTitle ? de.terms.loginTitle : title;
+      onSaved(await saveBranding({ login: { title: storedTitle, text } }), t.loginSaved);
     } catch (err) {
-      onError(err, "Speichern fehlgeschlagen");
+      onError(err, t.saveFailed);
       setSaving(false);
     }
   }
@@ -488,10 +485,10 @@ function LoginForm({
   return (
     <section className="card">
       <div className="card-title">
-        <h2>Anmeldeseite</h2>
+        <h2>{t.loginPage}</h2>
       </div>
       <form className="form-stack" onSubmit={(event) => void onSubmit(event)}>
-        <Field label="Überschrift" htmlFor="login-title">
+        <Field label={t.heading} htmlFor="login-title">
           <input
             id="login-title"
             value={title}
@@ -500,12 +497,7 @@ function LoginForm({
             onChange={(event) => setTitle(event.target.value)}
           />
         </Field>
-        <Field
-          label="Begrüßungstext"
-          htmlFor="login-text"
-          optional
-          hint="Z. B. wofür die Ausleihe da ist oder wen man bei Problemen anspricht."
-        >
+        <Field label={t.welcome} htmlFor="login-text" optional hint={t.welcomeHint}>
           <textarea
             id="login-text"
             value={text}
@@ -515,15 +507,15 @@ function LoginForm({
         </Field>
         <div className="form-actions">
           <button type="submit" disabled={saving || !changed}>
-            Speichern
+            {m.common.save}
           </button>
         </div>
       </form>
       <div className="logo-slots">
         <ImageSlot
           slot="login"
-          label="Bild"
-          hint="erscheint links neben der Anmeldung (nicht auf dem Handy), bis 3 MB"
+          label={t.image}
+          hint={t.imageHint}
           url={imageUrl}
           onSaved={onSaved}
           onError={onError}
@@ -555,17 +547,16 @@ function AccentForm({ accent, onSaved, onError }: AccentProps) {
   const palette = accentPalette(color);
   const adjusted = palette.light.accent !== color || palette.dark.accent !== color;
   const unchanged = color === (accent ?? DEFAULT_ACCENT);
+  const { m } = useI18n();
+  const t = m.branding;
 
   async function save(next: string | null) {
     setSaving(true);
     try {
       const saved = await saveBranding({ accent: next });
-      onSaved(
-        saved,
-        next ? `Akzentfarbe ${next} gespeichert.` : "Standardfarbe wiederhergestellt."
-      );
+      onSaved(saved, next ? format(t.accentSaved, { color: next }) : t.accentRestored);
     } catch (err) {
-      onError(err, "Speichern fehlgeschlagen");
+      onError(err, t.saveFailed);
       setSaving(false);
     }
   }
@@ -573,13 +564,10 @@ function AccentForm({ accent, onSaved, onError }: AccentProps) {
   return (
     <section className="card">
       <div className="card-title">
-        <h2>Akzentfarbe</h2>
-        {!accent && <span className="badge st-returned">Standard</span>}
+        <h2>{t.accent}</h2>
+        {!accent && <span className="badge st-returned">{t.standard}</span>}
       </div>
-      <p className="muted small">
-        Für Schaltflächen, Zähler und ausgewählte Filter. Zu helle oder zu dunkle Farben werden je
-        nach Modus automatisch angepasst, damit sie lesbar bleiben.
-      </p>
+      <p className="muted small">{t.accentHint}</p>
       <form
         className="form-stack"
         onSubmit={(event) => {
@@ -595,26 +583,22 @@ function AccentForm({ accent, onSaved, onError }: AccentProps) {
               type="button"
               className="swatch"
               style={{ background: preset.hex }}
-              aria-label={preset.name}
-              title={preset.name}
+              aria-label={t.colors[preset.name]}
+              title={t.colors[preset.name]}
               aria-pressed={color === preset.hex}
               onClick={() => setValue(preset.hex)}
             />
           ))}
         </div>
         <Field
-          label="Eigene Farbe"
+          label={t.ownColor}
           htmlFor="accent-hex"
-          hint={
-            valid ? undefined : (
-              <span style={{ color: "var(--bad)" }}>Bitte als #RRGGBB angeben, z. B. #2563eb.</span>
-            )
-          }
+          hint={valid ? undefined : <span style={{ color: "var(--bad)" }}>{t.hexHint}</span>}
         >
           <div className="color-field">
             <input
               type="color"
-              aria-label="Farbe wählen"
+              aria-label={t.pickColor}
               value={color}
               onChange={(event) => setValue(event.target.value)}
             />
@@ -636,24 +620,24 @@ function AccentForm({ accent, onSaved, onError }: AccentProps) {
               className={`accent-preview preview-${mode}`}
               style={previewStyle(palette[mode])}
             >
-              <span className="small">{mode === "light" ? "Hell" : "Dunkel"}</span>
+              <span className="small">{mode === "light" ? t.light : t.dark}</span>
               <div className="accent-preview-row">
-                <span className="btn">Anfragen</span>
+                <span className="btn">{t.sampleButton}</span>
                 <span className="nav-count">3</span>
-                <span className="preview-chip">Offen</span>
+                <span className="preview-chip">{t.sampleChip}</span>
               </div>
             </div>
           ))}
         </div>
         {adjusted && valid && (
           <p className="muted small">
-            Angepasst: {palette.light.accent} im hellen, {palette.dark.accent} im dunklen Modus.
+            {format(t.adjusted, { light: palette.light.accent, dark: palette.dark.accent })}
           </p>
         )}
 
         <div className="form-actions">
           <button type="submit" disabled={saving || !valid || unchanged}>
-            Farbe speichern
+            {t.saveColor}
           </button>
           {accent && (
             <button
@@ -662,7 +646,7 @@ function AccentForm({ accent, onSaved, onError }: AccentProps) {
               disabled={saving}
               onClick={() => void save(null)}
             >
-              Standard wiederherstellen
+              {t.restore}
             </button>
           )}
         </div>

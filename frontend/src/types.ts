@@ -1,4 +1,5 @@
 import type { Permission } from "./auth/permissions";
+import type { Locale } from "./i18n";
 export type DeviceStatus = "AVAILABLE" | "BORROWED" | "DEFECTIVE";
 export type RequestStatus = "OPEN" | "APPROVED" | "REJECTED" | "RETURNED" | "CANCELLED";
 
@@ -16,6 +17,10 @@ export type User = {
    * The password was set by an admin; the app sends the person to "Mein Konto" first.
    */
   mustChangePassword: boolean;
+  /**
+   * Language saved for the account (interface and e-mails); null until the person picks one.
+   */
+  locale: Locale | null;
   authSource: "LOCAL" | "LDAP";
 };
 
@@ -68,20 +73,6 @@ export type BorrowRequest = {
   };
 };
 
-export const deviceStatusLabel: Record<DeviceStatus, string> = {
-  AVAILABLE: "Verfügbar",
-  BORROWED: "Ausgeliehen",
-  DEFECTIVE: "Defekt",
-};
-
-export const requestStatusLabel: Record<RequestStatus, string> = {
-  OPEN: "Offen",
-  APPROVED: "Bestätigt",
-  REJECTED: "Abgelehnt",
-  RETURNED: "Zurückgegeben",
-  CANCELLED: "Zurückgezogen",
-};
-
 /**
  * A period as entered in `<input type="datetime-local">` (`YYYY-MM-DDTHH:MM`).
  */
@@ -117,13 +108,4 @@ export type RequestForm = {
 export function toLocalInput(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-export function formatDate(value: string | null): string {
-  if (!value) return "–";
-  return new Intl.DateTimeFormat("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Europe/Berlin",
-  }).format(new Date(value));
 }

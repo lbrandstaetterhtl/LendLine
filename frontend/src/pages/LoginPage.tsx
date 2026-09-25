@@ -7,10 +7,11 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { canOpen, homePath } from "../auth/permissions";
-import { useBranding } from "../branding/BrandingContext";
+import { loginTitle, useBranding } from "../branding/BrandingContext";
+import { LanguageSwitch } from "../components/LanguageSwitch";
 import { BrandLogo } from "../components/Logo";
 import { Alert, Field } from "../components/ui";
-import { formatDate } from "../types";
+import { format, formatDate, useI18n } from "../i18n";
 
 type AuthOptions = {
   ldapEnabled: boolean;
@@ -42,7 +43,9 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const { data: options } = useApi<AuthOptions>("/api/auth/options");
-  const { login: texts, loginImageUrl } = useBranding().branding;
+  const { branding } = useBranding();
+  const { login: texts, loginImageUrl } = branding;
+  const { m } = useI18n();
   const ldapEnabled = options?.ldapEnabled ?? false;
   // Off until the server says otherwise: registration is closed by default.
   const allowRegister = options?.allowLocalRegister ?? false;
@@ -56,7 +59,7 @@ export function LoginPage() {
       const user = await login(email, password);
       void navigate(afterLogin(state, user), { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Anmeldung fehlgeschlagen");
+      setError(err instanceof Error ? err.message : m.login.failed);
     } finally {
       setBusy(false);
     }
@@ -70,27 +73,28 @@ export function LoginPage() {
       <div className="auth-card">
         <div className="auth-brand">
           <BrandLogo height={32} />
+          <LanguageSwitch />
         </div>
-        <h1>{texts.title}</h1>
+        <h1>{loginTitle(branding, m)}</h1>
         {texts.text && <p className="auth-welcome">{texts.text}</p>}
-        <p className="lead">
-          {ldapEnabled ? "Mit Ihrem Verzeichnis- oder lokalen Konto." : "Mit Ihrem LendLine-Konto."}
-        </p>
+        <p className="lead">{ldapEnabled ? m.login.leadLdap : m.login.lead}</p>
         {maintenance && (
           <div className="maintenance-note" aria-live="polite">
-            <strong>Wartungsarbeiten</strong>
+            <strong>{m.login.maintenanceTitle}</strong>
             <p>{maintenance.message}</p>
             {maintenance.until && (
-              <p className="small">Voraussichtlich bis {formatDate(maintenance.until)}.</p>
+              <p className="small">
+                {format(m.login.maintenanceUntil, { date: formatDate(maintenance.until) })}
+              </p>
             )}
-            <p className="small">Die Anmeldung ist nur für die Verwaltung möglich.</p>
+            <p className="small">{m.login.maintenanceAdminOnly}</p>
           </div>
         )}
         <div className="panel">
           {/* A blocked login repeats the maintenance text; the note above already says it. */}
           <Alert>{error === maintenance?.message ? "" : error}</Alert>
           <form className="form-stack" onSubmit={(event) => void onSubmit(event)}>
-            <Field label={ldapEnabled ? "E-Mail oder Benutzername" : "E-Mail"} htmlFor="email">
+            <Field label={ldapEnabled ? m.login.identifier : m.login.email} htmlFor="email">
               <input
                 id="email"
                 value={email}
@@ -99,7 +103,7 @@ export function LoginPage() {
                 autoComplete="username"
               />
             </Field>
-            <Field label="Passwort" htmlFor="password">
+            <Field label={m.login.password} htmlFor="password">
               <input
                 id="password"
                 type="password"
@@ -110,13 +114,13 @@ export function LoginPage() {
               />
             </Field>
             <button type="submit" className="block" disabled={busy}>
-              {busy ? "Anmelden…" : "Anmelden"}
+              {busy ? m.login.submitting : m.login.submit}
             </button>
           </form>
         </div>
         {allowRegister && (
           <p className="auth-foot">
-            Noch kein Konto? <Link to="/register">Registrieren</Link>
+            {m.login.noAccount} <Link to="/register">{m.login.register}</Link>
           </p>
         )}
       </div>

@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 
-import { ZodError } from "zod";
+import { type ZodIssue, ZodError } from "zod";
 
+import { messages, t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 
 export function errorHandler(
@@ -15,17 +16,18 @@ export function errorHandler(
     return;
   }
   if (err instanceof ZodError) {
-    res.status(400).json({ error: err.issues.map((issue) => issue.message).join(" ") });
+    res.status(400).json({ error: unique(err.issues.map(describeIssue)).join(" ") });
     return;
   }
   if (isBodyParserError(err)) {
-    res
-      .status(err.status)
-      .json({ error: err.status === 413 ? "Anfrage ist zu groß" : "Ungültiger Anfrage-Inhalt" });
+    res.status(err.status).json({
+      error:
+        err.status === 413 ? t((m) => m.errors.requestTooLarge) : t((m) => m.errors.invalidBody),
+    });
     return;
   }
   console.error(err);
-  res.status(500).json({ error: "Interner Serverfehler" });
+  res.status(500).json({ error: t((m) => m.errors.internal) });
 }
 
 /**
@@ -43,4 +45,45 @@ function isBodyParserError(err: unknown): err is { status: number } {
     err.status >= 400 &&
     err.status < 500
   );
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+/**
+ * Own checks carry a key ("validation.nameMin"); everything else gets a generic message by kind, in
+ * the language of the request (Zod's own defaults are English).
+ */
+function describeIssue(issue: ZodIssue): string {
+  const m = messages();
+  if (issue.message.startsWith("validation.")) {
+    const key = issue.message.slice("validation.".length);
+    if (key in m.validation) return m.validation[key as keyof typeof m.validation];
+  }
+  if (issue.code === "invalid_type") {
+    return issue.received === "undefined" || issue.received === "null"
+      ? m.zod.required
+      : m.zod.invalid;
+  }
+  if (issue.code === "too_small") {
+    const min = Number(issue.minimum);
+    if (issue.type === "string") return t((d) => d.zod.tooShort, { min });
+    if (issue.type === "array") return t((d) => d.zod.tooFewItems, { min });
+    return t((d) => d.zod.tooSmall, { min });
+  }
+  if (issue.code === "too_big") {
+    const max = Number(issue.maximum);
+    if (issue.type === "string") return t((d) => d.zod.tooLong, { max });
+    if (issue.type === "array") return t((d) => d.zod.tooManyItems, { max });
+    return t((d) => d.zod.tooBig, { max });
+  }
+  if (
+    issue.code === "invalid_enum_value" ||
+    issue.code === "invalid_union" ||
+    issue.code === "invalid_literal"
+  ) {
+    return m.zod.invalidChoice;
+  }
+  return m.zod.invalid;
 }

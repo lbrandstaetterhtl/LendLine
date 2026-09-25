@@ -1,8 +1,10 @@
 import type { Request } from "express";
 
 import { Router } from "express";
+import { z } from "zod";
 
 import { config } from "../config.js";
+import { locales, t } from "../i18n/index.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { HttpError } from "../lib/errors.js";
 import { clientIp, RateLimiter } from "../lib/rateLimit.js";
@@ -15,8 +17,9 @@ import {
   logout,
   refresh,
   register,
+  setLocale,
 } from "../services/authService.js";
-import { getMaintenance } from "../services/maintenanceService.js";
+import { getMaintenance, maintenanceNotice } from "../services/maintenanceService.js";
 import { getSetting } from "../services/settingsService.js";
 import { changePasswordSchema, loginSchema, registerSchema } from "../validators/auth.js";
 
@@ -58,7 +61,10 @@ function assertSameOrigin(req: Request): void {
   } catch {
     // Malformed Origin: refused below.
   }
-  throw new HttpError(403, "Anfrage von fremder Herkunft abgelehnt");
+  throw new HttpError(
+    403,
+    t((m) => m.errors.foreignOrigin)
+  );
 }
 
 export const authRouter = Router();
@@ -77,7 +83,7 @@ authRouter.get(
       registrationDomains: registration.domains,
       // Public: only what the login page shows, not who switched it on.
       maintenance: maintenance.enabled
-        ? { enabled: true, message: maintenance.message, until: maintenance.until }
+        ? { enabled: true, message: maintenanceNotice(maintenance), until: maintenance.until }
         : { enabled: false },
     });
   })
@@ -142,6 +148,15 @@ authRouter.post(
     const result = await changePassword(req.user!.id, req.body);
     res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions());
     res.json({ user: result.user, accessToken: result.accessToken });
+  })
+);
+
+authRouter.put(
+  "/locale",
+  requireAuth,
+  validateBody(z.object({ locale: z.enum(locales) })),
+  asyncHandler(async (req, res) => {
+    res.json(await setLocale(req.user!.id, req.body.locale));
   })
 );
 

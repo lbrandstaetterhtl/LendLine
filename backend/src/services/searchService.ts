@@ -1,10 +1,15 @@
+import { t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { fieldFilter, readFields } from "./deviceService.js";
 
-function parseLocal(value: string, label: string) {
+function parseLocal(value: string, which: "start" | "end") {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new HttpError(400, `${label} ist ungültig`);
+  if (Number.isNaN(date.getTime()))
+    throw new HttpError(
+      400,
+      t((m) => (which === "start" ? m.errors.startInvalid : m.errors.endInvalid))
+    );
   return date;
 }
 
@@ -20,10 +25,13 @@ export async function searchFreeUnits(input: {
    */
   scope?: string[] | null;
 }) {
-  const startsAt = parseLocal(input.startsAt, "Startzeit");
-  const desiredUntil = parseLocal(input.desiredUntil, "Endzeit");
+  const startsAt = parseLocal(input.startsAt, "start");
+  const desiredUntil = parseLocal(input.desiredUntil, "end");
   if (desiredUntil <= startsAt)
-    throw new HttpError(400, "Die Endzeit muss nach der Startzeit liegen");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.endAfterStart)
+    );
 
   const units = await prisma.deviceUnit.findMany({
     where: {

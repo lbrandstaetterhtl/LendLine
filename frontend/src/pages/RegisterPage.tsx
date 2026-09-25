@@ -3,8 +3,10 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
+import { LanguageSwitch } from "../components/LanguageSwitch";
 import { BrandLogo } from "../components/Logo";
 import { Alert, Field } from "../components/ui";
+import { useI18n } from "../i18n";
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -14,12 +16,13 @@ export function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { m } = useI18n();
 
   async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     if (password.length < 8) {
-      setError("Passwort muss mindestens 8 Zeichen haben");
+      setError(m.register.passwordMin);
       return;
     }
     setBusy(true);
@@ -27,7 +30,7 @@ export function RegisterPage() {
       await register(name, email, password);
       void navigate("/search");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registrierung fehlgeschlagen");
+      setError(err instanceof Error ? err.message : m.register.failed);
     } finally {
       setBusy(false);
     }
@@ -38,13 +41,14 @@ export function RegisterPage() {
       <div className="auth-card">
         <div className="auth-brand">
           <BrandLogo height={32} />
+          <LanguageSwitch />
         </div>
-        <h1>Konto erstellen</h1>
-        <p className="lead">Für Ausleihanfragen bei der IT.</p>
+        <h1>{m.register.title}</h1>
+        <p className="lead">{m.register.lead}</p>
         <div className="panel">
           <Alert>{error}</Alert>
           <form className="form-stack" onSubmit={(event) => void onSubmit(event)}>
-            <Field label="Name" htmlFor="name">
+            <Field label={m.register.name} htmlFor="name">
               <input
                 id="name"
                 value={name}
@@ -54,7 +58,7 @@ export function RegisterPage() {
                 autoComplete="name"
               />
             </Field>
-            <Field label="E-Mail" htmlFor="email">
+            <Field label={m.login.email} htmlFor="email">
               <input
                 id="email"
                 type="email"
@@ -64,7 +68,7 @@ export function RegisterPage() {
                 autoComplete="email"
               />
             </Field>
-            <Field label="Passwort" htmlFor="password" hint="Mindestens 8 Zeichen.">
+            <Field label={m.login.password} htmlFor="password" hint={m.register.passwordHint}>
               <input
                 id="password"
                 type="password"
@@ -76,12 +80,12 @@ export function RegisterPage() {
               />
             </Field>
             <button type="submit" className="block" disabled={busy}>
-              {busy ? "Wird erstellt…" : "Konto erstellen"}
+              {busy ? m.register.submitting : m.register.submit}
             </button>
           </form>
         </div>
         <p className="auth-foot">
-          Bereits registriert? <Link to="/login">Anmelden</Link>
+          {m.register.haveAccount} <Link to="/login">{m.register.login}</Link>
         </p>
       </div>
     </div>

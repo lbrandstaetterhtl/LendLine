@@ -4,8 +4,14 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { config } from "../config.js";
+import { messages, t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
-import { allPermissions, permissionSections, withImplied } from "../lib/permissions.js";
+import {
+  allPermissions,
+  type Permission,
+  permissionSections,
+  withImplied,
+} from "../lib/permissions.js";
 import { prisma } from "../lib/prisma.js";
 import { recordAudit } from "./auditService.js";
 import { normalizeDn } from "./ldapService.js";
@@ -13,7 +19,7 @@ import { normalizeDn } from "./ldapService.js";
 type Db = typeof prisma | Prisma.TransactionClient;
 
 export const groupInputSchema = z.object({
-  name: z.string().trim().min(2, "Name muss mindestens 2 Zeichen haben").max(60),
+  name: z.string().trim().min(2, "validation.nameMin").max(60),
   description: z.string().trim().max(300).default(""),
   permissions: z.array(z.string().max(60)).max(100).default([]),
   borrowCategoryIds: z.array(z.string().max(60)).max(200).default([]),
@@ -27,10 +33,7 @@ export const groupInputSchema = z.object({
         .string()
         .trim()
         .max(300)
-        .refine(
-          (dn) => /^cn=/i.test(dn) && dn.includes(","),
-          "Verzeichnisgruppen als vollständige DN angeben"
-        )
+        .refine((dn) => /^cn=/i.test(dn) && dn.includes(","), "validation.dnFormat")
     )
     .max(20)
     .default([]),
@@ -39,14 +42,20 @@ export const groupInputSchema = z.object({
 });
 type GroupInput = z.infer<typeof groupInputSchema>;
 
-const permissionLabel = new Map<string, string>(
-  permissionSections.flatMap((section) =>
-    section.permissions.map((permission) => [permission.key, permission.label] as const)
-  )
-);
-
+/**
+ * The permission catalogue in the language of the request, for the group page.
+ */
 export function permissionCatalog() {
-  return permissionSections;
+  const m = messages();
+  return permissionSections.map((section) => ({
+    id: section.id,
+    title: m.permissions.sections[section.id],
+    permissions: section.permissions.map((key) => ({
+      key,
+      label: m.permissions.items[key].label,
+      hint: m.permissions.items[key].hint || undefined,
+    })),
+  }));
 }
 
 export async function listGroups() {
@@ -68,7 +77,11 @@ export async function defaultGroupId(db: Db = prisma): Promise<string> {
   const group =
     (await db.group.findFirst({ where: { isDefault: true } })) ??
     (await db.group.findFirst({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }));
-  if (!group) throw new HttpError(500, "Es gibt keine Benutzergruppe");
+  if (!group)
+    throw new HttpError(
+      500,
+      t((m) => m.errors.noGroup)
+    );
   return group.id;
 }
 
@@ -116,9 +129,11 @@ export function assertGrantable(
   if (missing.length > 0) {
     throw new HttpError(
       403,
-      `Diese Rechte haben Sie selbst nicht und können sie nicht vergeben: ${missing
-        .map((permission) => permissionLabel.get(permission) ?? permission)
-        .join(", ")}`
+      t((m) => m.errors.notGrantable, {
+        permissions: missing
+          .map((permission) => messages().permissions.items[permission].label)
+          .join(", "),
+      })
     );
   }
 }
@@ -133,7 +148,7 @@ export async function assertGroupManagerRemains(db: Db): Promise<void> {
   if (managers === 0) {
     throw new HttpError(
       409,
-      "Danach könnte niemand mehr Gruppen verwalten. Mindestens eine Person muss das Recht „Gruppen und Rechte verwalten“ behalten."
+      t((m) => m.errors.lastGroupManager)
     );
   }
 }
@@ -148,11 +163,14 @@ async function serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T
       if (error.code === "P2034") {
         throw new HttpError(
           409,
-          "Die Gruppe wurde gerade anderweitig geändert. Bitte erneut versuchen."
+          t((m) => m.errors.groupConcurrent)
         );
       }
       if (error.code === "P2002")
-        throw new HttpError(409, "Eine Gruppe mit diesem Namen gibt es schon");
+        throw new HttpError(
+          409,
+          t((m) => m.errors.groupNameTaken)
+        );
     }
     throw error;
   }
@@ -176,7 +194,7 @@ async function normalize(input: GroupInput) {
 function describeChanges(before: GroupInput | null, after: GroupInput) {
   const old = new Set(before?.permissions ?? []);
   const next = new Set(after.permissions);
-  const label = (permission: string) => permissionLabel.get(permission) ?? permission;
+  const label = (permission: Permission) => messages("de").permissions.items[permission].label;
   const plain = (key: keyof GroupInput, field: string) => {
     const from = before ? JSON.stringify(before[key]) : null;
     const to = JSON.stringify(after[key]);
@@ -214,7 +232,10 @@ export async function createGroup(input: GroupInput, actor: AuthUser) {
     action: "GROUP_CREATED",
     entityType: "GROUP",
     entityId: group.id,
-    summary: `Gruppe „${group.name}“ mit ${group.permissions.length} Rechten angelegt`,
+    summary: {
+      key: "audit.groupCreated",
+      params: { name: group.name, count: group.permissions.length },
+    },
     details: { changes: describeChanges(null, data) },
   });
   return group;
@@ -224,12 +245,16 @@ export async function updateGroup(id: string, input: GroupInput, actor: AuthUser
   const data = await normalize(input);
   const { before, after } = await serializable(async (tx) => {
     const existing = await tx.group.findUnique({ where: { id } });
-    if (!existing) throw new HttpError(404, "Gruppe nicht gefunden");
+    if (!existing)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.groupNotFound)
+      );
     assertGrantable(actor, data.permissions, existing.permissions);
     if (existing.isDefault && !data.isDefault) {
       throw new HttpError(
         409,
-        "Eine Standardgruppe muss es immer geben. Legen Sie eine andere Gruppe als Standard fest."
+        t((m) => m.errors.defaultGroupRequired)
       );
     }
     if (data.isDefault && !existing.isDefault) {
@@ -248,7 +273,7 @@ export async function updateGroup(id: string, input: GroupInput, actor: AuthUser
     action: "GROUP_UPDATED",
     entityType: "GROUP",
     entityId: id,
-    summary: `Gruppe „${after.name}“ geändert`,
+    summary: { key: "audit.groupUpdated", params: { name: after.name } },
     details: { changes },
   });
   return after;
@@ -263,20 +288,31 @@ export async function deleteGroup(id: string, moveTo: string | undefined, actor:
       where: { id },
       include: { _count: { select: { users: true } } },
     });
-    if (!existing) throw new HttpError(404, "Gruppe nicht gefunden");
+    if (!existing)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.groupNotFound)
+      );
     if (existing.isDefault) {
-      throw new HttpError(409, "Die Standardgruppe kann nicht gelöscht werden");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.defaultGroupDelete)
+      );
     }
     let targetGroup = null;
     if (existing._count.users > 0) {
       if (!moveTo || moveTo === id) {
         throw new HttpError(
           409,
-          "Die Gruppe hat Mitglieder. Bitte eine Gruppe wählen, in die sie wechseln."
+          t((m) => m.errors.groupHasMembers)
         );
       }
       targetGroup = await tx.group.findUnique({ where: { id: moveTo } });
-      if (!targetGroup) throw new HttpError(404, "Zielgruppe nicht gefunden");
+      if (!targetGroup)
+        throw new HttpError(
+          404,
+          t((m) => m.errors.targetGroupNotFound)
+        );
       assertGrantable(actor, targetGroup.permissions);
       await tx.user.updateMany({ where: { groupId: id }, data: { groupId: moveTo } });
     }
@@ -289,7 +325,7 @@ export async function deleteGroup(id: string, moveTo: string | undefined, actor:
     action: "GROUP_DELETED",
     entityType: "GROUP",
     entityId: id,
-    summary: `Gruppe „${group.name}“ gelöscht`,
+    summary: { key: "audit.groupDeleted", params: { name: group.name } },
     details: {
       context: {
         Mitglieder: String(moved),

@@ -1,12 +1,19 @@
 import { z } from "zod";
 
 import { formatDate } from "../emails/format.js";
+import { localizedDefault, messages } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { recordAudit } from "./auditService.js";
 
 const KEY = "maintenance";
-const DEFAULT_MESSAGE = "LendLine wird gerade gewartet. Bitte versuchen Sie es später erneut.";
+const DEFAULT_MESSAGE = messages("de").defaults.maintenanceMessage;
+
+/**
+ * The notice for the reader: the built-in one in their language, an own one as written.
+ */
+export const maintenanceNotice = (mode: MaintenanceMode) =>
+  localizedDefault(mode.message, (m) => m.defaults.maintenanceMessage);
 
 const storedSchema = z.object({
   enabled: z.boolean(),
@@ -74,12 +81,14 @@ export async function setMaintenance(
           ? "MAINTENANCE_ON"
           : "MAINTENANCE_OFF",
     entityType: "SYSTEM",
-    summary:
-      value.enabled === before.enabled
-        ? "Hinweis zum Wartungsmodus geändert"
-        : value.enabled
-          ? "Wartungsmodus eingeschaltet, Nutzer können sich nicht mehr anmelden"
-          : "Wartungsmodus beendet",
+    summary: {
+      key:
+        value.enabled === before.enabled
+          ? "audit.maintenanceUpdated"
+          : value.enabled
+            ? "audit.maintenanceOn"
+            : "audit.maintenanceOff",
+    },
     details: {
       changes: [
         { field: "Hinweis", from: before.message, to: value.message },
@@ -103,5 +112,5 @@ export async function assertAccessDuringMaintenance(
   if (permissions.has("maintenance.bypass")) return;
   const mode = await getMaintenance();
   if (!mode.enabled) return;
-  throw new HttpError(503, mode.message, "MAINTENANCE");
+  throw new HttpError(503, maintenanceNotice(mode), "MAINTENANCE");
 }

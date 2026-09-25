@@ -1,4 +1,5 @@
 import { useApi } from "../api/useApi";
+import { useI18n } from "../i18n";
 
 export type Category = { id: string; name: string };
 
@@ -13,14 +14,9 @@ type Props = {
   required?: boolean;
 };
 
-export function CategorySelect({
-  id,
-  value,
-  onChange,
-  emptyLabel = "Kategorie wählen…",
-  required,
-}: Props) {
+export function CategorySelect({ id, value, onChange, emptyLabel, required }: Props) {
   const { data: categories, error } = useApi<Category[]>("/api/categories");
+  const { m } = useI18n();
 
   return (
     <>
@@ -30,7 +26,7 @@ export function CategorySelect({
         required={required}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">{emptyLabel}</option>
+        <option value="">{emptyLabel ?? m.misc.chooseCategory}</option>
         {categories?.map((category) => (
           <option key={category.id} value={category.id}>
             {category.name}

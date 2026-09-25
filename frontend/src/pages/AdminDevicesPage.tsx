@@ -14,6 +14,7 @@ import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceI
 import { Icon } from "../components/icons";
 import { DeviceBadge } from "../components/StatusBadge";
 import { Alert, Field, Modal, PageHeader } from "../components/ui";
+import { format, useI18n } from "../i18n";
 import { useFeature } from "../ui/UiContext";
 
 type PieceForm = { id?: string; serialNumber: string; status: DeviceStatus };
@@ -35,6 +36,8 @@ const emptyForm = (): DeviceForm => ({
 
 export function AdminDevicesPage() {
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.devices;
   const { data: devices, error: loadError, reload } = useApi<Device[]>("/api/devices");
   const [form, setForm] = useState<DeviceForm>(emptyForm);
   const fieldOptions = useFieldOptions();
@@ -110,42 +113,38 @@ export function AdminDevicesPage() {
         Array.from(files).forEach((file) => body.append("images", file));
         await api(`/api/devices/${saved.id}/images`, { method: "POST", body });
       }
-      setInfo(editingId ? `„${saved.name}“ gespeichert.` : `„${saved.name}“ angelegt.`);
+      setInfo(format(editingId ? t.saved : t.created, { name: saved.name }));
       setEditor(null);
       reload();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      setFormError(err instanceof Error ? err.message : t.saveFailed);
     } finally {
       setSaving(false);
     }
   }
 
   async function removeImage(deviceId: string, imageId: string) {
-    if (!window.confirm("Dieses Bild entfernen?")) return;
+    if (!window.confirm(t.confirmImageRemove)) return;
     setFormError("");
     try {
       await api(`/api/devices/${deviceId}/images/${imageId}`, { method: "DELETE" });
       reload();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Bild konnte nicht entfernt werden");
+      setFormError(err instanceof Error ? err.message : t.imageRemoveFailed);
     }
   }
 
   async function remove(device: Device) {
-    if (
-      !window.confirm(
-        `Gerät „${device.name}“ löschen?\n\nDas geht nur, wenn keine Anfragen oder Ausleihen daran hängen.`
-      )
-    )
+    if (!window.confirm(format(t.confirmDelete, { device: terms.device, name: device.name })))
       return;
     setError("");
     setInfo("");
     try {
       await api(`/api/devices/${device.id}`, { method: "DELETE" });
-      setInfo(`„${device.name}“ gelöscht.`);
+      setInfo(format(t.deleted, { name: device.name }));
       reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t.deleteFailed);
     }
   }
 
@@ -156,11 +155,16 @@ export function AdminDevicesPage() {
     <>
       <PageHeader
         title={terms.devices}
-        description="Ein Gerät ist ein Modell. Jedes Stück hat eine eigene Seriennummer und einen eigenen Status."
+        description={format(t.description, { device: terms.device, unit: terms.unit })}
         actions={
           canManage && (
-            <button type="button" onClick={openNew} data-shortcut="new" title="Tastenkürzel: n">
-              <Icon name="plus" /> Gerät anlegen
+            <button
+              type="button"
+              onClick={openNew}
+              data-shortcut="new"
+              title={m.categories.shortcutNew}
+            >
+              <Icon name="plus" /> {format(t.create, { device: terms.device })}
             </button>
           )
         }
@@ -172,15 +176,15 @@ export function AdminDevicesPage() {
         <table>
           <thead>
             <tr>
-              <th>Gerät</th>
-              <th>Kategorie</th>
-              <th className="num">Verfügbar</th>
-              <th className="num">Ausgeliehen</th>
-              <th className="num">Gesamt</th>
-              <th>Stücke</th>
-              <th>Bilder</th>
+              <th>{terms.device}</th>
+              <th>{t.category}</th>
+              <th className="num">{t.available}</th>
+              <th className="num">{t.borrowed}</th>
+              <th className="num">{t.total}</th>
+              <th>{terms.units}</th>
+              <th>{t.images}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -227,7 +231,7 @@ export function AdminDevicesPage() {
                         className="secondary sm"
                         onClick={() => startEdit(device)}
                       >
-                        {canManage ? "Bearbeiten" : "Bilder"}
+                        {canManage ? m.common.edit : t.images}
                       </button>
                     )}
                     {canManage && (
@@ -236,7 +240,7 @@ export function AdminDevicesPage() {
                         className="danger sm"
                         onClick={() => void remove(device)}
                       >
-                        Löschen
+                        {m.common.delete}
                       </button>
                     )}
                   </div>
@@ -246,7 +250,7 @@ export function AdminDevicesPage() {
             {devices?.length === 0 && (
               <tr>
                 <td colSpan={8} className="empty">
-                  Noch keine Geräte angelegt.
+                  {format(t.none, { devices: terms.devices })}
                 </td>
               </tr>
             )}
@@ -258,16 +262,20 @@ export function AdminDevicesPage() {
         <Modal
           variant="sheet"
           size="lg"
-          title={editingId ? "Gerät bearbeiten" : "Gerät anlegen"}
-          description={editing ? editing.name : "Modell, Stücke und Bilder erfassen."}
+          title={format(editingId ? t.edit : t.create, { device: terms.device })}
+          description={editing ? editing.name : format(t.editorIntro, { units: terms.units })}
           onClose={() => setEditor(null)}
           footer={
             <>
               <button type="button" className="secondary" onClick={() => setEditor(null)}>
-                Abbrechen
+                {m.common.cancel}
               </button>
               <button type="submit" form="device-form" disabled={saving}>
-                {saving ? "Speichern…" : editingId ? "Änderungen speichern" : "Gerät anlegen"}
+                {saving
+                  ? t.saving
+                  : editingId
+                    ? t.saveChanges
+                    : format(t.create, { device: terms.device })}
               </button>
             </>
           }
@@ -275,9 +283,9 @@ export function AdminDevicesPage() {
           <Alert>{formError}</Alert>
           <form id="device-form" onSubmit={(event) => void onSubmit(event)}>
             <section className="form-section">
-              <h3>Allgemein</h3>
+              <h3>{t.general}</h3>
               <div className="form-grid cols-2">
-                <Field label="Name" htmlFor="name">
+                <Field label={t.name} htmlFor="name">
                   <input
                     id="name"
                     value={form.name}
@@ -285,10 +293,10 @@ export function AdminDevicesPage() {
                     required
                     minLength={2}
                     maxLength={160}
-                    placeholder="z. B. ThinkPad T14"
+                    placeholder={t.namePlaceholder}
                   />
                 </Field>
-                <Field label="Kategorie" htmlFor="category">
+                <Field label={t.category} htmlFor="category">
                   <CategorySelect
                     id="category"
                     value={form.categoryId}
@@ -296,13 +304,18 @@ export function AdminDevicesPage() {
                     required
                   />
                 </Field>
-                <Field label="Beschreibung" htmlFor="description" optional className="span-full">
+                <Field
+                  label={t.descriptionLabel}
+                  htmlFor="description"
+                  optional
+                  className="span-full"
+                >
                   <textarea
                     id="description"
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                     maxLength={2000}
-                    placeholder="Ausstattung, Zubehör, Hinweise"
+                    placeholder={t.descriptionPlaceholder}
                   />
                 </Field>
               </div>
@@ -310,11 +323,8 @@ export function AdminDevicesPage() {
 
             {properties && (
               <section className="form-section">
-                <h3>Eigenschaften</h3>
-                <p className="hint">
-                  Frei wählbar, z. B. RAM: 16 GB oder Anschlüsse: HDMI, USB-C. Nutzer sehen sie im
-                  Katalog und können danach filtern.
-                </p>
+                <h3>{t.properties}</h3>
+                <p className="hint">{t.propertiesHint}</p>
                 <DeviceFieldsEditor
                   fields={form.fields}
                   options={fieldOptions}
@@ -324,19 +334,18 @@ export function AdminDevicesPage() {
             )}
 
             <section className="form-section">
-              <h3>Stücke</h3>
+              <h3>{terms.units}</h3>
               <p className="hint">
-                {form.units.length} gesamt · {available} verfügbar · {borrowed} ausgeliehen.
-                „Ausgeliehen“ wird nur durch eine bestätigte Anfrage gesetzt.
+                {format(t.unitsSummary, { total: form.units.length, available, borrowed })}
               </p>
               <div className="table-wrap table-plain" style={{ marginBottom: 10 }}>
                 <table>
                   <thead>
                     <tr>
-                      <th>Seriennummer</th>
-                      <th style={{ width: 170 }}>Status</th>
+                      <th>{t.serial}</th>
+                      <th style={{ width: 170 }}>{t.status}</th>
                       <th style={{ width: 48 }}>
-                        <span className="sr-only">Entfernen</span>
+                        <span className="sr-only">{t.remove}</span>
                       </th>
                     </tr>
                   </thead>
@@ -345,12 +354,15 @@ export function AdminDevicesPage() {
                       <tr key={unit.id ?? `new-${index}`}>
                         <td>
                           <input
-                            aria-label={`Seriennummer Stück ${index + 1}`}
+                            aria-label={format(t.serialLabel, {
+                              unit: terms.unit,
+                              index: index + 1,
+                            })}
                             value={unit.serialNumber}
                             required
                             minLength={2}
                             maxLength={80}
-                            placeholder="z. B. LT-1001"
+                            placeholder={t.serialPlaceholder}
                             onChange={(event) =>
                               updateUnit(index, { serialNumber: event.target.value })
                             }
@@ -361,14 +373,17 @@ export function AdminDevicesPage() {
                             <DeviceBadge status="BORROWED" />
                           ) : (
                             <select
-                              aria-label={`Status Stück ${index + 1}`}
+                              aria-label={format(t.statusLabel, {
+                                unit: terms.unit,
+                                index: index + 1,
+                              })}
                               value={unit.status}
                               onChange={(event) =>
                                 updateUnit(index, { status: event.target.value as DeviceStatus })
                               }
                             >
-                              <option value="AVAILABLE">Verfügbar</option>
-                              <option value="DEFECTIVE">Defekt</option>
+                              <option value="AVAILABLE">{m.status.device.AVAILABLE}</option>
+                              <option value="DEFECTIVE">{m.status.device.DEFECTIVE}</option>
                             </select>
                           )}
                         </td>
@@ -376,8 +391,11 @@ export function AdminDevicesPage() {
                           <button
                             type="button"
                             className="ghost icon sm"
-                            aria-label={`Stück ${index + 1} entfernen`}
-                            title="Entfernen"
+                            aria-label={format(t.removeUnit, {
+                              unit: terms.unit,
+                              index: index + 1,
+                            })}
+                            title={t.remove}
                             disabled={unit.status === "BORROWED" || form.units.length === 1}
                             onClick={() =>
                               setForm({
@@ -404,12 +422,12 @@ export function AdminDevicesPage() {
                   })
                 }
               >
-                <Icon name="plus" /> Stück hinzufügen
+                <Icon name="plus" /> {format(t.addUnit, { unit: terms.unit })}
               </button>
             </section>
 
             <section className="form-section">
-              <h3>Bilder</h3>
+              <h3>{t.images}</h3>
               {editing && editing.images.length > 0 && (
                 <div className="thumbs lg" style={{ marginBottom: 12 }}>
                   {editing.images.map((image) => (
@@ -420,17 +438,17 @@ export function AdminDevicesPage() {
                         className="ghost sm"
                         onClick={() => void removeImage(editing.id, image.id)}
                       >
-                        Entfernen
+                        {t.remove}
                       </button>
                     </figure>
                   ))}
                 </div>
               )}
               <Field
-                label="Bilder hochladen"
+                label={t.upload}
                 htmlFor="images"
                 optional
-                hint="JPG, PNG, WEBP oder GIF · höchstens 8 Bilder pro Gerät · je max. 5 MB"
+                hint={format(t.uploadHint, { device: terms.device })}
               >
                 <input
                   id="images"

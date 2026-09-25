@@ -4,9 +4,10 @@ import path from "node:path";
 import { config } from "../config.js";
 import { sendMail } from "../emails/mailer.js";
 import { mailContext, testMailTemplate } from "../emails/templates.js";
+import { isLocale, t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-import { recordAudit } from "./auditService.js";
+import { type AuditSummary, describe, recordAudit } from "./auditService.js";
 import { uploadDir } from "./imageService.js";
 import { getMaintenance } from "./maintenanceService.js";
 import { endAllSessions } from "./sessionService.js";
@@ -126,44 +127,54 @@ function megabytes(bytes: number): string {
  * Runs one task and returns a sentence for the admin; every run is written to the audit log.
  */
 export async function runMaintenanceTask(task: MaintenanceTask, actorId: string): Promise<string> {
-  let result: string;
+  let summary: AuditSummary;
   let context: Record<string, string> = {};
   switch (task) {
     case "cleanup-sessions": {
       const { count } = await prisma.refreshToken.deleteMany({
         where: { OR: [{ revokedAt: { not: null } }, { expiresAt: { lte: new Date() } }] },
       });
-      result = `${count} abgelaufene oder beendete Sitzungen gelöscht.`;
+      summary = { key: "tasks.cleanupSessions", params: { count } };
       break;
     }
     case "cleanup-uploads": {
       const { orphans } = await uploadFiles();
       await Promise.all(orphans.map(async (file) => fs.unlink(path.join(uploadDir, file.name))));
       const bytes = orphans.reduce((sum, file) => sum + file.bytes, 0);
-      result = `${orphans.length} verwaiste Bilddateien gelöscht (${megabytes(bytes)}).`;
+      summary = {
+        key: "tasks.cleanupUploads",
+        params: { count: orphans.length, size: megabytes(bytes) },
+      };
       context = { Dateien: orphans.map((file) => file.name).join(", ") };
       break;
     }
     case "refresh-units": {
       await refreshUnitStatuses();
-      result = "Status aller Stücke anhand der bestätigten Ausleihen neu berechnet.";
+      summary = { key: "tasks.refreshUnits" };
       break;
     }
     case "end-sessions": {
       const count = await endAllSessions(prisma, { id: { not: actorId } });
-      result = `${count} Sitzungen beendet. Alle anderen müssen sich neu anmelden; Ihre eigene Sitzung bleibt bestehen.`;
+      summary = { key: "tasks.endSessions", params: { count } };
       break;
     }
     case "test-mail": {
       const actor = await prisma.user.findUnique({ where: { id: actorId } });
-      if (!actor) throw new HttpError(404, "Benutzer nicht gefunden");
+      if (!actor)
+        throw new HttpError(
+          404,
+          t((m) => m.errors.userNotFound)
+        );
       await sendMail(
         actor.email,
-        testMailTemplate(await mailContext(), { recipientName: actor.name })
+        testMailTemplate(await mailContext(isLocale(actor.locale) ? actor.locale : undefined), {
+          recipientName: actor.name,
+        })
       );
-      result = config.smtp.host
-        ? `Test-E-Mail an ${actor.email} gesendet.`
-        : `SMTP ist nicht eingerichtet: Die Test-E-Mail an ${actor.email} wurde nur in der Server-Konsole ausgegeben.`;
+      summary = {
+        key: config.smtp.host ? "tasks.testMailSent" : "tasks.testMailConsole",
+        params: { email: actor.email },
+      };
       context = { Empfänger: actor.email, Versand: config.smtp.host ? "SMTP" : "nur Konsole" };
       break;
     }
@@ -172,8 +183,8 @@ export async function runMaintenanceTask(task: MaintenanceTask, actorId: string)
     actorId,
     action: "MAINTENANCE_TASK",
     entityType: "SYSTEM",
-    summary: result,
+    summary,
     details: { context: { Aufgabe: task, ...context } },
   });
-  return result;
+  return describe(summary);
 }

@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import { t } from "../i18n/index.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { HttpError } from "../lib/errors.js";
 import { routeParam } from "../lib/params.js";
@@ -53,7 +54,10 @@ requestRouter.post(
     const user = req.user!;
     createPerUser.consume(user.id);
     if (!inScope(user.borrowScope, await categoryOfUnit(req.body.unitId))) {
-      throw new HttpError(403, "Aus dieser Kategorie darf Ihre Gruppe nicht ausleihen");
+      throw new HttpError(
+        403,
+        t((m) => m.errors.categoryNotBorrowable)
+      );
     }
     res.status(201).json(await createRequest(user.id, req.body, user.rules));
   })

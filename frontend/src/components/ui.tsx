@@ -2,6 +2,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
+import { useI18n } from "../i18n";
 import { Icon } from "./icons";
 
 export function PageHeader({
@@ -39,11 +40,12 @@ export function Field({
   className?: string;
   children: ReactNode;
 }) {
+  const { m } = useI18n();
   return (
     <div className={`field${className ? ` ${className}` : ""}`}>
       <label htmlFor={htmlFor}>
         {label}
-        {optional && <span className="opt">optional</span>}
+        {optional && <span className="opt">{m.common.optional}</span>}
       </label>
       {children}
       {hint && <p className="hint">{hint}</p>}
@@ -116,6 +118,7 @@ export function Modal({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const { m } = useI18n();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -165,7 +168,7 @@ export function Modal({
           <h2 id={titleId}>{title}</h2>
           {description && <p>{description}</p>}
         </div>
-        <button type="button" className="ghost icon" onClick={onClose} aria-label="Schließen">
+        <button type="button" className="ghost icon" onClick={onClose} aria-label={m.common.close}>
           <Icon name="x" />
         </button>
       </div>

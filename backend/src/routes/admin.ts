@@ -4,6 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { mailContext, previewTemplate } from "../emails/templates.js";
+import { t } from "../i18n/index.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { HttpError } from "../lib/errors.js";
 import { routeParam } from "../lib/params.js";
@@ -21,7 +22,14 @@ import {
   updateBranding,
 } from "../services/brandingService.js";
 import { setMaintenance } from "../services/maintenanceService.js";
-import { mailSchema, getSetting, setSetting } from "../services/settingsService.js";
+import {
+  getSetting,
+  mailForEditing,
+  mailFromEditing,
+  type MailSettings,
+  mailSchema,
+  setSetting,
+} from "../services/settingsService.js";
 import { maintenanceTasks, runMaintenanceTask, systemStatus } from "../services/systemService.js";
 import { uiUsage } from "../services/uiService.js";
 import { auditQuerySchema } from "../validators/audit.js";
@@ -31,7 +39,7 @@ const maintenanceSchema = z.object({
   message: z.string().trim().max(500).default(""),
   until: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Zeit im Format JJJJ-MM-TTTHH:MM angeben")
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "validation.timeFormat")
     .nullable()
     .default(null)
     .transform((value) => (value ? new Date(value).toISOString() : null)),
@@ -39,7 +47,11 @@ const maintenanceSchema = z.object({
 
 function imageSlot(req: Request): ImageSlot {
   const slot = imageSlots.find((name) => name === routeParam(req, "slot"));
-  if (!slot) throw new HttpError(404, "Unbekanntes Bild");
+  if (!slot)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.unknownImage)
+    );
   return slot;
 }
 
@@ -94,7 +106,11 @@ adminRouter.post(
   requirePermission("maintenance.manage"),
   asyncHandler(async (req, res) => {
     const task = maintenanceTasks.find((name) => name === routeParam(req, "task"));
-    if (!task) throw new HttpError(404, "Unbekannte Wartungsaufgabe");
+    if (!task)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.unknownTask)
+      );
     res.json({ message: await runMaintenanceTask(task, req.user!.id) });
   })
 );
@@ -109,9 +125,16 @@ const settingPermission = {
 
 function settingKey(req: Request) {
   const key = settingKeys.find((name) => name === routeParam(req, "key"));
-  if (!key) throw new HttpError(404, "Unbekannte Einstellung");
+  if (!key)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.unknownSetting)
+    );
   if (!req.user?.permissions.has(settingPermission[key])) {
-    throw new HttpError(403, "Keine Berechtigung");
+    throw new HttpError(
+      403,
+      t((m) => m.errors.forbidden)
+    );
   }
   return key;
 }
@@ -129,22 +152,30 @@ adminRouter.post(
   "/settings/mail/preview",
   requirePermission("settings.mail"),
   asyncHandler(async (req, res) => {
-    const ctx = await mailContext();
-    res.json(previewTemplate({ ...ctx, settings: mailSchema.parse(req.body) }));
+    const unsaved = mailSchema.parse(mailFromEditing(req.body));
+    res.json(previewTemplate(await mailContext(undefined, unsaved)));
   })
 );
 
 adminRouter.get(
   "/settings/:key",
   asyncHandler(async (req, res) => {
-    res.json(await getSetting(settingKey(req)));
+    const key = settingKey(req);
+    const value = await getSetting(key);
+    res.json(key === "mail" ? mailForEditing(value as MailSettings) : value);
   })
 );
 
 adminRouter.put(
   "/settings/:key",
   asyncHandler(async (req, res) => {
-    res.json(await setSetting(settingKey(req), req.body, req.user!.id));
+    const key = settingKey(req);
+    if (key === "mail") {
+      const saved = await setSetting(key, mailFromEditing(req.body), req.user!.id);
+      res.json(mailForEditing(saved));
+      return;
+    }
+    res.json(await setSetting(key, req.body, req.user!.id));
   })
 );
 

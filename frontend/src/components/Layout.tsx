@@ -1,3 +1,5 @@
+import type { Messages } from "../i18n/de";
+
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -5,9 +7,11 @@ import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
 import { type Terms, useBranding, useTerms } from "../branding/BrandingContext";
+import { format, useI18n } from "../i18n";
 import { goKeyFor, goShortcuts, isTyping } from "../shortcuts";
 import { useCanOpen } from "../ui/UiContext";
 import { Icon, type IconName } from "./icons";
+import { LanguageSwitch } from "./LanguageSwitch";
 import { BrandLogo, LogoMark, Wordmark } from "./Logo";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { NAV_REFRESH_EVENT } from "./ui";
@@ -15,9 +19,9 @@ import { NAV_REFRESH_EVENT } from "./ui";
 type NavItem = {
   to: string;
   /**
-   * Text, or the text built from the company's terms ("Stück" → "Ausrüstung").
+   * Text in the current language, with the company's terms ("Stück" → "Ausrüstung").
    */
-  label: string | ((terms: Terms) => string);
+  label: (m: Messages, terms: Terms) => string;
   icon: IconName;
   end?: boolean;
   count?: "openRequests" | "activeLoans";
@@ -28,24 +32,28 @@ type NavItem = {
 };
 
 const lendLinks: NavItem[] = [
-  { to: "/search", label: (terms) => `${terms.unit} suchen`, icon: "search" },
-  { to: "/devices", label: (terms) => terms.catalog, icon: "box", end: true },
-  { to: "/my-requests", label: "Meine Anfragen", icon: "list" },
+  {
+    to: "/search",
+    label: (m, terms) => format(m.nav.searchUnits, { unit: terms.unit }),
+    icon: "search",
+  },
+  { to: "/devices", label: (_m, terms) => terms.catalog, icon: "box", end: true },
+  { to: "/my-requests", label: (m) => m.nav.myRequests, icon: "list" },
 ];
 
 const adminLinks: NavItem[] = [
-  { to: "/admin", label: "Übersicht", icon: "home", end: true },
-  { to: "/admin/requests", label: "Anfragen", icon: "inbox", count: "openRequests" },
-  { to: "/admin/borrowed", label: "Ausleihen", icon: "clock", count: "activeLoans" },
+  { to: "/admin", label: (m) => m.nav.overview, icon: "home", end: true },
+  { to: "/admin/requests", label: (m) => m.nav.requests, icon: "inbox", count: "openRequests" },
+  { to: "/admin/borrowed", label: (m) => m.nav.loans, icon: "clock", count: "activeLoans" },
 ];
 
 const adminDataLinks: NavItem[] = [
-  { to: "/admin/devices", label: (terms) => terms.devices, icon: "box" },
-  { to: "/admin/categories", label: "Kategorien", icon: "tag" },
-  { to: "/admin/rooms", label: (terms) => terms.rooms, icon: "door" },
+  { to: "/admin/devices", label: (_m, terms) => terms.devices, icon: "box" },
+  { to: "/admin/categories", label: (m) => m.nav.categories, icon: "tag" },
+  { to: "/admin/rooms", label: (_m, terms) => terms.rooms, icon: "door" },
   {
     to: "/admin/users",
-    label: "Benutzer",
+    label: (m) => m.nav.users,
     icon: "users",
     alsoActiveOn: ["/admin/users", "/admin/gruppen"],
   },
@@ -62,10 +70,10 @@ export const settingsPaths = [
 ];
 
 const adminSystemLinks: NavItem[] = [
-  { to: "/admin/protokoll", label: "Protokoll", icon: "file" },
+  { to: "/admin/protokoll", label: (m) => m.nav.audit, icon: "file" },
   {
     to: "/admin/erscheinungsbild",
-    label: "Einstellungen",
+    label: (m) => m.nav.settings,
     icon: "sliders",
     alsoActiveOn: settingsPaths,
   },
@@ -149,7 +157,7 @@ function initials(name = "") {
 
 function Brand() {
   const { branding } = useBranding();
-  const { subtitle } = branding.terms;
+  const { subtitle } = useTerms();
   // A company logo usually carries its own name, so it stands alone.
   if (branding.logoUrl) return <BrandLogo height={32} />;
   return (
@@ -168,6 +176,7 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const terms = useTerms();
+  const { m } = useI18n();
   const openable = useCanOpen();
   useShortcuts(openable);
   useFocusOnNavigation();
@@ -227,7 +236,7 @@ export function Layout() {
         {items.map((item) => {
           const count = item.count && counts ? counts[item.count] : 0;
           const key = goKeyFor(item.to);
-          const label = typeof item.label === "string" ? item.label : item.label(terms);
+          const label = item.label(m, terms);
           return (
             <li key={item.to}>
               <NavLink
@@ -235,12 +244,12 @@ export function Layout() {
                 to={item.alsoActiveOn?.includes(pathname) ? pathname : item.to}
                 end={item.end}
                 onClick={onNavigate}
-                title={key ? `Tastenkürzel: g, dann ${key}` : undefined}
+                title={key ? format(m.nav.shortcut, { key }) : undefined}
               >
                 <Icon name={item.icon} />
                 {label}
                 {count > 0 && (
-                  <span className="nav-count" aria-label={`${count} offen`}>
+                  <span className="nav-count" aria-label={format(m.nav.countOpen, { count })}>
                     {count}
                   </span>
                 )}
@@ -255,7 +264,7 @@ export function Layout() {
   return (
     <div className="app">
       <a className="skip" href="#inhalt">
-        Zum Inhalt springen
+        {m.nav.skip}
       </a>
 
       <div className="topbar">
@@ -265,7 +274,7 @@ export function Layout() {
         <button
           type="button"
           className="ghost icon"
-          aria-label="Menü öffnen"
+          aria-label={m.nav.openMenu}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen(true)}
         >
@@ -276,7 +285,7 @@ export function Layout() {
         <button
           type="button"
           className="scrim"
-          aria-label="Menü schließen"
+          aria-label={m.nav.closeMenu}
           onClick={() => setMenuOpen(false)}
         />
       )}
@@ -285,39 +294,37 @@ export function Layout() {
         <div className="sidebar-brand">
           <Brand />
         </div>
-        <nav aria-label="Hauptnavigation">
+        <nav aria-label={m.nav.mainNav}>
           {/* Whoever handles requests starts there, so that work comes first. Every entry is
               shown only if the person's group may open the page. */}
-          {section("Verwaltung", adminLinks)}
-          {section("Ausleihe", lendLinks)}
-          {section("Stammdaten", adminDataLinks)}
-          {section("System", adminSystemLinks)}
+          {section(m.nav.sectionAdmin, adminLinks)}
+          {section(m.nav.sectionLend, lendLinks)}
+          {section(m.nav.sectionData, adminDataLinks)}
+          {section(m.nav.sectionSystem, adminSystemLinks)}
         </nav>
         <div className="sidebar-theme">
-          <NavLink
-            to="/hilfe"
-            className="help-link"
-            onClick={onNavigate}
-            title="Bedienung und Tastenkürzel (Taste ?)"
-          >
-            <Icon name="keyboard" /> Hilfe
+          <NavLink to="/hilfe" className="help-link" onClick={onNavigate} title={m.nav.helpTitle}>
+            <Icon name="keyboard" /> {m.nav.help}
           </NavLink>
+          <LanguageSwitch />
           <ThemeSwitch />
         </div>
         <div className="sidebar-user">
           <span className="avatar" aria-hidden="true">
             {initials(user?.name)}
           </span>
-          <NavLink to="/konto" className="who" onClick={onNavigate} title="Mein Konto">
+          <NavLink to="/konto" className="who" onClick={onNavigate} title={m.nav.account}>
             <strong>{user?.name}</strong>
-            <span>{user?.group.name} · Mein Konto</span>
+            <span>
+              {user?.group.name} · {m.nav.account}
+            </span>
           </NavLink>
           <button
             type="button"
             className="ghost icon"
             onClick={() => void logout()}
-            aria-label="Abmelden"
-            title="Abmelden"
+            aria-label={m.nav.logout}
+            title={m.nav.logout}
           >
             <Icon name="logout" />
           </button>
@@ -330,12 +337,11 @@ export function Layout() {
             <div className="maintenance-banner" aria-live="polite">
               <Icon name="tool" />
               <span>
-                <strong>Wartungsmodus aktiv.</strong> Nutzer können sich nicht anmelden, nur die
-                Verwaltung arbeitet.
+                <strong>{m.nav.maintenanceActive}</strong> {m.nav.maintenanceText}
               </span>
               {openable("/admin/wartung") && (
                 <NavLink to="/admin/wartung" onClick={onNavigate}>
-                  Verwalten
+                  {m.nav.manage}
                 </NavLink>
               )}
             </div>

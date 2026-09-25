@@ -3,6 +3,8 @@ import type { DeviceStatus } from "@prisma/client";
 
 import { Prisma } from "@prisma/client";
 
+import { de } from "../i18n/de.js";
+import { format, t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { diff, recordAudit } from "./auditService.js";
@@ -127,13 +129,20 @@ export async function listDevices(
 
 async function assertCategory(categoryId: string) {
   const category = await prisma.category.findUnique({ where: { id: categoryId } });
-  if (!category) throw new HttpError(400, "Kategorie nicht gefunden");
+  if (!category)
+    throw new HttpError(
+      400,
+      t((m) => m.errors.categoryNotFound)
+    );
 }
 
 function assertUniqueSerials(units: UnitInput[]) {
   const serials = units.map((unit) => unit.serialNumber.toLowerCase());
   if (new Set(serials).size !== serials.length) {
-    throw new HttpError(400, "Seriennummern müssen eindeutig sein");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.serialsUnique)
+    );
   }
 }
 
@@ -150,7 +159,10 @@ export async function createDevice(
   await assertCategory(input.categoryId);
   assertUniqueSerials(input.units);
   if (input.units.some((unit) => (unit.status as string) === "BORROWED")) {
-    throw new HttpError(400, "Status Ausgeliehen wird nur durch eine bestätigte Anfrage gesetzt");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.borrowedOnlyByRequest)
+    );
   }
   try {
     const device = await prisma.device.create({
@@ -174,7 +186,10 @@ export async function createDevice(
       action: "DEVICE_CREATED",
       entityType: "DEVICE",
       entityId: created.id,
-      summary: `Gerät „${created.name}“ mit ${pieces(created.quantityTotal, true)} angelegt`,
+      summary: {
+        key: "audit.deviceCreated",
+        params: { name: created.name, count: created.quantityTotal },
+      },
       details: {
         context: {
           Kategorie: created.category,
@@ -187,7 +202,10 @@ export async function createDevice(
     return created;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new HttpError(409, "Diese Seriennummer ist bereits vergeben");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.serialTaken)
+      );
     }
     throw error;
   }
@@ -208,7 +226,11 @@ export async function updateDevice(
     where: { id },
     include: { units: true, category: true },
   });
-  if (!device) throw new HttpError(404, "Gerät nicht gefunden");
+  if (!device)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.deviceNotFound)
+    );
   if (input.categoryId) await assertCategory(input.categoryId);
   if (input.units) assertUniqueSerials(input.units);
 
@@ -221,14 +243,14 @@ export async function updateDevice(
             if (existing.status === "BORROWED") {
               throw new HttpError(
                 409,
-                `Stück ${existing.serialNumber} ist ausgeliehen und kann nicht entfernt werden`
+                t((m) => m.errors.unitBorrowedCannotRemove, { serial: existing.serialNumber })
               );
             }
             const used = await tx.borrowRequest.count({ where: { unitId: existing.id } });
             if (used > 0) {
               throw new HttpError(
                 409,
-                `Stück ${existing.serialNumber} hat Ausleihen und kann nicht entfernt werden`
+                t((m) => m.errors.unitHasLoans, { serial: existing.serialNumber })
               );
             }
             await tx.deviceUnit.delete({ where: { id: existing.id } });
@@ -239,7 +261,7 @@ export async function updateDevice(
             if ((unit.status as string) === "BORROWED") {
               throw new HttpError(
                 400,
-                "Status Ausgeliehen wird nur durch eine bestätigte Anfrage gesetzt"
+                t((m) => m.errors.borrowedOnlyByRequest)
               );
             }
             await tx.deviceUnit.create({
@@ -249,7 +271,10 @@ export async function updateDevice(
           }
           const existing = device.units.find((item) => item.id === unit.id);
           if (!existing || existing.deviceId !== id)
-            throw new HttpError(400, "Stück gehört nicht zu diesem Gerät");
+            throw new HttpError(
+              400,
+              t((m) => m.errors.unitNotOfDevice)
+            );
           if (existing.status === "BORROWED") {
             await tx.deviceUnit.update({
               where: { id: existing.id },
@@ -260,7 +285,7 @@ export async function updateDevice(
           if ((unit.status as string) === "BORROWED") {
             throw new HttpError(
               400,
-              "Status Ausgeliehen wird nur durch eine bestätigte Anfrage gesetzt"
+              t((m) => m.errors.borrowedOnlyByRequest)
             );
           }
           await tx.deviceUnit.update({
@@ -287,7 +312,7 @@ export async function updateDevice(
       action: "DEVICE_UPDATED",
       entityType: "DEVICE",
       entityId: result.id,
-      summary: `Gerät „${result.name}“ geändert${unitChanges.summary ? ` (${unitChanges.summary})` : ""}`,
+      summary: { key: "audit.deviceUpdated", params: { name: result.name } },
       details: {
         changes: [
           ...diff(
@@ -304,17 +329,24 @@ export async function updateDevice(
             ]
           ),
           ...compareFields(readFields(device.fields), result.fields),
-          ...unitChanges.changes,
+          ...unitChanges,
         ],
         context: {
-          Bestand: `${pieces(result.quantityTotal)}, ${result.quantityAvailable} verfügbar`,
+          Bestand: format(
+            de.auditPatterns.stock,
+            { total: result.quantityTotal, available: result.quantityAvailable },
+            "de"
+          ),
         },
       },
     });
     return result;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new HttpError(409, "Diese Seriennummer ist bereits vergeben");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.serialTaken)
+      );
     }
     throw error;
   }
@@ -326,7 +358,11 @@ export async function deviceCalendar(deviceId: string, includeNames: boolean) {
     where: { id: deviceId },
     include: { units: { orderBy: { serialNumber: "asc" } } },
   });
-  if (!device) throw new HttpError(404, "Gerät nicht gefunden");
+  if (!device)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.deviceNotFound)
+    );
   const bookings = await prisma.borrowRequest.findMany({
     where: {
       deviceId,
@@ -366,9 +402,16 @@ export async function deleteDevice(id: string, actorId: string): Promise<void> {
     where: { id },
     include: { units: true, category: true, _count: { select: { requests: true } } },
   });
-  if (!device) throw new HttpError(404, "Gerät nicht gefunden");
+  if (!device)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.deviceNotFound)
+    );
   if (device.units.some((unit) => unit.status === "BORROWED") || device._count.requests > 0) {
-    throw new HttpError(409, "Gerät hat Ausleihen oder Anfragen und kann nicht gelöscht werden");
+    throw new HttpError(
+      409,
+      t((m) => m.errors.deviceInUse)
+    );
   }
   await deleteDeviceFiles(id);
   await prisma.device.delete({ where: { id } });
@@ -377,7 +420,7 @@ export async function deleteDevice(id: string, actorId: string): Promise<void> {
     action: "DEVICE_DELETED",
     entityType: "DEVICE",
     entityId: id,
-    summary: `Gerät „${device.name}“ gelöscht`,
+    summary: { key: "audit.deviceDeleted", params: { name: device.name } },
     details: { context: { Kategorie: device.category.name, Stücke: unitList(device.units) } },
   });
 }
@@ -391,11 +434,6 @@ const statusLabel: Record<DeviceStatus, string> = {
 /**
  * "1 Stück", "3 Stücke"; after "mit" the dative "3 Stücken".
  */
-function pieces(count: number, afterMit = false): string {
-  if (count === 1) return "1 Stück";
-  return `${count} ${afterMit ? "Stücken" : "Stücke"}`;
-}
-
 function unitList(units: { serialNumber: string; status: DeviceStatus }[]): string {
   return units
     .map((unit) => `${unit.serialNumber} (${statusLabel[unit.status]})`)
@@ -405,21 +443,21 @@ function unitList(units: { serialNumber: string; status: DeviceStatus }[]): stri
 
 type UnitSnapshot = { id: string; serialNumber: string; status: DeviceStatus };
 
+const unitField = (serial: string) => format(de.auditPatterns.unit, { serial }, "de");
+
 /**
- * Per-piece changes for the audit log, plus a short summary such as "1 Stück hinzugefügt".
+ * Per-piece changes for the audit log.
  */
 function compareUnits(before: UnitSnapshot[], after: UnitSnapshot[]) {
   const changes: AuditChange[] = [];
-  const tally = { added: 0, removed: 0, defective: 0, repaired: 0 };
   const afterById = new Map(after.map((unit) => [unit.id, unit]));
   const beforeIds = new Set(before.map((unit) => unit.id));
 
   for (const old of before) {
     const now = afterById.get(old.id);
     if (!now) {
-      tally.removed += 1;
       changes.push({
-        field: `Stück ${old.serialNumber}`,
+        field: unitField(old.serialNumber),
         from: statusLabel[old.status],
         to: "entfernt",
       });
@@ -429,31 +467,22 @@ function compareUnits(before: UnitSnapshot[], after: UnitSnapshot[]) {
       changes.push({ field: "Seriennummer", from: old.serialNumber, to: now.serialNumber });
     }
     if (now.status !== old.status) {
-      if (now.status === "DEFECTIVE") tally.defective += 1;
-      if (old.status === "DEFECTIVE") tally.repaired += 1;
       changes.push({
-        field: `Stück ${now.serialNumber}`,
+        field: unitField(now.serialNumber),
         from: statusLabel[old.status],
         to: statusLabel[now.status],
       });
     }
   }
   for (const unit of after.filter((item) => !beforeIds.has(item.id))) {
-    tally.added += 1;
     changes.push({
-      field: `Stück ${unit.serialNumber}`,
+      field: unitField(unit.serialNumber),
       from: null,
-      to: `neu, ${statusLabel[unit.status]}`,
+      to: format(de.auditPatterns.newUnit, { status: statusLabel[unit.status] }, "de"),
     });
   }
 
-  const parts = [
-    tally.added > 0 ? `${pieces(tally.added)} hinzugefügt` : "",
-    tally.removed > 0 ? `${pieces(tally.removed)} entfernt` : "",
-    tally.defective > 0 ? `${tally.defective} als defekt markiert` : "",
-    tally.repaired > 0 ? `${tally.repaired} wieder verfügbar` : "",
-  ].filter(Boolean);
-  return { changes, summary: parts.join(", ") };
+  return changes;
 }
 
 /**

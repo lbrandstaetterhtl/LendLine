@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.js";
 import { HttpError } from "./errors.js";
 import { prisma } from "./prisma.js";
 
@@ -7,7 +8,11 @@ import { prisma } from "./prisma.js";
  */
 export async function categoryOfDevice(id: string): Promise<string> {
   const device = await prisma.device.findUnique({ where: { id }, select: { categoryId: true } });
-  if (!device) throw new HttpError(404, "Gerät nicht gefunden");
+  if (!device)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.deviceNotFound)
+    );
   return device.categoryId;
 }
 
@@ -16,7 +21,11 @@ export async function categoryOfRequest(id: string): Promise<string> {
     where: { id },
     select: { device: { select: { categoryId: true } } },
   });
-  if (!request) throw new HttpError(404, "Anfrage nicht gefunden");
+  if (!request)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.requestNotFound)
+    );
   return request.device.categoryId;
 }
 
@@ -25,6 +34,10 @@ export async function categoryOfUnit(id: string): Promise<string> {
     where: { id },
     select: { device: { select: { categoryId: true } } },
   });
-  if (!unit) throw new HttpError(404, "Stück nicht gefunden");
+  if (!unit)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.unitNotFound)
+    );
   return unit.device.categoryId;
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Datum im Format JJJJ-MM-TT angeben");
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "validation.dateFormat");
 
 export const auditQuerySchema = z
   .object({

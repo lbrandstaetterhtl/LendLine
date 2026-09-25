@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { messages } from "../i18n";
 import { api } from "./client";
 
 export function errorMessage(error: unknown, fallback: string): string {
@@ -39,7 +40,7 @@ export function useApi<T>(path: string | null): ApiState<T> {
         setError("");
       } catch (err: unknown) {
         if (request.cancelled) return;
-        setError(errorMessage(err, "Laden fehlgeschlagen"));
+        setError(errorMessage(err, messages().common.loadFailed));
       }
       setSettledKey(requestKey);
     })();

@@ -6,9 +6,11 @@ import { api } from "../api/client";
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
+import { useTerms } from "../branding/BrandingContext";
 import { Icon } from "../components/icons";
 import { UserTabs } from "../components/SettingsTabs";
 import { Alert, Field, Modal, PageHeader, refreshNav } from "../components/ui";
+import { format, useI18n } from "../i18n";
 
 type ManagedUser = {
   id: string;
@@ -32,6 +34,9 @@ const emptyForm = { name: "", email: "", password: "", groupId: "" };
 
 export function AdminUsersPage() {
   const { user: me } = useAuth();
+  const { m } = useI18n();
+  const t = m.users;
+  const terms = useTerms();
   const canManage = can(me, "users.manage");
   const canEmergency = can(me, "users.emergency");
   const canRules = can(me, "settings.rules");
@@ -82,11 +87,11 @@ export function AdminUsersPage() {
       } else {
         await api("/api/users", { method: "POST", body: JSON.stringify(form) });
       }
-      setInfo(`Benutzer „${form.name}“ ${editingId ? "gespeichert" : "angelegt"}.`);
+      setInfo(format(editingId ? t.saved : t.created, { name: form.name }));
       setEditor(null);
       reload();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      setFormError(err instanceof Error ? err.message : t.saveFailed);
     }
   }
 
@@ -96,8 +101,8 @@ export function AdminUsersPage() {
   async function emergency(user: ManagedUser, action: "sessions" | "requests") {
     const question =
       action === "sessions"
-        ? `„${user.name}“ auf allen Geräten sofort abmelden?`
-        : `Alle offenen Anfragen von „${user.name}“ ablehnen? Es werden keine E-Mails verschickt.`;
+        ? format(t.confirmSignOut, { name: user.name })
+        : format(t.confirmRejectOpen, { name: user.name });
     if (!window.confirm(question)) return;
     setFormError("");
     try {
@@ -105,39 +110,34 @@ export function AdminUsersPage() {
         const result = await api<{ revoked: number }>(`/api/users/${user.id}/sessions/revoke`, {
           method: "POST",
         });
-        setInfo(`„${user.name}“ abgemeldet (${result.revoked} Sitzungen).`);
+        setInfo(format(t.signedOut, { name: user.name, count: result.revoked }));
       } else {
         const result = await api<{ rejected: number }>(
           `/api/users/${user.id}/requests/reject-open`,
           {
             method: "POST",
-            body: JSON.stringify({ reason: "Von der Verwaltung gesammelt abgelehnt" }),
+            body: JSON.stringify({ reason: t.bulkReason }),
           }
         );
-        setInfo(`${result.rejected} offene Anfragen von „${user.name}“ abgelehnt.`);
+        setInfo(format(t.rejectedOpen, { name: user.name, count: result.rejected }));
         refreshNav();
       }
       setEditor(null);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Aktion fehlgeschlagen");
+      setFormError(err instanceof Error ? err.message : t.actionFailed);
     }
   }
 
   async function remove(user: ManagedUser) {
-    if (
-      !window.confirm(
-        `Benutzer „${user.name}“ löschen?\n\nKonten mit Anfragen und das eigene Konto können nicht gelöscht werden, ebenso die letzte Person, die Gruppen verwalten darf.`
-      )
-    )
-      return;
+    if (!window.confirm(format(t.confirmDelete, { name: user.name }))) return;
     setError("");
     setInfo("");
     try {
       await api(`/api/users/${user.id}`, { method: "DELETE" });
-      setInfo(`Benutzer „${user.name}“ gelöscht.`);
+      setInfo(format(t.deleted, { name: user.name }));
       reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t.deleteFailed);
     }
   }
 
@@ -145,42 +145,46 @@ export function AdminUsersPage() {
     <>
       <UserTabs />
       <PageHeader
-        title="Benutzer"
-        description="Konten anlegen, einer Gruppe zuordnen und Passwörter zurücksetzen. Was jemand darf, legt die Gruppe fest."
+        title={t.title}
+        description={t.description}
         actions={
           canManage && (
             <button
               type="button"
               onClick={() => open()}
               data-shortcut="new"
-              title="Tastenkürzel: n"
+              title={m.categories.shortcutNew}
             >
-              <Icon name="plus" /> Benutzer anlegen
+              <Icon name="plus" /> {t.create}
             </button>
           )
         }
       />
       {policy && (
         <p className="muted small page-note">
-          Selbstregistrierung:{" "}
+          {t.registration}{" "}
           {policy.registration.enabled
-            ? `an${policy.registration.domains.length > 0 ? ` (nur ${policy.registration.domains.map((domain) => `@${domain}`).join(", ")})` : " (alle Adressen)"}`
-            : "aus – Konten legen Sie hier an"}
+            ? policy.registration.domains.length > 0
+              ? format(t.registrationOnly, {
+                  domains: policy.registration.domains.map((domain) => `@${domain}`).join(", "),
+                })
+              : t.registrationAll
+            : t.registrationOff}
           {" · "}
-          <Link to="/admin/einstellungen">ändern</Link>
+          <Link to="/admin/einstellungen">{t.change}</Link>
         </p>
       )}
       <Alert>{error || loadError}</Alert>
       <Alert tone="ok">{info}</Alert>
       {groups && groups.length > 1 && (
         <div className="toolbar">
-          <Field label="Gruppe" htmlFor="user-group-filter">
+          <Field label={t.group} htmlFor="user-group-filter">
             <select
               id="user-group-filter"
               value={groupFilter}
               onChange={(event) => setGroupFilter(event.target.value)}
             >
-              <option value="">Alle Gruppen</option>
+              <option value="">{t.allGroups}</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {group.name} ({group.members})
@@ -194,12 +198,12 @@ export function AdminUsersPage() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>E-Mail</th>
-              <th>Gruppe</th>
-              <th>Anmeldung</th>
+              <th>{t.name}</th>
+              <th>{t.email}</th>
+              <th>{t.group}</th>
+              <th>{t.signIn}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -208,17 +212,17 @@ export function AdminUsersPage() {
               <tr key={user.id}>
                 <td style={{ fontWeight: 550 }}>
                   {user.name}
-                  {user.id === me?.id && <span className="muted small"> (Sie)</span>}
+                  {user.id === me?.id && <span className="muted small"> {t.you}</span>}
                 </td>
                 <td className="muted">{user.email}</td>
                 <td>
                   <span className="tag">{user.group.name}</span>
                 </td>
                 <td className="muted">
-                  {user.authSource === "LDAP" ? "Verzeichnis" : "Lokal"}
+                  {user.authSource === "LDAP" ? t.directory : t.local}
                   {user.mustChangePassword && (
-                    <span className="badge st-open" title="Wird bei der nächsten Anmeldung ersetzt">
-                      vorläufiges Passwort
+                    <span className="badge st-open" title={t.temporaryTitle}>
+                      {t.temporary}
                     </span>
                   )}
                 </td>
@@ -226,7 +230,7 @@ export function AdminUsersPage() {
                   <div className="actions">
                     {(canManage || canEmergency) && (
                       <button type="button" className="secondary sm" onClick={() => open(user)}>
-                        {canManage ? "Bearbeiten" : "Maßnahmen"}
+                        {canManage ? m.common.edit : t.measures}
                       </button>
                     )}
                     {canManage && (
@@ -236,7 +240,7 @@ export function AdminUsersPage() {
                         disabled={user.id === me?.id}
                         onClick={() => void remove(user)}
                       >
-                        Löschen
+                        {m.common.delete}
                       </button>
                     )}
                   </div>
@@ -250,17 +254,17 @@ export function AdminUsersPage() {
       {editor && (
         <Modal
           variant="sheet"
-          title={editingId ? "Benutzer bearbeiten" : "Benutzer anlegen"}
+          title={editingId ? t.edit : t.create}
           description={editing?.email}
           onClose={() => setEditor(null)}
           footer={
             <>
               <button type="button" className="secondary" onClick={() => setEditor(null)}>
-                Abbrechen
+                {m.common.cancel}
               </button>
               {canManage && (
                 <button type="submit" form="user-form">
-                  {editingId ? "Änderungen speichern" : "Benutzer anlegen"}
+                  {editingId ? t.saveChanges : t.create}
                 </button>
               )}
             </>
@@ -269,7 +273,7 @@ export function AdminUsersPage() {
           <Alert>{formError}</Alert>
           <form id="user-form" className="form-stack" onSubmit={(event) => void onSubmit(event)}>
             <fieldset className="plain-fieldset" disabled={!canManage}>
-              <Field label="Name" htmlFor="user-name">
+              <Field label={t.name} htmlFor="user-name">
                 <input
                   id="user-name"
                   value={form.name}
@@ -280,9 +284,9 @@ export function AdminUsersPage() {
                 />
               </Field>
               <Field
-                label="E-Mail"
+                label={t.email}
                 htmlFor="user-email"
-                hint={editingId ? "Die E-Mail-Adresse kann nicht geändert werden." : undefined}
+                hint={editingId ? t.emailFixed : undefined}
               >
                 <input
                   id="user-email"
@@ -295,15 +299,15 @@ export function AdminUsersPage() {
                 />
               </Field>
               <Field
-                label={editingId ? "Neues Passwort" : "Passwort"}
+                label={editingId ? t.newPassword : t.password}
                 htmlFor="user-password"
                 optional={Boolean(editingId)}
                 hint={
                   editingId
                     ? editing?.authSource === "LDAP"
-                      ? "Leer lassen, um nichts zu ändern. Ein neues Passwort macht aus dem Verzeichnis-Konto ein lokales Konto."
-                      : "Leer lassen, um das Passwort nicht zu ändern."
-                    : "Mindestens 8 Zeichen."
+                      ? t.passwordKeepLdap
+                      : t.passwordKeep
+                    : t.passwordMin
                 }
               >
                 <input
@@ -317,13 +321,9 @@ export function AdminUsersPage() {
                 />
               </Field>
               <Field
-                label="Gruppe"
+                label={t.group}
                 htmlFor="user-group"
-                hint={
-                  editingId === me?.id
-                    ? "Die eigene Gruppe können Sie nicht ändern."
-                    : "Die Gruppe legt fest, was die Person darf. Gruppen mit Rechten, die Sie selbst nicht haben, können Sie nicht vergeben."
-                }
+                hint={editingId === me?.id ? t.ownGroup : t.groupHint}
               >
                 <select
                   id="user-group"
@@ -339,8 +339,8 @@ export function AdminUsersPage() {
                       disabled={!grantable(group) && group.id !== editing?.group.id}
                     >
                       {group.name}
-                      {group.isDefault ? " (Standard)" : ""}
-                      {grantable(group) ? "" : " – mehr Rechte als Sie"}
+                      {group.isDefault ? t.default : ""}
+                      {grantable(group) ? "" : t.moreRights}
                     </option>
                   ))}
                 </select>
@@ -349,25 +349,22 @@ export function AdminUsersPage() {
           </form>
           {editing && editing.id !== me?.id && canEmergency && (
             <div className="modal-section">
-              <h3>Sofortmaßnahmen</h3>
-              <p className="muted small">
-                Bei Verdacht auf Missbrauch: Die Person verliert sofort den Zugang bzw. ihre offenen
-                Anfragen blockieren keine Stücke mehr.
-              </p>
+              <h3>{t.emergency}</h3>
+              <p className="muted small">{format(t.emergencyHint, { units: terms.units })}</p>
               <div className="form-actions">
                 <button
                   type="button"
                   className="secondary sm"
                   onClick={() => void emergency(editing, "sessions")}
                 >
-                  Überall abmelden
+                  {t.signOutEverywhere}
                 </button>
                 <button
                   type="button"
                   className="danger sm"
                   onClick={() => void emergency(editing, "requests")}
                 >
-                  Offene Anfragen ablehnen
+                  {t.rejectOpen}
                 </button>
               </div>
             </div>

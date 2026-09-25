@@ -1,3 +1,4 @@
+import type { Messages } from "../i18n/de";
 import type { BorrowRequest, RequestStatus } from "../types";
 
 import { useState } from "react";
@@ -12,17 +13,25 @@ import { FieldAnswers } from "../components/FieldAnswers";
 import { Icon } from "../components/icons";
 import { RequestBadge } from "../components/StatusBadge";
 import { Alert, PageHeader } from "../components/ui";
-import { formatDate } from "../types";
+import { format, formatDate, useI18n } from "../i18n";
 
 type Filter = "ALL" | "OPEN" | "APPROVED" | "DONE";
 
-const filters: { value: Filter; label: string; matches: (status: RequestStatus) => boolean }[] = [
-  { value: "ALL", label: "Alle", matches: () => true },
-  { value: "OPEN", label: "Offen", matches: (status) => status === "OPEN" },
-  { value: "APPROVED", label: "Bestätigt", matches: (status) => status === "APPROVED" },
+const filters: {
+  value: Filter;
+  label: (m: Messages) => string;
+  matches: (status: RequestStatus) => boolean;
+}[] = [
+  { value: "ALL", label: (m) => m.myRequests.filterAll, matches: () => true },
+  { value: "OPEN", label: (m) => m.myRequests.filterOpen, matches: (status) => status === "OPEN" },
+  {
+    value: "APPROVED",
+    label: (m) => m.myRequests.filterApproved,
+    matches: (status) => status === "APPROVED",
+  },
   {
     value: "DONE",
-    label: "Abgeschlossen",
+    label: (m) => m.myRequests.filterDone,
     matches: (status) => status === "REJECTED" || status === "RETURNED" || status === "CANCELLED",
   },
 ];
@@ -33,17 +42,19 @@ export function MyRequestsPage() {
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.myRequests;
   const canRequest = can(useAuth().user, "requests.create");
 
   async function cancel(item: BorrowRequest) {
-    if (!window.confirm(`Anfrage für „${item.device.name}“ zurückziehen?`)) return;
+    if (!window.confirm(format(t.confirmCancel, { device: item.device.name }))) return;
     setBusy(item.id);
     setActionError("");
     try {
       await api(`/api/requests/${item.id}/cancel`, { method: "POST" });
       reload();
     } catch (err) {
-      setActionError(errorMessage(err, "Zurückziehen fehlgeschlagen"));
+      setActionError(errorMessage(err, t.cancelFailed));
     } finally {
       setBusy(null);
     }
@@ -54,19 +65,19 @@ export function MyRequestsPage() {
   return (
     <>
       <PageHeader
-        title="Meine Anfragen"
-        description="Offen: Die Verwaltung hat noch nicht entschieden. Bestätigt: für Sie reserviert."
+        title={t.title}
+        description={t.description}
         actions={
           canRequest && (
             <Link className="btn" to="/search">
-              <Icon name="plus" /> Neue Anfrage
+              <Icon name="plus" /> {t.newRequest}
             </Link>
           )
         }
       />
       <Alert>{error || actionError}</Alert>
       <fieldset className="segmented">
-        <legend className="sr-only">Nach Status filtern</legend>
+        <legend className="sr-only">{t.filterLegend}</legend>
         {filters.map((item) => (
           <button
             key={item.value}
@@ -74,7 +85,7 @@ export function MyRequestsPage() {
             aria-pressed={filter === item.value}
             onClick={() => setFilter(item.value)}
           >
-            {item.label}
+            {item.label(m)}
             <span className="count">
               {all?.filter((request) => item.matches(request.status)).length ?? 0}
             </span>
@@ -86,13 +97,13 @@ export function MyRequestsPage() {
           <thead>
             <tr>
               <th>{terms.device}</th>
-              <th>Status</th>
-              <th>Zeitraum</th>
+              <th>{m.table.status}</th>
+              <th>{m.table.period}</th>
               <th>{terms.room}</th>
-              <th>Angefragt</th>
-              <th>Hinweis</th>
+              <th>{m.table.requested}</th>
+              <th>{m.table.note}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -108,14 +119,16 @@ export function MyRequestsPage() {
                 </td>
                 <td className="nowrap">
                   {formatDate(item.startsAt)}
-                  <div className="muted">bis {formatDate(item.desiredUntil)}</div>
+                  <div className="muted">
+                    {format(m.common.until, { date: formatDate(item.desiredUntil) })}
+                  </div>
                 </td>
                 <td>{item.room && item.room.id !== "room-unassigned" ? item.room.name : "–"}</td>
                 <td className="muted nowrap">{formatDate(item.requestedAt)}</td>
                 <td className="muted">
                   {item.rejectionReason ||
                     (item.returnedAt
-                      ? `Zurückgegeben ${formatDate(item.returnedAt)}`
+                      ? format(t.returnedAt, { date: formatDate(item.returnedAt) })
                       : item.comment || (item.fields?.length ? "" : "–"))}
                   <FieldAnswers fields={item.fields} />
                 </td>
@@ -127,7 +140,7 @@ export function MyRequestsPage() {
                       disabled={busy !== null}
                       onClick={() => void cancel(item)}
                     >
-                      {busy === item.id ? "…" : "Zurückziehen"}
+                      {busy === item.id ? "…" : t.cancel}
                     </button>
                   )}
                 </td>
@@ -138,10 +151,10 @@ export function MyRequestsPage() {
                 <td colSpan={7} className="empty">
                   {all?.length === 0 ? (
                     <>
-                      Noch keine Anfragen. <Link to="/search">Jetzt suchen</Link>
+                      {t.none} <Link to="/search">{t.searchNow}</Link>
                     </>
                   ) : (
-                    "Keine Anfragen mit diesem Status."
+                    t.noneWithStatus
                   )}
                 </td>
               </tr>

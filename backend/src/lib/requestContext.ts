@@ -1,8 +1,18 @@
+import type { Locale } from "../i18n/locales.js";
 import type { NextFunction, Request, Response } from "express";
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-type RequestContext = { ip: string | null; userAgent: string | null };
+import { resolveLocale } from "../i18n/locales.js";
+
+type RequestContext = {
+  ip: string | null;
+  userAgent: string | null;
+  /**
+   * The language the client asked for (Accept-Language); errors and messages use it.
+   */
+  locale: Locale | null;
+};
 
 const storage = new AsyncLocalStorage<RequestContext>();
 
@@ -11,9 +21,16 @@ const storage = new AsyncLocalStorage<RequestContext>();
  */
 export function requestContext(req: Request, _res: Response, next: NextFunction): void {
   const userAgent = req.header("user-agent") ?? null;
-  storage.run({ ip: req.ip ?? null, userAgent: userAgent?.slice(0, 300) ?? null }, next);
+  storage.run(
+    {
+      ip: req.ip ?? null,
+      userAgent: userAgent?.slice(0, 300) ?? null,
+      locale: resolveLocale(req.header("accept-language")),
+    },
+    next
+  );
 }
 
 export function currentRequest(): RequestContext {
-  return storage.getStore() ?? { ip: null, userAgent: null };
+  return storage.getStore() ?? { ip: null, userAgent: null, locale: null };
 }

@@ -3,7 +3,9 @@ import { useState } from "react";
 
 import { errorMessage } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { LanguageSwitch } from "../components/LanguageSwitch";
 import { Alert, Field, PageHeader } from "../components/ui";
+import { useI18n } from "../i18n";
 
 export function AccountPage() {
   const { user, changePassword } = useAuth();
@@ -13,6 +15,8 @@ export function AccountPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const { m } = useI18n();
+  const a = m.account;
   if (!user) return null;
   const forced = user.mustChangePassword;
   const local = user.authSource === "LOCAL";
@@ -22,7 +26,7 @@ export function AccountPage() {
     setError("");
     setInfo("");
     if (next !== repeat) {
-      setError("Die beiden neuen Passwörter stimmen nicht überein.");
+      setError(a.mismatch);
       return;
     }
     setBusy(true);
@@ -31,9 +35,9 @@ export function AccountPage() {
       setCurrent("");
       setNext("");
       setRepeat("");
-      setInfo("Passwort geändert. Auf allen anderen Geräten wurden Sie abgemeldet.");
+      setInfo(a.changed);
     } catch (err) {
-      setError(errorMessage(err, "Passwort konnte nicht geändert werden"));
+      setError(errorMessage(err, a.failed));
     } finally {
       setBusy(false);
     }
@@ -41,53 +45,48 @@ export function AccountPage() {
 
   return (
     <>
-      <PageHeader
-        title="Mein Konto"
-        description={
-          forced
-            ? "Ihr Passwort wurde von der Verwaltung vergeben. Bitte legen Sie jetzt ein eigenes fest, erst danach können Sie LendLine nutzen."
-            : "Ihre Anmeldedaten."
-        }
-      />
+      <PageHeader title={a.title} description={forced ? a.descriptionForced : a.description} />
       <div className="dash-grid account-grid">
         <section className="card">
           <div className="card-title">
-            <h2>Konto</h2>
+            <h2>{a.account}</h2>
           </div>
           <dl className="status-list">
             <div>
-              <dt>Name</dt>
+              <dt>{a.name}</dt>
               <dd>{user.name}</dd>
             </div>
             <div>
-              <dt>E-Mail</dt>
+              <dt>{a.email}</dt>
               <dd>{user.email}</dd>
             </div>
             <div>
-              <dt>Gruppe</dt>
+              <dt>{a.group}</dt>
               <dd>{user.group.name}</dd>
             </div>
             <div>
-              <dt>Anmeldung</dt>
-              <dd>{local ? "Lokales Konto" : "Verzeichnis (LDAP)"}</dd>
+              <dt>{a.signIn}</dt>
+              <dd>{local ? a.local : a.ldap}</dd>
             </div>
           </dl>
+          <div className="form-stack account-language">
+            <Field label={a.language} htmlFor="account-language" hint={a.languageHint}>
+              <LanguageSwitch id="account-language" />
+            </Field>
+          </div>
         </section>
 
         <section className="card">
           <div className="card-title">
-            <h2>Passwort ändern</h2>
-            {forced && <span className="badge st-open">Erforderlich</span>}
+            <h2>{a.passwordTitle}</h2>
+            {forced && <span className="badge st-open">{a.required}</span>}
           </div>
           {local ? (
             <>
               <Alert>{error}</Alert>
               <Alert tone="ok">{info}</Alert>
               <form className="form-stack" onSubmit={(event) => void onSubmit(event)}>
-                <Field
-                  label={forced ? "Vorläufiges Passwort" : "Aktuelles Passwort"}
-                  htmlFor="current-password"
-                >
+                <Field label={forced ? a.temporary : a.current} htmlFor="current-password">
                   <input
                     id="current-password"
                     type="password"
@@ -97,11 +96,7 @@ export function AccountPage() {
                     onChange={(event) => setCurrent(event.target.value)}
                   />
                 </Field>
-                <Field
-                  label="Neues Passwort"
-                  htmlFor="new-password"
-                  hint="Mindestens 8 Zeichen, höchstens 72 Byte."
-                >
+                <Field label={a.next} htmlFor="new-password" hint={a.nextHint}>
                   <input
                     id="new-password"
                     type="password"
@@ -112,7 +107,7 @@ export function AccountPage() {
                     onChange={(event) => setNext(event.target.value)}
                   />
                 </Field>
-                <Field label="Neues Passwort wiederholen" htmlFor="repeat-password">
+                <Field label={a.repeat} htmlFor="repeat-password">
                   <input
                     id="repeat-password"
                     type="password"
@@ -125,17 +120,14 @@ export function AccountPage() {
                 </Field>
                 <div className="form-actions">
                   <button type="submit" disabled={busy}>
-                    {busy ? "Speichert…" : "Passwort ändern"}
+                    {busy ? m.common.saving : a.submit}
                   </button>
                 </div>
               </form>
-              <p className="muted small">Danach werden Sie auf allen anderen Geräten abgemeldet.</p>
+              <p className="muted small">{a.signedOutElsewhere}</p>
             </>
           ) : (
-            <p className="muted small">
-              Ihr Konto kommt aus dem Firmenverzeichnis. Das Passwort ändern Sie dort, zum Beispiel
-              über Windows.
-            </p>
+            <p className="muted small">{a.directory}</p>
           )}
         </section>
       </div>

@@ -3,6 +3,7 @@ import type { DeviceField } from "../types";
 import { useId } from "react";
 
 import { useApi } from "../api/useApi";
+import { format, useI18n } from "../i18n";
 import { useFeature } from "../ui/UiContext";
 import { Icon } from "./icons";
 import { Field } from "./ui";
@@ -21,9 +22,10 @@ export function useFieldOptions() {
  */
 export function DeviceFieldList({ fields }: { fields?: DeviceField[] }) {
   const enabled = useFeature("devices.properties");
+  const { m } = useI18n();
   if (!enabled || !fields?.length) return null;
   return (
-    <ul className="device-fields" aria-label="Eigenschaften">
+    <ul className="device-fields" aria-label={m.fields.label}>
       {fields.map((field) => (
         <li key={field.name}>
           <span>{field.name}</span> {field.value}
@@ -50,17 +52,18 @@ export function FieldFilter({
 }) {
   const id = useId();
   const enabled = useFeature("devices.properties");
+  const { m } = useI18n();
   if (!enabled || options.length === 0) return null;
   const values = options.find((option) => option.name === filter.field)?.values ?? [];
   return (
     <>
-      <Field label="Eigenschaft" htmlFor={`${id}-field`} optional>
+      <Field label={m.fields.property} htmlFor={`${id}-field`} optional>
         <select
           id={`${id}-field`}
           value={filter.field}
           onChange={(event) => onChange({ field: event.target.value, value: "" })}
         >
-          <option value="">Alle</option>
+          <option value="">{m.fields.all}</option>
           {options.map((option) => (
             <option key={option.name} value={option.name}>
               {option.name}
@@ -68,14 +71,14 @@ export function FieldFilter({
           ))}
         </select>
       </Field>
-      <Field label="Wert" htmlFor={`${id}-value`} optional>
+      <Field label={m.fields.value} htmlFor={`${id}-value`} optional>
         <select
           id={`${id}-value`}
           value={filter.value}
           disabled={!filter.field}
           onChange={(event) => onChange({ ...filter, value: event.target.value })}
         >
-          <option value="">{filter.field ? "Wert wählen…" : "erst Eigenschaft wählen"}</option>
+          <option value="">{filter.field ? m.fields.chooseValue : m.fields.chooseProperty}</option>
           {values.map((value) => (
             <option key={value} value={value}>
               {value}
@@ -102,6 +105,7 @@ export function DeviceFieldsEditor({
 }) {
   const id = useId();
   const namesId = `${id}-names`;
+  const { m } = useI18n();
 
   function update(index: number, patch: Partial<DeviceField>) {
     onChange(
@@ -111,7 +115,7 @@ export function DeviceFieldsEditor({
 
   return (
     <div className="field-rows">
-      <datalist id={namesId} aria-label="Vorhandene Eigenschaften">
+      <datalist id={namesId} aria-label={m.fields.existingNames}>
         {options.map((option) => (
           <option key={option.name} value={option.name}>
             {option.name}
@@ -131,7 +135,7 @@ export function DeviceFieldsEditor({
           // Rows have no id of their own; the position is stable while editing.
           // oxlint-disable-next-line react/no-array-index-key
           <div className="field-row" key={index}>
-            <datalist id={valuesId} aria-label="Vorhandene Werte">
+            <datalist id={valuesId} aria-label={m.fields.existingValues}>
               {known.map((value) => (
                 <option key={value} value={value}>
                   {value}
@@ -139,30 +143,30 @@ export function DeviceFieldsEditor({
               ))}
             </datalist>
             <input
-              aria-label={`Eigenschaft ${index + 1}: Name`}
+              aria-label={format(m.fields.nameLabel, { index: index + 1 })}
               list={namesId}
               value={field.name}
               maxLength={40}
               required
-              placeholder="z. B. RAM"
+              placeholder={m.fields.namePlaceholder}
               aria-invalid={duplicate}
-              title={duplicate ? "Diese Eigenschaft gibt es schon" : undefined}
+              title={duplicate ? m.fields.duplicate : undefined}
               onChange={(event) => update(index, { name: event.target.value })}
             />
             <input
-              aria-label={`Eigenschaft ${index + 1}: Wert`}
+              aria-label={format(m.fields.valueLabel, { index: index + 1 })}
               list={valuesId}
               value={field.value}
               maxLength={200}
               required
-              placeholder="z. B. 16 GB"
+              placeholder={m.fields.valuePlaceholder}
               onChange={(event) => update(index, { value: event.target.value })}
             />
             <button
               type="button"
               className="ghost icon sm"
-              aria-label={`Eigenschaft ${index + 1} entfernen`}
-              title="Entfernen"
+              aria-label={format(m.fields.removeLabel, { index: index + 1 })}
+              title={m.fields.remove}
               onClick={() => onChange(fields.filter((_, position) => position !== index))}
             >
               <Icon name="x" />
@@ -177,7 +181,7 @@ export function DeviceFieldsEditor({
           disabled={fields.length >= 30}
           onClick={() => onChange([...fields, { name: "", value: "" }])}
         >
-          <Icon name="plus" /> Eigenschaft hinzufügen
+          <Icon name="plus" /> {m.fields.add}
         </button>
       </div>
     </div>

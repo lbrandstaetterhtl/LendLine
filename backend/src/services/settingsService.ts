@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { de } from "../i18n/de.js";
+import { type Locale, currentLocale, localizedDefault, messages } from "../i18n/index.js";
 import { prisma } from "../lib/prisma.js";
 import { uiFeatureKeys, uiModes } from "../lib/uiFeatures.js";
 import { recordAudit } from "./auditService.js";
@@ -12,8 +14,8 @@ import { recordAudit } from "./auditService.js";
 const fieldTypes = ["text", "textarea", "select", "checkbox"] as const;
 
 export const formFieldSchema = z.object({
-  id: z.string().regex(/^[a-z0-9-]{1,40}$/, "Feld-ID: Kleinbuchstaben, Ziffern und Bindestriche"),
-  label: z.string().trim().min(1, "Feldname fehlt").max(60),
+  id: z.string().regex(/^[a-z0-9-]{1,40}$/, "validation.fieldIdFormat"),
+  label: z.string().trim().min(1, "validation.fieldNameMissing").max(60),
   type: z.enum(fieldTypes),
   required: z.boolean().default(false),
   /**
@@ -42,7 +44,7 @@ export const policySchema = z.object({
             .string()
             .trim()
             .toLowerCase()
-            .regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "Domain wie firma.de angeben")
+            .regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "validation.domainFormat")
         )
         .max(20)
         .default([]),
@@ -67,11 +69,11 @@ export const policySchema = z.object({
         .default([])
         .refine(
           (fields) => new Set(fields.map((field) => field.id)).size === fields.length,
-          "Feld-IDs müssen eindeutig sein"
+          "validation.fieldIdsUnique"
         )
         .refine(
           (fields) => fields.every((field) => field.type !== "select" || field.options.length > 0),
-          "Auswahlfelder brauchen mindestens eine Option"
+          "validation.selectNeedsOptions"
         ),
     })
     .default({}),
@@ -86,26 +88,52 @@ export const mailSchema = z.object({
    * Shows the uploaded logo (PNG/JPG/WEBP; SVG is not supported by many mail programs).
    */
   showLogo: z.boolean().default(true),
-  greeting: z.string().trim().max(80).default("Guten Tag"),
-  signature: z.string().trim().max(400).default("Mit freundlichen Grüßen\nIT-Geräteausleihe"),
-  footer: z
-    .string()
-    .trim()
-    .max(400)
-    .default(
-      "Diese Nachricht wurde automatisch erzeugt. Bitte antworten Sie nicht auf diese E-Mail."
-    ),
-  approvedText: z
-    .string()
-    .trim()
-    .max(1000)
-    .default(
-      "Bitte holen Sie das Gerät in der IT-Ausleihe ab und bringen Sie einen Lichtbildausweis mit.\nGeben Sie das Gerät spätestens am genannten Datum vollständig und unbeschädigt zurück."
-    ),
-  rejectedText: z.string().trim().max(1000).default(""),
-  returnedText: z.string().trim().max(1000).default("Vielen Dank für die pünktliche Rückgabe."),
+  // The defaults are the German texts; mails and the editor show them in the reader's language.
+  greeting: z.string().trim().max(80).default(de.defaults.greeting),
+  signature: z.string().trim().max(400).default(de.defaults.signature),
+  footer: z.string().trim().max(400).default(de.defaults.footer),
+  approvedText: z.string().trim().max(1000).default(de.defaults.approvedText),
+  rejectedText: z.string().trim().max(1000).default(de.defaults.rejectedText),
+  returnedText: z.string().trim().max(1000).default(de.defaults.returnedText),
 });
 export type MailSettings = z.infer<typeof mailSchema>;
+
+const mailTexts = [
+  "greeting",
+  "signature",
+  "footer",
+  "approvedText",
+  "rejectedText",
+  "returnedText",
+] as const;
+
+/**
+ * The mail settings as the editor shows them: texts still at the built-in default in the reader's
+ * language.
+ */
+export function mailForEditing(settings: MailSettings, locale: Locale = currentLocale()) {
+  const shown = { ...settings };
+  for (const key of mailTexts) {
+    shown[key] = localizedDefault(settings[key], (m) => m.defaults[key], locale);
+  }
+  return shown;
+}
+
+/**
+ * Back from the editor: a text equal to the translated default is stored as the built-in one, so it
+ * stays translated for every recipient.
+ */
+export function mailFromEditing(input: unknown, locale: Locale = currentLocale()): unknown {
+  if (typeof input !== "object" || input === null) return input;
+  const record: Record<string, unknown> = { ...input };
+  const translated = messages(locale).defaults;
+  for (const key of mailTexts) {
+    if (typeof record[key] === "string" && record[key].trim() === translated[key].trim()) {
+      record[key] = de.defaults[key];
+    }
+  }
+  return record;
+}
 
 export const uiSchema = z.object({
   /**
@@ -144,11 +172,11 @@ export async function getSetting<K extends Key>(key: K): Promise<Value<K>> {
   return value;
 }
 
-const labels: Record<Key, string> = {
-  policy: "Einstellungen",
-  mail: "E-Mail-Einstellungen",
-  ui: "Einstellungsmodus",
-};
+const summaryKey = {
+  policy: "audit.settingsPolicy",
+  mail: "audit.settingsMail",
+  ui: "audit.settingsUi",
+} as const satisfies Record<Key, string>;
 
 export async function setSetting<K extends Key>(
   key: K,
@@ -167,7 +195,7 @@ export async function setSetting<K extends Key>(
     actorId,
     action: "SETTINGS_UPDATED",
     entityType: "SYSTEM",
-    summary: `${labels[key]} geändert`,
+    summary: { key: summaryKey[key] },
     details: { changes: changedPaths(before, value) },
   });
   return value;

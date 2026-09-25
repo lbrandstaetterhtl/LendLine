@@ -1,6 +1,7 @@
 import type { Permission } from "../lib/permissions.js";
 import type { NextFunction, Request, Response } from "express";
 
+import { t } from "../i18n/index.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { HttpError } from "../lib/errors.js";
 import { withImplied } from "../lib/permissions.js";
@@ -48,12 +49,19 @@ export function inScope(scope: string[] | null, categoryId: string): boolean {
  */
 export function assertManageScope(user: AuthUser, categoryId: string): void {
   if (!inScope(user.manageScope, categoryId)) {
-    throw new HttpError(403, "Diese Kategorie verwaltet Ihre Gruppe nicht");
+    throw new HttpError(
+      403,
+      t((m) => m.errors.categoryNotManaged)
+    );
   }
 }
 
 // With a password chosen by an admin, only these work until the user picks their own.
-const allowedWithTemporaryPassword = new Set(["/api/auth/me", "/api/auth/password"]);
+const allowedWithTemporaryPassword = new Set([
+  "/api/auth/me",
+  "/api/auth/password",
+  "/api/auth/locale",
+]);
 
 /**
  * Valid access token required; during maintenance only groups with `maintenance.bypass` get through
@@ -63,27 +71,36 @@ const allowedWithTemporaryPassword = new Set(["/api/auth/me", "/api/auth/passwor
 export const requireAuth = asyncHandler(async (req, _res, next) => {
   const header = req.header("authorization");
   if (!header?.startsWith("Bearer ")) {
-    throw new HttpError(401, "Anmeldung erforderlich");
+    throw new HttpError(
+      401,
+      t((m) => m.errors.loginRequired)
+    );
   }
   let payload: ReturnType<typeof verifyAccessToken>;
   try {
     payload = verifyAccessToken(header.slice(7));
   } catch {
-    throw new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
+    throw new HttpError(
+      401,
+      t((m) => m.errors.sessionExpired)
+    );
   }
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
     select: { id: true, sessionVersion: true, mustChangePassword: true, group: true },
   });
   if (!user || user.sessionVersion !== payload.sv) {
-    throw new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
+    throw new HttpError(
+      401,
+      t((m) => m.errors.sessionExpired)
+    );
   }
   const permissions = new Set(withImplied(user.group.permissions));
   await assertAccessDuringMaintenance(permissions);
   if (user.mustChangePassword && !allowedWithTemporaryPassword.has(req.baseUrl + req.path)) {
     throw new HttpError(
       403,
-      "Bitte legen Sie zuerst ein eigenes Passwort fest.",
+      t((m) => m.errors.passwordChangeRequired),
       "PASSWORD_CHANGE_REQUIRED"
     );
   }
@@ -109,11 +126,21 @@ export const requireAuth = asyncHandler(async (req, _res, next) => {
 export function requirePermission(...permissions: Permission[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
-      next(new HttpError(401, "Anmeldung erforderlich"));
+      next(
+        new HttpError(
+          401,
+          t((m) => m.errors.loginRequired)
+        )
+      );
       return;
     }
     if (!permissions.some((permission) => req.user!.permissions.has(permission))) {
-      next(new HttpError(403, "Keine Berechtigung"));
+      next(
+        new HttpError(
+          403,
+          t((m) => m.errors.forbidden)
+        )
+      );
       return;
     }
     next();

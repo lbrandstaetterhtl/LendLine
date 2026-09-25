@@ -9,6 +9,7 @@ import {
   refreshSession,
   setAccessToken,
 } from "../api/client";
+import { useI18n } from "../i18n";
 
 type AuthContextValue = {
   user: User | null;
@@ -24,6 +25,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const { locale, setLocale, chosen } = useI18n();
+
+  // The account keeps the language for its e-mails and other devices: a device without its own
+  // choice takes the account's, otherwise the device's choice is saved to the account.
+  const userId = user?.id;
+  const userLocale = user?.locale;
+  useEffect(() => {
+    if (!userId || userLocale === locale) return;
+    if (userLocale && !chosen) {
+      setLocale(userLocale);
+      return;
+    }
+    void api<User>("/api/auth/locale", { method: "PUT", body: JSON.stringify({ locale }) })
+      .then((updated) =>
+        setUser((current) => (current ? { ...current, locale: updated.locale } : current))
+      )
+      .catch(() => undefined);
+  }, [userId, userLocale, locale, chosen, setLocale]);
 
   useEffect(() => {
     const session = { active: true };

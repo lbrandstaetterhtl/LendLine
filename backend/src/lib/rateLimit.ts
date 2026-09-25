@@ -1,5 +1,6 @@
 import type { Request } from "express";
 
+import { t } from "../i18n/index.js";
 import { HttpError } from "./errors.js";
 
 /**
@@ -32,7 +33,7 @@ export class RateLimiter {
       const minutes = Math.ceil((entry.resetAt - now) / 60_000);
       throw new HttpError(
         429,
-        `Zu viele Versuche. Bitte in ${minutes} Minute${minutes === 1 ? "" : "n"} erneut versuchen.`,
+        t((m) => m.errors.tooManyAttempts, { count: minutes }),
         "RATE_LIMITED"
       );
     }

@@ -485,6 +485,25 @@ svg.i {
   font-size: 12px;
   color: var(--muted);
 }
+select.language-switch {
+  width: auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 24px 0 8px;
+  font-size: 12px;
+}
+.sidebar-theme {
+  flex-wrap: wrap;
+}
+.sidebar-theme .help-link {
+  margin-right: auto;
+  white-space: nowrap;
+}
+.sidebar-theme select.language-switch {
+  order: 3;
+  flex: 1 0 100%;
+  width: 100%;
+}
 fieldset.theme-switch {
   display: inline-flex;
   gap: 2px;

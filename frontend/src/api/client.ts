@@ -1,3 +1,5 @@
+import { currentLocale, format, messages } from "../i18n";
+
 let accessToken: string | null = null;
 
 export function setAccessToken(token: string | null): void {
@@ -28,9 +30,12 @@ export class ApiError extends Error {
 async function readError(response: Response): Promise<{ message: string; code?: string }> {
   try {
     const data = (await response.json()) as { error?: string; code?: string };
-    return { message: data.error || `Fehler ${response.status}`, code: data.code };
+    return {
+      message: data.error || format(messages().common.errorStatus, { status: response.status }),
+      code: data.code,
+    };
   } catch {
-    return { message: `Fehler ${response.status}` };
+    return { message: format(messages().common.errorStatus, { status: response.status }) };
   }
 }
 
@@ -42,6 +47,8 @@ export async function api<T>(path: string, options: RequestInit = {}, retry = tr
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
+  // The server writes its messages, catalogues and protocol in this language.
+  headers.set("Accept-Language", currentLocale());
 
   const response = await fetch(path, { ...options, headers, credentials: "include" });
 
@@ -80,7 +87,11 @@ async function requestRefresh(): Promise<boolean> {
 }
 
 async function sendRefresh(): Promise<boolean> {
-  const response = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
+  const response = await fetch("/api/auth/refresh", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Accept-Language": currentLocale() },
+  });
   if (!response.ok) {
     accessToken = null;
     return false;

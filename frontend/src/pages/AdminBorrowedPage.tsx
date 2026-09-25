@@ -7,11 +7,13 @@ import { useApi } from "../api/useApi";
 import { useTerms } from "../branding/BrandingContext";
 import { Alert, PageHeader, refreshNav } from "../components/ui";
 import { useFocusRow } from "../components/useFocusRow";
-import { formatDate } from "../types";
+import { format, formatDate, useI18n } from "../i18n";
 
 export function AdminBorrowedPage() {
   const focus = useFocusRow();
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.loans;
   const {
     data: requests,
     error: loadError,
@@ -23,7 +25,11 @@ export function AdminBorrowedPage() {
   async function markReturned(item: BorrowRequest) {
     if (
       !window.confirm(
-        `Rückgabe erfassen?\n\n${item.device.name} (${item.device.serialNumber}) von ${item.user.name}\nDanach ist es wieder verfügbar.`
+        format(t.confirmReturn, {
+          device: item.device.name,
+          serial: item.device.serialNumber,
+          name: item.user.name,
+        })
       )
     )
       return;
@@ -31,11 +37,11 @@ export function AdminBorrowedPage() {
     setInfo("");
     try {
       await api(`/api/requests/${item.id}/return`, { method: "POST" });
-      setInfo(`Rückgabe von ${item.device.name} (${item.device.serialNumber}) erfasst.`);
+      setInfo(format(t.returned, { device: item.device.name, serial: item.device.serialNumber }));
       reload();
       refreshNav();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Rückgabe fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t.returnFailed);
     }
   }
 
@@ -44,10 +50,7 @@ export function AdminBorrowedPage() {
 
   return (
     <>
-      <PageHeader
-        title="Ausleihen"
-        description="Alle bestätigten Ausleihen, die noch nicht zurückgegeben wurden."
-      />
+      <PageHeader title={t.title} description={t.description} />
       <Alert>{error || loadError}</Alert>
       <Alert tone="ok">{info}</Alert>
       <div className="table-wrap">
@@ -55,12 +58,12 @@ export function AdminBorrowedPage() {
           <thead>
             <tr>
               <th>{terms.device}</th>
-              <th>Person</th>
-              <th>Zeitraum</th>
+              <th>{m.table.person}</th>
+              <th>{m.table.period}</th>
               <th>{terms.room}</th>
-              <th>Bestätigt</th>
+              <th>{m.table.approved}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -84,8 +87,8 @@ export function AdminBorrowedPage() {
                   <td className="nowrap">
                     {formatDate(item.startsAt)}
                     <div className={overdue ? "" : "muted"}>
-                      bis {formatDate(item.desiredUntil)}{" "}
-                      {overdue && <span className="badge st-rejected">überfällig</span>}
+                      {format(m.common.until, { date: formatDate(item.desiredUntil) })}{" "}
+                      {overdue && <span className="badge st-rejected">{t.overdue}</span>}
                     </div>
                   </td>
                   <td>{item.room?.name || "–"}</td>
@@ -96,7 +99,7 @@ export function AdminBorrowedPage() {
                       className="secondary sm"
                       onClick={() => void markReturned(item)}
                     >
-                      Rückgabe erfassen
+                      {t.markReturned}
                     </button>
                   </td>
                 </tr>
@@ -105,7 +108,7 @@ export function AdminBorrowedPage() {
             {requests?.length === 0 && (
               <tr>
                 <td colSpan={6} className="empty">
-                  Keine laufenden Ausleihen.
+                  {t.none}
                 </td>
               </tr>
             )}

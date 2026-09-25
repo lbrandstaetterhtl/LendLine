@@ -1,5 +1,6 @@
 import type { Request } from "express";
 
+import { t } from "../i18n/index.js";
 import { HttpError } from "./errors.js";
 
 /**
@@ -7,6 +8,10 @@ import { HttpError } from "./errors.js";
  */
 export function routeParam(req: Request, name: string): string {
   const value = req.params[name];
-  if (!value) throw new HttpError(400, `Parameter ${name} fehlt`);
+  if (!value)
+    throw new HttpError(
+      400,
+      t((m) => m.errors.paramMissing, { name })
+    );
   return value;
 }

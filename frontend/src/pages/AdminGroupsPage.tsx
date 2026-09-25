@@ -5,9 +5,11 @@ import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
+import { useTerms } from "../branding/BrandingContext";
 import { Icon } from "../components/icons";
 import { UserTabs } from "../components/SettingsTabs";
 import { Alert, Field, Modal, PageHeader } from "../components/ui";
+import { format, useI18n } from "../i18n";
 import { useFeature } from "../ui/UiContext";
 
 type Group = {
@@ -27,6 +29,7 @@ type Group = {
 };
 
 type PermissionSection = {
+  id: string;
   title: string;
   permissions: { key: string; label: string; hint?: string }[];
 };
@@ -82,6 +85,8 @@ function requiredBy(selected: Set<string>, key: string): string[] {
 
 export function AdminGroupsPage() {
   const { user: me } = useAuth();
+  const { m } = useI18n();
+  const t = m.groups;
   const editable = can(me, "groups.manage");
   const advanced = useFeature("groups.advanced");
   const { data: groups, error, reload } = useApi<Group[]>("/api/groups");
@@ -106,24 +111,27 @@ export function AdminGroupsPage() {
 
   function duplicate(group: Group) {
     const { id: _id, members: _members, ...form } = group;
-    setEditor({ id: null, form: { ...form, name: `${group.name} (Kopie)`, isDefault: false } });
+    setEditor({
+      id: null,
+      form: { ...form, name: format(t.copySuffix, { name: group.name }), isDefault: false },
+    });
   }
 
   return (
     <>
       <UserTabs />
       <PageHeader
-        title="Gruppen und Rechte"
-        description="Jede Person gehört zu genau einer Gruppe. Die Gruppe legt fest, was sie sehen und tun darf, aus welchen Kategorien sie ausleiht und welche sie verwaltet."
+        title={t.title}
+        description={t.description}
         actions={
           editable && (
             <button
               type="button"
               onClick={() => open()}
               data-shortcut="new"
-              title="Tastenkürzel: n"
+              title={m.categories.shortcutNew}
             >
-              <Icon name="plus" /> Gruppe anlegen
+              <Icon name="plus" /> {t.create}
             </button>
           )
         }
@@ -137,20 +145,16 @@ export function AdminGroupsPage() {
               <h2>
                 {group.name}
                 {group.isDefault && (
-                  <span className="badge st-returned" title="Neue Konten landen hier">
-                    Standard
+                  <span className="badge st-returned" title={t.defaultTitle}>
+                    {t.default}
                   </span>
                 )}
               </h2>
-              <span className="muted small">
-                {group.members} {group.members === 1 ? "Mitglied" : "Mitglieder"}
-              </span>
+              <span className="muted small">{format(t.members, { count: group.members })}</span>
             </div>
             {group.description && <p className="muted small">{group.description}</p>}
             <p className="small">
-              <strong>
-                {group.permissions.length} von {total} Rechten
-              </strong>
+              <strong>{format(t.rightsOf, { count: group.permissions.length, total })}</strong>
               {group.permissions.length > 0 && (
                 <span className="muted">
                   {" "}
@@ -164,23 +168,23 @@ export function AdminGroupsPage() {
               )}
             </p>
             {advanced && (
-              <ScopeLine label="Leiht aus" ids={group.borrowCategoryIds} categories={categories} />
+              <ScopeLine label={t.borrows} ids={group.borrowCategoryIds} categories={categories} />
             )}
             {advanced && group.manageCategoryIds.length > 0 && (
-              <ScopeLine label="Verwaltet" ids={group.manageCategoryIds} categories={categories} />
+              <ScopeLine label={t.manages} ids={group.manageCategoryIds} categories={categories} />
             )}
             <div className="form-actions">
               <button type="button" className="secondary sm" onClick={() => open(group)}>
-                {editable ? "Bearbeiten" : "Ansehen"}
+                {editable ? m.common.edit : t.view}
               </button>
               {editable && (
                 <>
                   <button type="button" className="ghost sm" onClick={() => duplicate(group)}>
-                    Kopieren
+                    {t.copy}
                   </button>
                   {!group.isDefault && (
                     <button type="button" className="ghost sm" onClick={() => setDeleting(group)}>
-                      Löschen
+                      {m.common.delete}
                     </button>
                   )}
                 </>
@@ -232,9 +236,10 @@ function ScopeLine({
   categories: Category[] | null;
 }) {
   const names = ids.map((id) => categories?.find((category) => category.id === id)?.name ?? "…");
+  const { m } = useI18n();
   return (
     <p className="muted small" style={{ margin: "4px 0 0" }}>
-      {label}: {ids.length === 0 ? "alle Kategorien" : names.join(", ")}
+      {label}: {ids.length === 0 ? m.groups.allCategories : names.join(", ")}
     </p>
   );
 }
@@ -268,6 +273,9 @@ function GroupEditor({
   const selected = new Set(form.permissions);
   const advanced = useFeature("groups.advanced");
   const had = new Set(initial.permissions);
+  const { m } = useI18n();
+  const t = m.groups;
+  const terms = useTerms();
 
   function toggle(key: string, on: boolean) {
     const next = new Set(form.permissions);
@@ -303,9 +311,9 @@ function GroupEditor({
         method: id ? "PUT" : "POST",
         body: JSON.stringify(body),
       });
-      onSaved(`Gruppe „${form.name}“ ${id ? "gespeichert" : "angelegt"}.`);
+      onSaved(format(id ? t.saved : t.created, { name: form.name }));
     } catch (err) {
-      setError(errorMessage(err, "Speichern fehlgeschlagen"));
+      setError(errorMessage(err, t.saveFailed));
       setSaving(false);
     }
   }
@@ -313,17 +321,17 @@ function GroupEditor({
   return (
     <Modal
       variant="sheet"
-      title={readOnly ? form.name : id ? "Gruppe bearbeiten" : "Gruppe anlegen"}
-      description={id ? initial.name : "Name, Rechte und Grenzen der neuen Gruppe."}
+      title={readOnly ? form.name : id ? t.edit : t.create}
+      description={id ? initial.name : t.newIntro}
       onClose={onClose}
       footer={
         <>
           <button type="button" className="secondary" onClick={onClose}>
-            {readOnly ? "Schließen" : "Abbrechen"}
+            {readOnly ? m.common.close : m.common.cancel}
           </button>
           {!readOnly && (
             <button type="submit" form="group-form" disabled={saving}>
-              {id ? "Änderungen speichern" : "Gruppe anlegen"}
+              {id ? t.saveChanges : t.create}
             </button>
           )}
         </>
@@ -333,9 +341,9 @@ function GroupEditor({
       <form id="group-form" onSubmit={(event) => void onSubmit(event)}>
         <fieldset className="plain-fieldset" disabled={readOnly}>
           <section className="form-section">
-            <h3>Allgemein</h3>
+            <h3>{t.general}</h3>
             <div className="form-grid cols-2">
-              <Field label="Name" htmlFor="group-name">
+              <Field label={t.name} htmlFor="group-name">
                 <input
                   id="group-name"
                   value={form.name}
@@ -345,7 +353,7 @@ function GroupEditor({
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
                 />
               </Field>
-              <Field label="Reihenfolge" htmlFor="group-order" hint="Kleinere Zahlen stehen oben.">
+              <Field label={t.order} htmlFor="group-order" hint={t.orderHint}>
                 <input
                   id="group-order"
                   type="number"
@@ -356,7 +364,7 @@ function GroupEditor({
                 />
               </Field>
               <Field
-                label="Beschreibung"
+                label={t.descriptionLabel}
                 htmlFor="group-description"
                 optional
                 className="span-full"
@@ -376,21 +384,18 @@ function GroupEditor({
                   disabled={initial.isDefault}
                   onChange={(event) => setForm({ ...form, isDefault: event.target.checked })}
                 />
-                Standardgruppe: neue Konten (Registrierung, erste Verzeichnis-Anmeldung) landen hier
+                {t.defaultGroup}
               </label>
             </div>
           </section>
 
           <section className="form-section">
-            <h3>Rechte</h3>
-            <p className="hint">
-              {selected.size} Rechte gewählt. Rechte, die ein anderes voraussetzt, werden
-              mitgesetzt. Rechte, die Sie selbst nicht haben, können Sie nicht vergeben.
-            </p>
+            <h3>{t.rights}</h3>
+            <p className="hint">{format(t.rightsHint, { count: selected.size })}</p>
             {sections.map((section) => {
               const all = section.permissions.every((permission) => selected.has(permission.key));
               return (
-                <fieldset className="permission-section" key={section.title}>
+                <fieldset className="permission-section" key={section.id}>
                   <legend>
                     {section.title}
                     {!readOnly && (
@@ -399,7 +404,7 @@ function GroupEditor({
                         className="ghost sm"
                         onClick={() => setSection(section, !all)}
                       >
-                        {all ? "Keine" : "Alle"}
+                        {all ? t.none : t.all}
                       </button>
                     )}
                   </legend>
@@ -413,13 +418,7 @@ function GroupEditor({
                         className={`permission${forbidden ? " is-forbidden" : ""}`}
                         key={permission.key}
                         htmlFor={`perm-${permission.key}`}
-                        title={
-                          forbidden
-                            ? "Dieses Recht haben Sie selbst nicht"
-                            : locked
-                              ? "Wird für ein anderes gewähltes Recht gebraucht"
-                              : undefined
-                        }
+                        title={forbidden ? t.notYours : locked ? t.neededTitle : undefined}
                       >
                         <input
                           id={`perm-${permission.key}`}
@@ -433,7 +432,7 @@ function GroupEditor({
                           {permission.hint && <span className="hint">{permission.hint}</span>}
                           {locked && (
                             <span className="hint">
-                              Nötig für:{" "}
+                              {t.neededFor}{" "}
                               {needers
                                 .map(
                                   (key) =>
@@ -456,18 +455,18 @@ function GroupEditor({
           {advanced && (
             <>
               <section className="form-section">
-                <h3>Kategorien</h3>
+                <h3>{t.categories}</h3>
                 <div className="form-grid cols-2">
                   <CategoryScope
-                    label="Darf ausleihen aus"
-                    hint="Nichts gewählt: aus allen Kategorien. Andere Kategorien sieht die Gruppe im Katalog nicht."
+                    label={t.borrowFrom}
+                    hint={t.borrowHint}
                     categories={categories}
                     value={form.borrowCategoryIds}
                     onChange={(borrowCategoryIds) => setForm({ ...form, borrowCategoryIds })}
                   />
                   <CategoryScope
-                    label="Verwaltet"
-                    hint="Gilt für Anfragen, Rückgaben, Geräte und Bilder. Nichts gewählt: alle Kategorien."
+                    label={t.manages}
+                    hint={format(t.manageHint, { devices: terms.devices })}
                     categories={categories}
                     value={form.manageCategoryIds}
                     onChange={(manageCategoryIds) => setForm({ ...form, manageCategoryIds })}
@@ -476,12 +475,10 @@ function GroupEditor({
               </section>
 
               <section className="form-section">
-                <h3>Ausleihregeln dieser Gruppe</h3>
-                <p className="hint">
-                  Leer lassen: es gilt die Einstellung unter „Regeln & Formular“.
-                </p>
+                <h3>{t.rules}</h3>
+                <p className="hint">{t.rulesHint}</p>
                 <div className="form-grid cols-2">
-                  <Field label="Höchstdauer (Tage)" htmlFor="group-days" optional>
+                  <Field label={t.maxDays} htmlFor="group-days" optional>
                     <input
                       id="group-days"
                       type="number"
@@ -496,7 +493,7 @@ function GroupEditor({
                       }
                     />
                   </Field>
-                  <Field label="Offene Anfragen pro Person" htmlFor="group-open" optional>
+                  <Field label={t.maxOpen} htmlFor="group-open" optional>
                     <input
                       id="group-open"
                       type="number"
@@ -511,7 +508,7 @@ function GroupEditor({
                       }
                     />
                   </Field>
-                  <Field label="Automatisch bestätigen" htmlFor="group-auto">
+                  <Field label={t.autoApprove} htmlFor="group-auto">
                     <select
                       id="group-auto"
                       value={form.autoApprove === null ? "" : String(form.autoApprove)}
@@ -523,21 +520,21 @@ function GroupEditor({
                         })
                       }
                     >
-                      <option value="">Wie allgemein eingestellt</option>
-                      <option value="true">Ja</option>
-                      <option value="false">Nein</option>
+                      <option value="">{t.asGeneral}</option>
+                      <option value="true">{m.common.yes}</option>
+                      <option value="false">{m.common.no}</option>
                     </select>
                   </Field>
                 </div>
               </section>
 
               <section className="form-section">
-                <h3>Verzeichnis (LDAP)</h3>
+                <h3>{t.directory}</h3>
                 <Field
-                  label="Verzeichnisgruppen"
+                  label={t.directoryGroups}
                   htmlFor="group-dns"
                   optional
-                  hint="Eine vollständige DN pro Zeile, z. B. CN=IT-Team,OU=Groups,DC=firma,DC=de. Wer bei der Anmeldung Mitglied ist, kommt in diese Gruppe."
+                  hint={t.directoryHint}
                 >
                   <textarea
                     id="group-dns"
@@ -569,6 +566,7 @@ function CategoryScope({
   onChange: (ids: string[]) => void;
 }) {
   const chosen = new Set(value);
+  const { m } = useI18n();
   return (
     <fieldset className="category-scope">
       <legend>{label}</legend>
@@ -590,7 +588,7 @@ function CategoryScope({
           {category.name}
         </label>
       ))}
-      {categories.length === 0 && <p className="muted small">Noch keine Kategorien.</p>}
+      {categories.length === 0 && <p className="muted small">{m.groups.noCategories}</p>}
     </fieldset>
   );
 }
@@ -611,40 +609,39 @@ function DeleteGroup({
     others.find((other) => other.isDefault)?.id ?? others[0]?.id ?? ""
   );
   const [error, setError] = useState("");
+  const { m } = useI18n();
+  const t = m.groups;
 
   async function confirm() {
     setError("");
     try {
       const query = group.members > 0 ? `?moveTo=${encodeURIComponent(moveTo)}` : "";
       await api(`/api/groups/${group.id}${query}`, { method: "DELETE" });
-      onDeleted(`Gruppe „${group.name}“ gelöscht.`);
+      onDeleted(format(t.deleted, { name: group.name }));
     } catch (err) {
-      setError(errorMessage(err, "Löschen fehlgeschlagen"));
+      setError(errorMessage(err, t.deleteFailed));
     }
   }
 
   return (
     <Modal
-      title={`Gruppe „${group.name}“ löschen`}
+      title={format(t.deleteTitle, { name: group.name })}
       onClose={onClose}
       size="sm"
       footer={
         <>
           <button type="button" className="secondary" onClick={onClose}>
-            Abbrechen
+            {m.common.cancel}
           </button>
           <button type="button" className="danger" onClick={() => void confirm()}>
-            Löschen
+            {m.common.delete}
           </button>
         </>
       }
     >
       <Alert>{error}</Alert>
       {group.members > 0 ? (
-        <Field
-          label={`${group.members} ${group.members === 1 ? "Mitglied wechselt" : "Mitglieder wechseln"} in die Gruppe`}
-          htmlFor="group-move"
-        >
+        <Field label={format(t.moveMembers, { count: group.members })} htmlFor="group-move">
           <select
             id="group-move"
             value={moveTo}
@@ -658,7 +655,7 @@ function DeleteGroup({
           </select>
         </Field>
       ) : (
-        <p>Die Gruppe hat keine Mitglieder.</p>
+        <p>{t.noMembers}</p>
       )}
     </Modal>
   );

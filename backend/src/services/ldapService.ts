@@ -1,6 +1,7 @@
 import { Client } from "ldapts";
 
 import { config } from "../config.js";
+import { t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 
 export type LdapProfile = {
@@ -76,7 +77,7 @@ export async function authenticateLdap(
     if (searchEntries.length > 1) {
       throw new HttpError(
         409,
-        "LDAP-Suche ist nicht eindeutig. Bitte die E-Mail-Adresse verwenden."
+        t((m) => m.errors.ldapAmbiguous)
       );
     }
     const entry = searchEntries[0];
@@ -85,7 +86,10 @@ export async function authenticateLdap(
     const email = first(entry[config.ldap.emailAttribute]).toLowerCase();
     const name = first(entry[config.ldap.nameAttribute]) || first(entry.cn) || username;
     if (!email) {
-      throw new HttpError(400, "Das LDAP-Konto hat keine E-Mail-Adresse");
+      throw new HttpError(
+        400,
+        t((m) => m.errors.ldapNoEmail)
+      );
     }
 
     const userClient = client();
@@ -93,7 +97,10 @@ export async function authenticateLdap(
       await userClient.bind(dn, password);
     } catch (error) {
       if (isInvalidCredentials(error)) {
-        throw new HttpError(401, "Benutzername oder Passwort ist falsch");
+        throw new HttpError(
+          401,
+          t((m) => m.errors.badCredentials)
+        );
       }
       throw error;
     } finally {

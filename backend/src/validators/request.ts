@@ -1,15 +1,11 @@
 import { z } from "zod";
 
 export const createRequestSchema = z.object({
-  unitId: z.string().min(1, "Stück fehlt"),
+  unitId: z.string().min(1, "validation.unitMissing"),
   // Required or not depends on the company's form settings (requestService checks it).
   roomId: z.string().max(60).optional().default(""),
-  startsAt: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Startzeit im Format JJJJ-MM-TTTHH:MM angeben"),
-  desiredUntil: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Endzeit im Format JJJJ-MM-TTTHH:MM angeben"),
+  startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "validation.startFormat"),
+  desiredUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "validation.endFormat"),
   comment: z.string().trim().max(1000).optional().default(""),
   /**
    * Answers to the company's own fields by field id.

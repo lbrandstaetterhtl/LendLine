@@ -1,5 +1,6 @@
 import type { UiFeature } from "../lib/uiFeatures.js";
 
+import { format, messages } from "../i18n/index.js";
 import { prisma } from "../lib/prisma.js";
 import { effectiveFeatures, uiFeatures } from "../lib/uiFeatures.js";
 import { getBranding } from "./brandingService.js";
@@ -16,7 +17,10 @@ export async function uiConfig() {
     mode: ui.mode,
     custom: ui.custom,
     features: effectiveFeatures(ui.mode, ui.custom),
-    catalogue: uiFeatures,
+    catalogue: uiFeatures.map((feature) => ({
+      ...feature,
+      ...messages().uiFeatures[feature.key],
+    })),
   };
 }
 
@@ -37,10 +41,11 @@ export async function uiUsage(): Promise<Partial<Record<UiFeature, string>>> {
   ]);
   const defaults = { policy: policySchema.parse({}), mail: mailSchema.parse({}) };
   const usage: Partial<Record<UiFeature, string>> = {};
+  const m = messages().usage;
 
   const appearance = [
-    ...(branding.faviconUrl ? ["Browser-Symbol"] : []),
-    ...(branding.loginImageUrl ? ["Bild der Anmeldeseite"] : []),
+    ...(branding.faviconUrl ? [m.favicon] : []),
+    ...(branding.loginImageUrl ? [m.loginImage] : []),
     ...(same(branding.appearance, {
       font: "standard",
       fontSize: "normal",
@@ -48,27 +53,25 @@ export async function uiUsage(): Promise<Partial<Record<UiFeature, string>>> {
       sidebar: "standard",
     })
       ? []
-      : ["Schrift/Form"]),
+      : [m.appearance]),
     ...(branding.terms.device !== "Gerät" ||
     branding.terms.room !== "Raum" ||
     branding.terms.unit !== "Stück"
-      ? ["eigene Begriffe"]
+      ? [m.terms]
       : []),
-    ...(branding.login.title !== "Anmelden" || branding.login.text
-      ? ["Texte der Anmeldeseite"]
-      : []),
+    ...(branding.login.title !== "Anmelden" || branding.login.text ? [m.loginTexts] : []),
   ];
   if (appearance.length > 0) usage["appearance.extended"] = appearance.join(", ");
-  if (!same(policy.rules, defaults.policy.rules)) usage["rules.loan"] = "eigene Ausleihregeln";
+  if (!same(policy.rules, defaults.policy.rules)) usage["rules.loan"] = m.rules;
   if (!same(policy.form, defaults.policy.form)) {
     usage["form.custom"] =
       policy.form.fields.length > 0
-        ? `${policy.form.fields.length} eigene Felder im Anfrageformular`
-        : "angepasstes Anfrageformular";
+        ? format(m.formFields, { count: policy.form.fields.length })
+        : m.form;
   }
-  if (!same(mail, defaults.mail)) usage.emails = "eigene E-Mail-Texte";
+  if (!same(mail, defaults.mail)) usage.emails = m.mail;
   const own = groups.filter((group) => group.id !== "group-admin" && group.id !== "group-user");
-  if (own.length > 0) usage.groups = `${own.length} eigene Gruppe${own.length === 1 ? "" : "n"}`;
+  if (own.length > 0) usage.groups = format(m.groups, { count: own.length });
   const advanced = groups.filter(
     (group) =>
       group.borrowCategoryIds.length > 0 ||
@@ -79,13 +82,13 @@ export async function uiUsage(): Promise<Partial<Record<UiFeature, string>>> {
       group.autoApprove !== null
   );
   if (advanced.length > 0) {
-    usage["groups.advanced"] =
-      `Kategorien, Regeln oder Verzeichnis in ${advanced.map((group) => `„${group.name}“`).join(", ")}`;
+    usage["groups.advanced"] = format(m.groupsAdvanced, {
+      groups: advanced.map((group) => `„${group.name}“`).join(", "),
+    });
   }
   if (deviceWithFields > 0) {
-    usage["devices.properties"] =
-      `${deviceWithFields} Gerät${deviceWithFields === 1 ? "" : "e"} mit Eigenschaften`;
+    usage["devices.properties"] = format(m.devices, { count: deviceWithFields });
   }
-  if (maintenance.enabled) usage.maintenance = "der Wartungsmodus ist gerade eingeschaltet";
+  if (maintenance.enabled) usage.maintenance = m.maintenance;
   return usage;
 }

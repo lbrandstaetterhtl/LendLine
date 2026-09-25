@@ -3,7 +3,7 @@
 > Internal IT equipment lending system ("IT-Geräteausleihe").
 > Users search for free device units in a time window and request them for a room; administrators ("Verwaltung") approve or reject requests and record returns. Status changes trigger e-mails, and every administrative action is written to an audit log.
 
-The UI, API error messages, e-mails and README are in **German**. This document is in English and quotes German UI terms where it helps to find them in the code.
+The interface, API messages, e-mails and audit log are available in **German, English, Spanish, Simplified Chinese and Hindi** (§13.9); German is the source language, and the README is German. This document is in English and quotes German UI terms where it helps to find them in the code.
 
 ---
 
@@ -73,6 +73,7 @@ LendLine/
 │       ├── index.ts           Starts the HTTP server
 │       ├── app.ts             Express app, middleware, route mounting, admin endpoints
 │       ├── config.ts          Reads & validates environment variables
+│       ├── i18n/              Dictionaries de (source), en, es, zh, hi; locales.ts (languages, Accept-Language); index.ts (t, format, messages)
 │       ├── lib/               prisma client, HttpError, bcrypt, JWT/refresh tokens, asyncHandler, routeParam, rate limiter, request context
 │       ├── middleware/        auth (requireAuth/requireAdmin), validateBody, upload (multer), errorHandler
 │       ├── validators/        Zod schemas for auth, devices, requests
@@ -87,9 +88,10 @@ LendLine/
     ├── tsconfig.json          Single config for src/ and vite.config.ts (strict)
     ├── .oxlintrc.json / .oxfmtrc.json / knip.json
     └── src/
-        ├── main.tsx           BrowserRouter + AuthProvider + global CSS
+        ├── main.tsx           I18nProvider, BrowserRouter, BrandingProvider, AuthProvider, LocaleBoundary, UiProvider + global CSS
         ├── App.tsx            Route table + route guards
-        ├── types.ts           Shared types, status labels, date formatting
+        ├── types.ts           Shared types
+        ├── i18n/              Dictionaries de (source), en, es, zh, hi; index.tsx (provider, useI18n, format, dates)
         ├── shortcuts.ts       Keyboard shortcuts (one list for the handler and the help page)
         ├── api/client.ts      fetch wrapper with bearer token + auto refresh (one shared refresh request)
         ├── api/useApi.ts      Data-loading hook: { data, error, reload }
@@ -556,7 +558,7 @@ Admins switch it on at `/admin/wartung` with a message and an optional expected 
 ## 9. REST API reference
 
 Base path `/api`. JSON in/out. "Auth": 🔓 public, 👤 any logged-in user, 🛡 admin.
-Errors: `{ "error": "<German message>" }` with 400/401/403/404/409/413/500, plus 429 with `code: "RATE_LIMITED"` (login/registration, §8) and 503 with `code: "MAINTENANCE"` during maintenance (§8).
+Errors: `{ "error": "<message in the request's language>" }` (from `Accept-Language`, German by default) with 400/401/403/404/409/413/500, plus 429 with `code: "RATE_LIMITED"` (login/registration, §8) and 503 with `code: "MAINTENANCE"` during maintenance (§8).
 
 ### Health & admin
 
@@ -580,15 +582,16 @@ Errors: `{ "error": "<German message>" }` with 400/401/403/404/409/413/500, plus
 
 ### Auth — `/auth`
 
-| Method | Path             | Auth   | Body / notes                                                                                                                     |
-| ------ | ---------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/options`  | 🔓     | `{ ldapEnabled, allowLocalRegister, registrationDomains, maintenance: { enabled, message?, until? } }`                           |
-| POST   | `/auth/register` | 🔓     | `{ name (2–120), email, password (8 chars – 72 bytes) }` → 201 `{ user, accessToken }` + cookie; 409 duplicate e-mail; 429       |
-| POST   | `/auth/login`    | 🔓     | `{ email (e-mail or LDAP user name), password (≤ 200) }` → `{ user, accessToken }` + cookie; 429 when rate-limited               |
-| POST   | `/auth/refresh`  | cookie | Rotates the refresh token → `{ user, accessToken }`; 403 on a foreign `Origin`                                                   |
-| POST   | `/auth/logout`   | cookie | Revokes the token, clears the cookie → 204; 403 on a foreign `Origin`                                                            |
-| POST   | `/auth/password` | 👤     | `{ currentPassword, newPassword }` → `{ user, accessToken }` + new cookie; ends all other sessions; 400 wrong password; 409 LDAP |
-| GET    | `/auth/me`       | 👤     | `{ id, name, email, createdAt, mustChangePassword, authSource, group { id, name }, permissions[] }`                              |
+| Method | Path             | Auth   | Body / notes                                                                                                                         |
+| ------ | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/auth/options`  | 🔓     | `{ ldapEnabled, allowLocalRegister, registrationDomains, maintenance: { enabled, message?, until? } }`                               |
+| POST   | `/auth/register` | 🔓     | `{ name (2–120), email, password (8 chars – 72 bytes) }` → 201 `{ user, accessToken }` + cookie; 409 duplicate e-mail; 429           |
+| POST   | `/auth/login`    | 🔓     | `{ email (e-mail or LDAP user name), password (≤ 200) }` → `{ user, accessToken }` + cookie; 429 when rate-limited                   |
+| POST   | `/auth/refresh`  | cookie | Rotates the refresh token → `{ user, accessToken }`; 403 on a foreign `Origin`                                                       |
+| POST   | `/auth/logout`   | cookie | Revokes the token, clears the cookie → 204; 403 on a foreign `Origin`                                                                |
+| POST   | `/auth/password` | 👤     | `{ currentPassword, newPassword }` → `{ user, accessToken }` + new cookie; ends all other sessions; 400 wrong password; 409 LDAP     |
+| GET    | `/auth/me`       | 👤     | `{ id, name, email, createdAt, mustChangePassword, locale, authSource, group { id, name }, permissions[] }`                          |
+| PUT    | `/auth/locale`   | 👤     | `{ locale: "de" \| "en" \| "es" \| "zh" \| "hi" }` → user; the language of the account's e-mails (allowed with a temporary password) |
 
 ### Categories — `/categories`
 
@@ -740,6 +743,8 @@ All mails are built by `emails/format.ts → composeMail()` from `emails/templat
 | Return                         | `Rückgabe erfasst: <device>`   | device data, return time, `returnedText`                                                                             |
 | Maintenance task "Test-E-Mail" | `LendLine: Test-E-Mail`        | greeting, signature, footer                                                                                          |
 
+Every mail is written in the **recipient's language** (`User.locale`, set by the language menu; German when unset), whoever triggers it: `dispatch()` builds one `mailContext(locale)` per language. Built-in texts, dates and the default settings and terms come in that language; a company text that differs from the German default is sent as written (`localizedDefault`). The subjects in the table are the German ones.
+
 No mail is sent when a request is created, withdrawn or bulk-rejected, and admins get no notification of new requests. Admins edit the texts at `/admin/emails` with a live preview (`/admin/settings/mail/preview`, rendered in a `sandbox` iframe).
 
 ---
@@ -752,7 +757,7 @@ Each entry stores:
 
 - `actorId` / `actorName`: the acting user, with the name copied at write time. A failed login has no actor; the name is the entered user name.
 - `action`, `entityType` (`REQUEST`, `DEVICE`, `CATEGORY`, `ROOM`, `USER`, `AUTH`, `SYSTEM`), `entityId`
-- `summary`: one German sentence, including serial numbers where relevant
+- `summary`: one German sentence, including serial numbers where relevant. `recordAudit` takes a message key with parameters (`{ key: "audit.requestApproved", params }`), stores the German sentence (for the search) and keeps the key in `details.i18n`; `listAudit` renders the summary again in the reader's language. Field names and fixed values in `changes`/`context` are translated on reading through `auditTerms`, varying values such as „Stück LT-1001“ or „3 Std. verspätet“ through `auditPatterns`. Entries written before the translation keep their German summary.
 - `details` (JSON): `changes` as `[{ field, from, to }]` (unchanged fields are dropped) and `context` as ordered `{ label: value }` facts. Old entries from before 2026-09-24 have no details.
 - `ip`, `userAgent`: taken automatically from the current request via `AsyncLocalStorage` (`lib/requestContext.ts`). `trust proxy` is set to loopback, and the Vite proxy forwards `X-Forwarded-For` (`xfwd`).
 
@@ -905,6 +910,18 @@ Everything is reachable with Tab/Shift+Tab; every action is a real `<button>` or
 
 Rules: shortcuts never fire while typing in a field (`isTyping`) or while a dialog is open; after every route change the page `<h1>` gets focus (`tabIndex=-1`, no outline). Open dialogs share one scroll lock (a module-level counter in `Modal`), so nested dialogs may close in any order without leaving the page unscrollable.
 
+### 13.9 Languages
+
+Five languages: German (source), English, Spanish, Simplified Chinese, Hindi. `frontend/src/i18n/de.ts` and `backend/src/i18n/de.ts` hold the German texts; the other files are typed `Messages` (`typeof de`), so a missing or extra key fails the type check.
+
+- **Choice:** saved in `localStorage` (`lendline-locale`), else the first matching browser language, else German. Language menus: sidebar footer, login and registration pages, „Mein Konto“. When signed in, the choice is saved to the account (`PUT /auth/locale`) for the e-mails; a device without its own choice takes the account's.
+- **Server texts:** `api()` sends `Accept-Language`; the server answers errors, validation messages (Zod issues map to `validation.*` keys or generic messages), the permission and settings-mode catalogues, maintenance task results and the audit log in that language. `LocaleBoundary` mounts the app again on a change, so everything is fetched anew.
+- **Placeholders and plurals:** `"{name}"`, `{ one, other }` chosen by `{count}` with `Intl.PluralRules`; `"{unit:lower}"` lower-cases a company term inside an English or Spanish sentence. Dates, weekdays and numbers use `Intl` with the language (time zone Europe/Berlin).
+- **Company texts:** stored defaults are German. A value equal to the German default counts as "not adapted" and is shown in the reader's language (terms, login title, comment field, maintenance notice, e-mail texts); editors show it translated and store the German default again when it is saved unchanged. Everything a company writes itself (names, descriptions, own terms and texts) shows as written in every language.
+- **Audit 2:** `localization-audit-2.md` lists the checks and the remaining limits.
+
+---
+
 ## 14. Migration history
 
 The migrations are dated 2026-09-23 to 25 and show how the model evolved:
@@ -928,6 +945,7 @@ The migrations are dated 2026-09-23 to 25 and show how the model evolved:
 | `20260925130000_device_fields`    | `Device.fields` (JSON, free properties)                                                                                                                                                                                                 |
 | `20260925150000_settings_mode`    | Adds the permission `settings.mode` to „Verwaltung“                                                                                                                                                                                     |
 | `20260925140000_groups`           | `Group` table with „Verwaltung“ and „Nutzer“, `User.groupId` (backfilled from the role), drops `User.role` and the `Role` enum                                                                                                          |
+| `20260925160000_user_locale`      | `User.locale` (nullable text): language of the interface and the e-mails                                                                                                                                                                |
 
 ---
 
@@ -945,6 +963,7 @@ check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 - Admin category creation with a duplicate name returns the existing category with HTTP 201 instead of 409.
 - `npm run prisma:seed` does not load `.env` (use `npx prisma db seed`, §3).
 - `/users/:id/profile` exists in the API but has no UI.
+- Localization limits (see `localization-audit-2.md`): the audit search matches German wording only; Chinese and Hindi texts need a review by native speakers; company terms are inserted without grammatical gender or case (Spanish, Hindi).
 
 ### Security / operational notes
 

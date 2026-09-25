@@ -6,42 +6,20 @@ import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
 import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, PageHeader } from "../components/ui";
+import { format, useI18n } from "../i18n";
 import { useUi } from "../ui/UiContext";
 
-const modes: { value: UiMode; label: string; text: string }[] = [
-  {
-    value: "simple",
-    label: "Einfach",
-    text: "Nur das Nötigste: Logo und Farbe, Registrierung, Benutzer, Geräte und Anfragen.",
-  },
-  {
-    value: "medium",
-    label: "Mittel",
-    text: "Dazu Regeln, Anfrageformular, E-Mail-Texte, Gruppen mit Rechten, Eigenschaften und Protokoll.",
-  },
-  {
-    value: "full",
-    label: "Voll",
-    text: "Alles, auch Kategorien und Regeln pro Gruppe, Verzeichnisgruppen und Wartung.",
-  },
-  {
-    value: "custom",
-    label: "Eigene Auswahl",
-    text: "Sie legen für jeden Bereich selbst fest, ob er erscheint.",
-  },
-];
+const modes: UiMode[] = ["simple", "medium", "full", "custom"];
 
 export function AdminModePage() {
   const { ui, reload } = useUi();
   const { data: usage } = useApi<Partial<Record<UiFeature, string>>>("/api/admin/ui/usage");
+  const { m } = useI18n();
   if (!ui) return null;
   return (
     <>
       <SettingsTabs />
-      <PageHeader
-        title="Einstellungsmodus"
-        description="Wie viel die Verwaltung sieht. Ausgeblendete Bereiche verschwinden aus Menü und Seiten; was dort eingestellt ist, gilt weiter."
-      />
+      <PageHeader title={m.mode.title} description={m.mode.description} />
       <ModeForm
         key={`${ui.mode}-${JSON.stringify(ui.custom)}`}
         usage={usage ?? {}}
@@ -68,6 +46,8 @@ function ModeForm({
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const catalogue = ui!.catalogue;
+  const { m } = useI18n();
+  const t = m.mode;
 
   const shown = (feature: UiFeature) =>
     mode === "custom"
@@ -87,10 +67,10 @@ function ModeForm({
         method: "PUT",
         body: JSON.stringify({ mode, custom }),
       });
-      setInfo(`Modus „${modes.find((item) => item.value === mode)?.label}“ gespeichert.`);
+      setInfo(format(t.saved, { mode: t.modes[mode].label }));
       onSaved();
     } catch (err) {
-      setError(errorMessage(err, "Speichern fehlgeschlagen"));
+      setError(errorMessage(err, t.saveFailed));
       setSaving(false);
     }
   }
@@ -100,34 +80,32 @@ function ModeForm({
       <Alert>{error}</Alert>
       <Alert tone="ok">{info}</Alert>
       <fieldset className="mode-choice">
-        <legend className="sr-only">Modus</legend>
-        {modes.map((item) => {
+        <legend className="sr-only">{t.legend}</legend>
+        {modes.map((value) => {
           const count =
-            item.value === "custom"
+            value === "custom"
               ? catalogue.filter((feature) => custom[feature.key]).length
-              : catalogue.filter((feature) => feature.modes.includes(item.value)).length;
+              : catalogue.filter((feature) => feature.modes.includes(value)).length;
           return (
             <label
-              key={item.value}
-              className={`mode-card${mode === item.value ? " is-chosen" : ""}`}
-              htmlFor={`mode-${item.value}`}
+              key={value}
+              className={`mode-card${mode === value ? " is-chosen" : ""}`}
+              htmlFor={`mode-${value}`}
             >
               <input
-                id={`mode-${item.value}`}
+                id={`mode-${value}`}
                 type="radio"
                 name="mode"
-                value={item.value}
-                checked={mode === item.value}
-                onChange={() => setMode(item.value)}
+                value={value}
+                checked={mode === value}
+                onChange={() => setMode(value)}
               />
               <strong>
-                {item.label}
-                {ui!.mode === item.value && <span className="badge st-returned">aktuell</span>}
+                {t.modes[value].label}
+                {ui!.mode === value && <span className="badge st-returned">{t.current}</span>}
               </strong>
-              <span className="muted small">{item.text}</span>
-              <span className="small">
-                {count} von {catalogue.length} Zusatzbereichen
-              </span>
+              <span className="muted small">{t.modes[value].text}</span>
+              <span className="small">{format(t.areasOf, { count, total: catalogue.length })}</span>
             </label>
           );
         })}
@@ -135,17 +113,10 @@ function ModeForm({
 
       <section className="card">
         <div className="card-title">
-          <h2>Bereiche</h2>
-          {mode !== "custom" && (
-            <span className="muted small">
-              Zum Ändern einzelner Bereiche „Eigene Auswahl“ wählen.
-            </span>
-          )}
+          <h2>{t.areas}</h2>
+          {mode !== "custom" && <span className="muted small">{t.customHint}</span>}
         </div>
-        <p className="muted small">
-          Immer sichtbar: Logo und Akzentfarbe, Selbstregistrierung, Benutzer, Geräte, Kategorien,
-          Räume, Anfragen und Ausleihen.
-        </p>
+        <p className="muted small">{t.always}</p>
         <div className="mode-features">
           {catalogue.map((feature) => (
             <label className="permission" key={feature.key} htmlFor={`feature-${feature.key}`}>
@@ -160,7 +131,9 @@ function ModeForm({
                 <strong>{feature.label}</strong>
                 <span className="hint">{feature.description}</span>
                 {usage[feature.key] && (
-                  <span className="hint">In Gebrauch: {usage[feature.key]}.</span>
+                  <span className="hint">
+                    {format(t.inUse, { usage: usage[feature.key] ?? "" })}
+                  </span>
                 )}
               </span>
             </label>
@@ -171,7 +144,7 @@ function ModeForm({
       <Alert tone="note">
         {hiddenButUsed.length > 0 && (
           <div>
-            <strong>Ausgeblendet, aber weiter wirksam:</strong>
+            <strong>{t.hiddenTitle}</strong>
             <ul className="plain-list">
               {hiddenButUsed.map((item) => (
                 <li key={item.key}>
@@ -179,15 +152,14 @@ function ModeForm({
                 </li>
               ))}
             </ul>
-            Diese Einstellungen gelten weiter, lassen sich aber erst wieder ändern, wenn der Bereich
-            sichtbar ist.
+            {t.hiddenText}
           </div>
         )}
       </Alert>
 
       <div className="form-actions">
         <button type="button" disabled={saving || !changed} onClick={() => void save()}>
-          Modus speichern
+          {t.save}
         </button>
       </div>
     </>

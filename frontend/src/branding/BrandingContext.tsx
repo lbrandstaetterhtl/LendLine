@@ -1,6 +1,9 @@
+import type { Messages } from "../i18n/de";
+
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client";
+import { useI18n } from "../i18n";
 import { type Appearance, appearanceCss } from "./appearance";
 
 export type Terms = {
@@ -150,8 +153,32 @@ export function useBranding(): BrandingContextValue {
 }
 
 /**
- * The company's words for devices, pieces and rooms.
+ * The company's words for devices, pieces and rooms. A word still at the German default comes in
+ * the current language; one the company chose stays as it is.
  */
 export function useTerms(): Terms {
-  return useBranding().branding.terms;
+  const { terms } = useBranding().branding;
+  const { m } = useI18n();
+  return useMemo(() => localizeTerms(terms, m), [terms, m]);
+}
+
+export function localizeTerms(terms: Terms, m: Messages): Terms {
+  const own = (key: keyof Terms) => (terms[key] === DEFAULT_TERMS[key] ? m.terms[key] : terms[key]);
+  return {
+    subtitle: own("subtitle"),
+    catalog: own("catalog"),
+    device: own("device"),
+    devices: own("devices"),
+    unit: own("unit"),
+    units: own("units"),
+    room: own("room"),
+    rooms: own("rooms"),
+  };
+}
+
+/**
+ * Title of the login page, translated while it is the default.
+ */
+export function loginTitle(branding: Branding, m: Messages): string {
+  return branding.login.title === DEFAULT.login.title ? m.terms.loginTitle : branding.login.title;
 }

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
+import { t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { looksLikeImage } from "../lib/imageSniff.js";
 import { prisma } from "../lib/prisma.js";
@@ -24,11 +25,12 @@ const slotField = {
   login: "loginImage",
 } as const satisfies Record<ImageSlot, string>;
 
-const slotLabel: Record<ImageSlot, string> = {
-  light: "Logo",
-  dark: "Logo für den Dunkelmodus",
-  favicon: "Browser-Symbol",
-  login: "Bild der Anmeldeseite",
+// Audit parameters that are messages themselves (see AuditSummary).
+const slotKey: Record<ImageSlot, string> = {
+  light: "@audit.slotLight",
+  dark: "@audit.slotDark",
+  favicon: "@audit.slotFavicon",
+  login: "@audit.slotLogin",
 };
 
 const term = (fallback: string) => z.string().trim().min(1).max(40).default(fallback);
@@ -74,7 +76,7 @@ type Stored = z.infer<typeof storedSchema>;
 export const brandingPatchSchema = z.object({
   accent: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Farbe im Format #RRGGBB angeben")
+    .regex(/^#[0-9a-fA-F]{6}$/, "validation.colorFormat")
     .transform((value) => value.toLowerCase())
     .nullable()
     .optional(),
@@ -179,9 +181,9 @@ export async function updateBranding(patch: BrandingPatch, actorId: string): Pro
       summary:
         changes.length === 1 && changes[0]?.field === "Akzentfarbe"
           ? value.accent
-            ? `Akzentfarbe auf ${value.accent} geändert`
-            : "Akzentfarbe zurückgesetzt"
-          : `Erscheinungsbild geändert (${changes.length} Einstellung${changes.length === 1 ? "" : "en"})`,
+            ? { key: "audit.accentChanged", params: { color: value.accent } }
+            : { key: "audit.accentReset" }
+          : { key: "audit.brandingChanged", params: { count: changes.length } },
       details: { changes },
     });
   }
@@ -196,10 +198,17 @@ export async function setImage(
   file: Express.Multer.File | undefined,
   actorId: string
 ): Promise<Branding> {
-  if (!file) throw new HttpError(400, "Keine Datei ausgewählt");
+  if (!file)
+    throw new HttpError(
+      400,
+      t((m) => m.errors.noFile)
+    );
   if (!(await looksLikeImage(file.path, path.extname(file.filename)))) {
     await fs.unlink(file.path).catch(() => undefined);
-    throw new HttpError(400, "Die Datei ist kein gültiges Bild");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.notAnImage)
+    );
   }
   const before = await readStored();
   const field = slotField[slot];
@@ -210,7 +219,10 @@ export async function setImage(
     actorId,
     action: "BRANDING_UPDATED",
     entityType: "SYSTEM",
-    summary: `${slotLabel[slot]} ${before[field] ? "ersetzt" : "hochgeladen"}`,
+    summary: {
+      key: before[field] ? "audit.imageReplaced" : "audit.imageUploaded",
+      params: { slot: slotKey[slot] },
+    },
     details: {
       context: { Datei: file.originalname, Größe: `${Math.ceil(file.size / 1024)} KB` },
     },
@@ -229,7 +241,7 @@ export async function removeImage(slot: ImageSlot, actorId: string): Promise<Bra
     actorId,
     action: "BRANDING_UPDATED",
     entityType: "SYSTEM",
-    summary: `${slotLabel[slot]} entfernt`,
+    summary: { key: "audit.imageRemoved", params: { slot: slotKey[slot] } },
   });
   return toBranding(value);
 }

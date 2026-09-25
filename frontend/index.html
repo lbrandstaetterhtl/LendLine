@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LendLine · IT-Geräteausleihe</title>
+    <title>LendLine</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
@@ -13,6 +13,9 @@
       try {
         var theme = localStorage.getItem("lendline-theme");
         if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        // Chosen language (src/i18n/index.tsx), so screen readers start with the right one.
+        var locale = localStorage.getItem("lendline-locale");
+        if (locale) document.documentElement.lang = locale;
         // Company colours, font and icon, cached by src/branding/BrandingContext.tsx.
         var brandingCss = localStorage.getItem("lendline-branding-css");
         if (brandingCss) {

@@ -5,6 +5,7 @@ import type { AuthSource } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 
 import { config } from "../config.js";
+import { type Locale, isLocale, t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import { withImplied } from "../lib/permissions.js";
@@ -24,6 +25,7 @@ const userSelect = {
   email: true,
   createdAt: true,
   mustChangePassword: true,
+  locale: true,
   authSource: true,
   sessionVersion: true,
   group: { select: { id: true, name: true, permissions: true } },
@@ -49,6 +51,10 @@ export type PublicUser = {
    * An admin set the password; the client must ask for a new one before anything else.
    */
   mustChangePassword: boolean;
+  /**
+   * Chosen language (interface and e-mails); null = not chosen yet, German for e-mails.
+   */
+  locale: Locale | null;
   authSource: AuthSource;
   group: { id: string; name: string };
   /**
@@ -69,6 +75,7 @@ function present(user: UserRow): PublicUser {
     email: user.email,
     createdAt: user.createdAt,
     mustChangePassword: user.mustChangePassword,
+    locale: isLocale(user.locale) ? user.locale : null,
     authSource: user.authSource,
     group: { id: user.group.id, name: user.group.name },
     permissions: withImplied(user.group.permissions),
@@ -113,21 +120,23 @@ export async function register(input: {
   if (config.ldap.enabled && !config.ldap.allowLocalRegister) {
     throw new HttpError(
       403,
-      "Registrierung ist deaktiviert. Bitte das Verzeichnis-Konto verwenden."
+      t((m) => m.errors.registrationLdapOnly)
     );
   }
   const { registration } = await getSetting("policy");
   if (!registration.enabled) {
     throw new HttpError(
       403,
-      "Die Registrierung ist ausgeschaltet. Ein Konto legt die Verwaltung für Sie an."
+      t((m) => m.errors.registrationOff)
     );
   }
   const domain = input.email.toLowerCase().split("@").pop() ?? "";
   if (registration.domains.length > 0 && !registration.domains.includes(domain)) {
     throw new HttpError(
       403,
-      `Registrieren können sich nur Adressen von ${registration.domains.map((item) => `@${item}`).join(", ")}.`
+      t((m) => m.errors.registrationDomains, {
+        domains: registration.domains.map((item) => `@${item}`).join(", "),
+      })
     );
   }
   try {
@@ -145,13 +154,16 @@ export async function register(input: {
       action: "USER_REGISTERED",
       entityType: "USER",
       entityId: user.id,
-      summary: `${user.name} hat sich registriert`,
+      summary: { key: "audit.userRegistered", params: { name: user.name } },
       details: { context: { "E-Mail": user.email, Gruppe: user.group.name } },
     });
     return await issueTokens(user);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new HttpError(409, "Diese E-Mail-Adresse ist bereits registriert");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.emailRegistered)
+      );
     }
     throw error;
   }
@@ -179,7 +191,7 @@ async function upsertLdapUser(profile: LdapProfile): Promise<UserRow> {
       action: "USER_CREATED",
       entityType: "USER",
       entityId: created.id,
-      summary: `Benutzer „${created.name}“ bei der ersten Anmeldung aus dem Verzeichnis übernommen`,
+      summary: { key: "audit.userFromDirectory", params: { name: created.name } },
       details: {
         context: { "E-Mail": created.email, Gruppe: created.group.name, DN: profile.dn },
       },
@@ -225,7 +237,7 @@ async function upsertLdapUser(profile: LdapProfile): Promise<UserRow> {
       action: "USER_UPDATED",
       entityType: "USER",
       entityId: updated.id,
-      summary: `Benutzer „${updated.name}“ aus dem Verzeichnis aktualisiert`,
+      summary: { key: "audit.userUpdatedFromDirectory", params: { name: updated.name } },
       details: { changes },
     });
   }
@@ -243,7 +255,7 @@ export async function login(input: { email: string; password: string }): Promise
         actorName: identifier.slice(0, 120),
         action: "LOGIN_FAILED",
         entityType: "AUTH",
-        summary: `Fehlgeschlagene Anmeldung als „${identifier.slice(0, 120)}“`,
+        summary: { key: "audit.loginFailed", params: { name: identifier.slice(0, 120) } },
         details: { context: { Grund: "Benutzername oder Passwort falsch" } },
       });
     }
@@ -257,7 +269,7 @@ export async function login(input: { email: string; password: string }): Promise
       action: "LOGIN_BLOCKED",
       entityType: "AUTH",
       entityId: result.user.id,
-      summary: `Anmeldung von ${result.user.name} wegen Wartung abgewiesen`,
+      summary: { key: "audit.loginBlocked", params: { name: result.user.name } },
       details: { context: { Methode: result.method } },
     });
     throw error;
@@ -267,7 +279,7 @@ export async function login(input: { email: string; password: string }): Promise
     action: "LOGIN_SUCCEEDED",
     entityType: "AUTH",
     entityId: result.user.id,
-    summary: `${result.user.name} hat sich angemeldet`,
+    summary: { key: "audit.loginSucceeded", params: { name: result.user.name } },
     details: { context: { Methode: result.method } },
   });
   return issueTokens(result.user);
@@ -299,7 +311,10 @@ async function authenticate(
   // Always run bcrypt, so the response time does not reveal whether the account exists.
   const valid = await verifyPassword(password, localHash ?? DUMMY_HASH);
   if (!user || !localHash || !valid) {
-    throw new HttpError(401, "Benutzername oder Passwort ist falsch");
+    throw new HttpError(
+      401,
+      t((m) => m.errors.badCredentials)
+    );
   }
   return {
     user: await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: userSelect }),
@@ -309,9 +324,15 @@ async function authenticate(
 
 export async function refresh(rawToken: string | undefined): Promise<AuthResult> {
   if (!rawToken) {
-    throw new HttpError(401, "Keine gültige Sitzung");
+    throw new HttpError(
+      401,
+      t((m) => m.errors.noSession)
+    );
   }
-  const expired = new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
+  const expired = new HttpError(
+    401,
+    t((m) => m.errors.sessionExpired)
+  );
   const existing = await prisma.refreshToken.findUnique({
     where: { tokenHash: hashToken(rawToken) },
     include: { user: { select: userSelect } },
@@ -353,7 +374,7 @@ async function reportReuse(user: UserRow): Promise<void> {
     action: "SESSION_REUSE_DETECTED",
     entityType: "AUTH",
     entityId: user.id,
-    summary: `Wiederverwendetes Sitzungs-Token von ${user.name}: alle Sitzungen beendet`,
+    summary: { key: "audit.sessionReuse", params: { name: user.name } },
     details: {
       context: {
         Bedeutung:
@@ -373,19 +394,29 @@ export async function changePassword(
   input: { currentPassword: string; newPassword: string }
 ): Promise<AuthResult> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
+  if (!user)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.userNotFound)
+    );
   if (user.authSource !== "LOCAL" || !user.passwordHash) {
     throw new HttpError(
       409,
-      "Verzeichniskonten ändern ihr Passwort im Verzeichnis (z. B. über Windows)."
+      t((m) => m.errors.directoryPassword)
     );
   }
   // 400, not 401: the client would take a 401 for an expired session and refresh.
   if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
-    throw new HttpError(400, "Das aktuelle Passwort ist falsch");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.currentPasswordWrong)
+    );
   }
   if (await verifyPassword(input.newPassword, user.passwordHash)) {
-    throw new HttpError(400, "Das neue Passwort muss sich vom bisherigen unterscheiden");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.passwordUnchanged)
+    );
   }
   const passwordHash = await hashPassword(input.newPassword);
   const updated = await prisma.$transaction(async (tx) => {
@@ -401,9 +432,10 @@ export async function changePassword(
     action: "PASSWORD_CHANGED",
     entityType: "AUTH",
     entityId: userId,
-    summary: user.mustChangePassword
-      ? `${user.name} hat das vorläufige Passwort ersetzt`
-      : `${user.name} hat das Passwort geändert`,
+    summary: {
+      key: user.mustChangePassword ? "audit.passwordReplaced" : "audit.passwordChanged",
+      params: { name: user.name },
+    },
     details: { context: { Folge: "Alle anderen Sitzungen wurden beendet" } },
   });
   return issueTokens(updated);
@@ -425,13 +457,29 @@ export async function logout(rawToken: string | undefined): Promise<void> {
       action: "LOGOUT",
       entityType: "AUTH",
       entityId: session.user.id,
-      summary: `${session.user.name} hat sich abgemeldet`,
+      summary: { key: "audit.logout", params: { name: session.user.name } },
     });
   }
 }
 
 export async function getMe(userId: string): Promise<PublicUser> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: userSelect });
-  if (!user) throw new HttpError(401, "Benutzer nicht gefunden");
+  if (!user)
+    throw new HttpError(
+      401,
+      t((m) => m.errors.userNotFound)
+    );
+  return present(user);
+}
+
+/**
+ * Stores the language the person chose, for their e-mails and their next devices.
+ */
+export async function setLocale(userId: string, locale: Locale): Promise<PublicUser> {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { locale },
+    select: userSelect,
+  });
   return present(user);
 }

@@ -11,12 +11,14 @@ import { useTerms } from "../branding/BrandingContext";
 import { FieldAnswers } from "../components/FieldAnswers";
 import { Alert, Field, Modal, PageHeader, refreshNav } from "../components/ui";
 import { useFocusRow } from "../components/useFocusRow";
-import { formatDate } from "../types";
+import { format, formatDate, useI18n } from "../i18n";
 
 export function AdminRequestsPage() {
   const focus = useFocusRow();
   const decides = can(useAuth().user, "requests.decide");
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.requests;
   const {
     data: requests,
     error: loadError,
@@ -30,7 +32,11 @@ export function AdminRequestsPage() {
   async function approve(item: BorrowRequest) {
     if (
       !window.confirm(
-        `Anfrage bestätigen?\n\n${item.device.name} (${item.device.serialNumber}) für ${item.user.name}`
+        format(t.confirmApprove, {
+          device: item.device.name,
+          serial: item.device.serialNumber,
+          name: item.user.name,
+        })
       )
     )
       return;
@@ -38,11 +44,11 @@ export function AdminRequestsPage() {
     setInfo("");
     try {
       await api(`/api/requests/${item.id}/approve`, { method: "POST" });
-      setInfo(`Anfrage von ${item.user.name} bestätigt.`);
+      setInfo(format(t.approved, { name: item.user.name }));
       reload();
       refreshNav();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Bestätigen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t.approveFailed);
     }
   }
 
@@ -56,22 +62,19 @@ export function AdminRequestsPage() {
         method: "POST",
         body: JSON.stringify({ rejectionReason: reason.trim() }),
       });
-      setInfo(`Anfrage von ${rejecting.user.name} abgelehnt.`);
+      setInfo(format(t.rejected, { name: rejecting.user.name }));
       setRejecting(null);
       setReason("");
       reload();
       refreshNav();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ablehnen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t.rejectFailed);
     }
   }
 
   return (
     <>
-      <PageHeader
-        title="Offene Anfragen"
-        description="Bestätigen reserviert die Anfrage. Ablehnungen brauchen einen Grund, der per E-Mail mitgeschickt wird."
-      />
+      <PageHeader title={t.title} description={t.description} />
       <Alert>{error || loadError}</Alert>
       <Alert tone="ok">{info}</Alert>
       <div className="table-wrap">
@@ -79,12 +82,12 @@ export function AdminRequestsPage() {
           <thead>
             <tr>
               <th>{terms.device}</th>
-              <th>Anfragende Person</th>
-              <th>Zeitraum</th>
+              <th>{m.table.requester}</th>
+              <th>{m.table.period}</th>
               <th>{terms.room}</th>
-              <th>Kommentar</th>
+              <th>{m.table.comment}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -105,7 +108,9 @@ export function AdminRequestsPage() {
                 </td>
                 <td className="nowrap">
                   {formatDate(item.startsAt)}
-                  <div className="muted">bis {formatDate(item.desiredUntil)}</div>
+                  <div className="muted">
+                    {format(m.common.until, { date: formatDate(item.desiredUntil) })}
+                  </div>
                 </td>
                 <td>{item.room?.name || "–"}</td>
                 <td className="muted">
@@ -123,10 +128,10 @@ export function AdminRequestsPage() {
                           setReason("");
                         }}
                       >
-                        Ablehnen
+                        {t.reject}
                       </button>
                       <button type="button" className="sm" onClick={() => void approve(item)}>
-                        Bestätigen
+                        {t.approve}
                       </button>
                     </div>
                   )}
@@ -136,7 +141,7 @@ export function AdminRequestsPage() {
             {requests?.length === 0 && (
               <tr>
                 <td colSpan={6} className="empty">
-                  Keine offenen Anfragen.
+                  {t.none}
                 </td>
               </tr>
             )}
@@ -146,34 +151,34 @@ export function AdminRequestsPage() {
 
       {rejecting && (
         <Modal
-          title="Anfrage ablehnen"
-          description={`${rejecting.device.name} (${rejecting.device.serialNumber}) für ${rejecting.user.name}`}
+          title={t.rejectTitle}
+          description={format(t.forPerson, {
+            device: rejecting.device.name,
+            serial: rejecting.device.serialNumber,
+            name: rejecting.user.name,
+          })}
           onClose={() => setRejecting(null)}
           size="sm"
           footer={
             <>
               <button type="button" className="secondary" onClick={() => setRejecting(null)}>
-                Abbrechen
+                {m.common.cancel}
               </button>
               <button type="submit" form="reject-form" className="danger">
-                Ablehnen
+                {t.reject}
               </button>
             </>
           }
         >
           <form id="reject-form" onSubmit={(event) => void reject(event)}>
-            <Field
-              label="Grund"
-              htmlFor="reject-reason"
-              hint="Wird der anfragenden Person per E-Mail mitgeteilt."
-            >
+            <Field label={t.reason} htmlFor="reject-reason" hint={t.reasonHint}>
               <textarea
                 id="reject-reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 required
                 maxLength={1000}
-                placeholder="z. B. Gerät im Zeitraum für Prüfung reserviert"
+                placeholder={t.reasonPlaceholder}
               />
             </Field>
           </form>

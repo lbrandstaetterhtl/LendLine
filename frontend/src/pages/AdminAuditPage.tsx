@@ -6,16 +6,9 @@ import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
 import { AuditTimeline } from "../components/AuditTimeline";
 import { Alert, Field, PageHeader } from "../components/ui";
+import { useI18n } from "../i18n";
 
-const categories = [
-  { value: "", label: "Alle" },
-  { value: "requests", label: "Ausleihen" },
-  { value: "devices", label: "Geräte" },
-  { value: "masterdata", label: "Stammdaten" },
-  { value: "users", label: "Benutzer" },
-  { value: "auth", label: "Anmeldungen" },
-  { value: "system", label: "System" },
-];
+const categories = ["", "requests", "devices", "masterdata", "users", "auth", "system"] as const;
 
 type Actor = { id: string; name: string };
 
@@ -28,6 +21,8 @@ export function AdminAuditPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const { data: actors } = useApi<Actor[]>("/api/admin/audit/actors");
+  const { m, locale } = useI18n();
+  const t = m.audit;
 
   // Search while typing, but only once the input has been still for a moment.
   useEffect(() => {
@@ -55,44 +50,46 @@ export function AdminAuditPage() {
 
   return (
     <>
-      <PageHeader
-        title="Protokoll"
-        description="Wer hat wann was geändert: Ausleihen, Geräte, Stammdaten, Benutzer, Anmeldungen und Systemeinstellungen, mit allen Einzelheiten."
-      />
+      <PageHeader title={t.title} description={t.description} />
 
       <fieldset className="segmented">
-        <legend className="sr-only">Bereich</legend>
-        {categories.map((item) => (
+        <legend className="sr-only">{t.area}</legend>
+        {categories.map((value) => (
           <button
-            key={item.value}
+            key={value}
             type="button"
-            aria-pressed={category === item.value}
-            onClick={() => setCategory(item.value)}
+            aria-pressed={category === value}
+            onClick={() => setCategory(value)}
           >
-            {item.label}
+            {t.categories[value || "all"]}
           </button>
         ))}
       </fieldset>
 
       <div className="toolbar">
-        <Field label="Suche" htmlFor="audit-search" className="grow">
+        <Field
+          label={t.search}
+          htmlFor="audit-search"
+          className="grow"
+          hint={locale === "de" ? undefined : t.searchGermanHint}
+        >
           <input
             id="audit-search"
             data-shortcut="search"
-            title="Tastenkürzel: /"
+            title={m.catalog.searchShortcut}
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Gerät, Seriennummer, Person …"
+            placeholder={t.searchPlaceholder}
           />
         </Field>
-        <Field label="Person" htmlFor="audit-actor">
+        <Field label={t.person} htmlFor="audit-actor">
           <select
             id="audit-actor"
             value={actorId}
             onChange={(event) => setActorId(event.target.value)}
           >
-            <option value="">Alle Personen</option>
+            <option value="">{t.allPeople}</option>
             {actors?.map((actor) => (
               <option key={actor.id} value={actor.id}>
                 {actor.name}
@@ -100,7 +97,7 @@ export function AdminAuditPage() {
             ))}
           </select>
         </Field>
-        <Field label="Von" htmlFor="audit-from">
+        <Field label={t.from} htmlFor="audit-from">
           <input
             id="audit-from"
             type="date"
@@ -109,7 +106,7 @@ export function AdminAuditPage() {
             onChange={(event) => setFrom(event.target.value)}
           />
         </Field>
-        <Field label="Bis" htmlFor="audit-to">
+        <Field label={t.to} htmlFor="audit-to">
           <input
             id="audit-to"
             type="date"
@@ -120,7 +117,7 @@ export function AdminAuditPage() {
         </Field>
         {filtered && (
           <button type="button" className="ghost" onClick={reset}>
-            Filter zurücksetzen
+            {t.resetFilters}
           </button>
         )}
       </div>
@@ -136,6 +133,8 @@ function AuditResults({ path, today, filtered }: { path: string; today: Date; fi
   const [more, setMore] = useState<{ items: AuditEvent[]; nextCursor: string | null } | null>(null);
   const [moreError, setMoreError] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
+  const { m } = useI18n();
+  const t = m.audit;
 
   const events = [...(data?.items ?? []), ...(more?.items ?? [])];
   const nextCursor = more ? more.nextCursor : (data?.nextCursor ?? null);
@@ -148,7 +147,7 @@ function AuditResults({ path, today, filtered }: { path: string; today: Date; fi
       const page = await api<AuditPage>(`${path}&cursor=${encodeURIComponent(nextCursor)}`);
       setMore({ items: [...(more?.items ?? []), ...page.items], nextCursor: page.nextCursor });
     } catch (err) {
-      setMoreError(errorMessage(err, "Weitere Einträge konnten nicht geladen werden"));
+      setMoreError(errorMessage(err, t.moreFailed));
     } finally {
       setLoadingMore(false);
     }
@@ -159,14 +158,12 @@ function AuditResults({ path, today, filtered }: { path: string; today: Date; fi
       <Alert>{error || moreError}</Alert>
       {data && events.length === 0 && (
         <div className="panel empty-state">
-          <strong>{filtered ? "Keine passenden Einträge" : "Noch keine Einträge"}</strong>
-          {filtered
-            ? "Passen Sie die Filter an."
-            : "Vorgänge erscheinen hier, sobald jemand etwas ändert."}
+          <strong>{filtered ? t.noMatches : t.noEntries}</strong>
+          {filtered ? t.adjustFilters : t.appearHere}
         </div>
       )}
       {events.length > 0 && <AuditTimeline events={events} today={today} />}
-      {loading && !data && <p className="muted">Laden…</p>}
+      {loading && !data && <p className="muted">{m.common.loading}</p>}
       {nextCursor && (
         <div className="audit-more">
           <button
@@ -175,7 +172,7 @@ function AuditResults({ path, today, filtered }: { path: string; today: Date; fi
             disabled={loadingMore}
             onClick={() => void loadMore()}
           >
-            {loadingMore ? "Laden…" : "Ältere Einträge laden"}
+            {loadingMore ? m.common.loading : t.loadOlder}
           </button>
         </div>
       )}

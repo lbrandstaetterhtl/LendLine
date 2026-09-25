@@ -2,6 +2,7 @@ import type { AuthUser } from "../middleware/auth.js";
 
 import { Prisma } from "@prisma/client";
 
+import { t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { hashPassword } from "../lib/password.js";
 import { prisma } from "../lib/prisma.js";
@@ -29,7 +30,11 @@ export async function listUsers() {
 
 async function groupOrThrow(db: Prisma.TransactionClient | typeof prisma, id: string) {
   const group = await db.group.findUnique({ where: { id } });
-  if (!group) throw new HttpError(400, "Gruppe nicht gefunden");
+  if (!group)
+    throw new HttpError(
+      400,
+      t((m) => m.errors.groupNotFound)
+    );
   return group;
 }
 
@@ -41,7 +46,10 @@ function assertNotAbove(actor: AuthUser, target: { group: { permissions: string[
   try {
     assertGrantable(actor, target.group.permissions);
   } catch {
-    throw new HttpError(403, "Diese Person hat Rechte, die Sie selbst nicht haben");
+    throw new HttpError(
+      403,
+      t((m) => m.errors.personAbove)
+    );
   }
 }
 
@@ -69,7 +77,7 @@ export async function createUser(
       action: "USER_CREATED",
       entityType: "USER",
       entityId: created.id,
-      summary: `Benutzer „${created.name}“ angelegt`,
+      summary: { key: "audit.userCreated", params: { name: created.name } },
       details: {
         context: { "E-Mail": created.email, Gruppe: created.group.name, Anmeldung: "Lokal" },
       },
@@ -77,7 +85,10 @@ export async function createUser(
     return created;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new HttpError(409, "Diese E-Mail-Adresse ist bereits vergeben");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.emailTaken)
+      );
     }
     throw error;
   }
@@ -91,11 +102,19 @@ export async function updateUser(
   const passwordHash = input.password ? await hashPassword(input.password) : undefined;
   const { user, updated } = await serializable(async (tx) => {
     const before = await tx.user.findUnique({ where: { id }, include: { group: true } });
-    if (!before) throw new HttpError(404, "Benutzer nicht gefunden");
+    if (!before)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.userNotFound)
+      );
     if (id !== actor.id) assertNotAbove(actor, before);
     const moving = input.groupId !== undefined && input.groupId !== before.groupId;
     if (moving) {
-      if (id === actor.id) throw new HttpError(409, "Die eigene Gruppe können Sie nicht ändern");
+      if (id === actor.id)
+        throw new HttpError(
+          409,
+          t((m) => m.errors.ownGroup)
+        );
       assertGrantable(actor, (await groupOrThrow(tx, input.groupId!)).permissions);
     }
     const after = await tx.user.update({
@@ -123,8 +142,8 @@ export async function updateUser(
     entityType: "USER",
     entityId: updated.id,
     summary: moved
-      ? `„${updated.name}“ in die Gruppe „${updated.group.name}“ verschoben`
-      : `Benutzer „${updated.name}“ geändert`,
+      ? { key: "audit.userMoved", params: { name: updated.name, group: updated.group.name } }
+      : { key: "audit.userUpdated", params: { name: updated.name } },
     details: {
       changes: [
         ...diff({ ...user, group: user.group.name }, { ...updated, group: updated.group.name }, [
@@ -146,16 +165,27 @@ export async function updateUser(
 }
 
 export async function deleteUser(id: string, actor: AuthUser) {
-  if (id === actor.id) throw new HttpError(409, "Das eigene Konto kann nicht gelöscht werden");
+  if (id === actor.id)
+    throw new HttpError(
+      409,
+      t((m) => m.errors.ownAccountDelete)
+    );
   const user = await serializable(async (tx) => {
     const found = await tx.user.findUnique({
       where: { id },
       include: { group: true, _count: { select: { requests: true } } },
     });
-    if (!found) throw new HttpError(404, "Benutzer nicht gefunden");
+    if (!found)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.userNotFound)
+      );
     assertNotAbove(actor, found);
     if (found._count.requests > 0) {
-      throw new HttpError(409, "Benutzer hat Anfragen und kann nicht gelöscht werden");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.userHasRequests)
+      );
     }
     await tx.user.delete({ where: { id } });
     await assertGroupManagerRemains(tx);
@@ -166,7 +196,7 @@ export async function deleteUser(id: string, actor: AuthUser) {
     action: "USER_DELETED",
     entityType: "USER",
     entityId: id,
-    summary: `Benutzer „${user.name}“ gelöscht`,
+    summary: { key: "audit.userDeleted", params: { name: user.name } },
     details: { context: { "E-Mail": user.email, Gruppe: user.group.name } },
   });
 }
@@ -184,7 +214,7 @@ async function serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
       throw new HttpError(
         409,
-        "Der Benutzer wurde gerade anderweitig geändert. Bitte erneut versuchen."
+        t((m) => m.errors.userConcurrent)
       );
     }
     throw error;
@@ -196,7 +226,11 @@ async function serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T
  */
 export async function getUserProfile(id: string) {
   const user = await prisma.user.findUnique({ where: { id }, select: publicSelect });
-  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
+  if (!user)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.userNotFound)
+    );
   const now = new Date();
   const [requests, activeSessions, lastLogin, lastActivity] = await Promise.all([
     listMyRequests(id),
@@ -238,17 +272,24 @@ export async function getUserProfile(id: string) {
  */
 export async function revokeUserSessions(id: string, actorId: string) {
   if (id === actorId) {
-    throw new HttpError(409, "Die eigene Sitzung beenden Sie über „Abmelden“.");
+    throw new HttpError(
+      409,
+      t((m) => m.errors.ownSession)
+    );
   }
   const user = await prisma.user.findUnique({ where: { id }, select: { name: true } });
-  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
+  if (!user)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.userNotFound)
+    );
   const count = await endAllSessions(prisma, { id });
   await recordAudit({
     actorId,
     action: "USER_SESSIONS_REVOKED",
     entityType: "USER",
     entityId: id,
-    summary: `${count} Sitzung${count === 1 ? "" : "en"} von „${user.name}“ beendet`,
+    summary: { key: "audit.sessionsRevoked", params: { count, name: user.name } },
   });
   return { revoked: count };
 }

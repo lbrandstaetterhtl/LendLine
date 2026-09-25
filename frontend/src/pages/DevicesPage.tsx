@@ -13,9 +13,12 @@ import { DeviceImages, ImagePopup, PieceListDialog } from "../components/DeviceI
 import { Icon } from "../components/icons";
 import { RequestSent } from "../components/RequestSent";
 import { Alert, Field, PageHeader } from "../components/ui";
+import { format, useI18n } from "../i18n";
 
 export function DevicesPage() {
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.catalog;
   const { user } = useAuth();
   const seesDefective = can(user, "devices.defective") || can(user, "devices.manage");
   const [categoryId, setCategoryId] = useState("");
@@ -54,45 +57,45 @@ export function DevicesPage() {
     <>
       <PageHeader
         title={terms.catalog}
-        description={`Alle ${terms.devices} mit aktuellem Bestand. Für eine Ausleihe den Zeitraum über die Suche wählen.`}
+        description={format(t.description, { devices: terms.devices })}
         actions={
           <Link className="btn" to="/search">
-            <Icon name="search" /> {terms.unit} suchen
+            <Icon name="search" /> {format(m.nav.searchUnits, { unit: terms.unit })}
           </Link>
         }
       />
       <Alert>{error}</Alert>
       <RequestSent message={sent} />
       <div className="toolbar">
-        <Field label="Suche" htmlFor="device-search" className="grow">
+        <Field label={t.search} htmlFor="device-search" className="grow">
           <input
             id="device-search"
             data-shortcut="search"
-            title="Tastenkürzel: /"
+            title={t.searchShortcut}
             type="search"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder="Name oder Beschreibung"
+            placeholder={t.searchPlaceholder}
           />
         </Field>
-        <Field label="Kategorie" htmlFor="category">
+        <Field label={t.category} htmlFor="category">
           <CategorySelect
             id="category"
             value={categoryId}
             onChange={setCategoryId}
-            emptyLabel="Alle Kategorien"
+            emptyLabel={t.allCategories}
           />
         </Field>
-        <Field label="Verfügbarkeit" htmlFor="status">
+        <Field label={t.availability} htmlFor="status">
           <select
             id="status"
             value={status}
             onChange={(e) => setStatus(e.target.value as "" | DeviceStatus)}
           >
-            <option value="">Alle</option>
-            <option value="AVAILABLE">Mindestens eins frei</option>
-            <option value="BORROWED">Mindestens eins ausgeliehen</option>
-            {seesDefective && <option value="DEFECTIVE">Mindestens eins defekt</option>}
+            <option value="">{t.all}</option>
+            <option value="AVAILABLE">{t.anyFree}</option>
+            <option value="BORROWED">{t.anyBorrowed}</option>
+            {seesDefective && <option value="DEFECTIVE">{t.anyDefective}</option>}
           </select>
         </Field>
         <FieldFilter options={fieldOptions} filter={fieldFilter} onChange={setFieldFilter} />
@@ -102,13 +105,13 @@ export function DevicesPage() {
           <thead>
             <tr>
               <th>{terms.device}</th>
-              <th>Kategorie</th>
-              <th className="num">Verfügbar</th>
-              <th className="num">Gesamt</th>
-              <th>Beschreibung</th>
-              <th>Bilder</th>
+              <th>{t.category}</th>
+              <th className="num">{t.available}</th>
+              <th className="num">{t.total}</th>
+              <th>{t.descriptionLabel}</th>
+              <th>{t.images}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -144,7 +147,7 @@ export function DevicesPage() {
                     className="secondary sm"
                     onClick={() => setPieceDevice(device)}
                   >
-                    <Icon name="calendar" /> Kalender & anfragen
+                    <Icon name="calendar" /> {t.calendar}
                   </button>
                 </td>
               </tr>
@@ -152,7 +155,7 @@ export function DevicesPage() {
             {devices?.length === 0 && (
               <tr>
                 <td colSpan={7} className="empty">
-                  Keine {terms.devices} gefunden.
+                  {format(t.none, { devices: terms.devices })}
                 </td>
               </tr>
             )}

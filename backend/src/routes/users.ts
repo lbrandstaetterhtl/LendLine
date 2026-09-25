@@ -18,8 +18,8 @@ import { newPassword } from "../validators/auth.js";
 import { rejectOpenSchema } from "../validators/request.js";
 
 const createSchema = z.object({
-  name: z.string().trim().min(2, "Name muss mindestens 2 Zeichen haben").max(120),
-  email: z.string().trim().email("Ungültige E-Mail-Adresse").max(200),
+  name: z.string().trim().min(2, "validation.nameMin").max(120),
+  email: z.string().trim().email("validation.emailInvalid").max(200),
   password: newPassword,
   // Missing: the default group.
   groupId: z.string().min(1).max(60).optional(),

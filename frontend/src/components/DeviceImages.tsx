@@ -1,3 +1,4 @@
+import type { Messages } from "../i18n/de";
 import type { BorrowRequest, DeviceStatus, FormField, Period, RequestForm } from "../types";
 
 import type { KeyboardEvent } from "react";
@@ -8,7 +9,8 @@ import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
 import { useTerms } from "../branding/BrandingContext";
-import { requestStatusLabel, toLocalInput } from "../types";
+import { format, formatWith, localizedDefault, useI18n, weekdayNames } from "../i18n";
+import { toLocalInput } from "../types";
 import { Icon } from "./icons";
 import { DeviceBadge } from "./StatusBadge";
 import { Alert, Field, Modal } from "./ui";
@@ -25,6 +27,7 @@ export function DeviceImages({
   alt: string;
   onOpen?: (index: number) => void;
 }) {
+  const { m } = useI18n();
   if (images.length === 0) return <span className="muted">–</span>;
   return (
     <div className="thumbs">
@@ -36,7 +39,7 @@ export function DeviceImages({
             className="ghost"
             style={{ height: "auto", padding: 0 }}
             onClick={() => onOpen(index)}
-            aria-label={`Bild ${index + 1} von ${alt} öffnen`}
+            aria-label={format(m.calendar.openImage, { index: index + 1, name: alt })}
           >
             <img className="thumb-img" src={image.url} alt="" />
           </button>
@@ -69,7 +72,7 @@ type OwnPeriod = Period & {
  * The periods of the user's open and approved requests that have not ended yet, one entry per
  * period (several devices booked for the same time share it), soonest first.
  */
-function ownPeriods(requests: BorrowRequest[] | null): OwnPeriod[] {
+function ownPeriods(requests: BorrowRequest[] | null, m: Messages): OwnPeriod[] {
   const now = Date.now();
   const byPeriod = new Map<string, OwnPeriod & { devices: string[]; statuses: Set<string> }>();
   for (const request of requests ?? []) {
@@ -89,7 +92,7 @@ function ownPeriods(requests: BorrowRequest[] | null): OwnPeriod[] {
       statuses: new Set<string>(),
     };
     entry.devices.push(request.device.name);
-    entry.statuses.add(requestStatusLabel[request.status].toLowerCase());
+    entry.statuses.add(m.status.request[request.status].toLocaleLowerCase());
     byPeriod.set(key, entry);
   }
   return [...byPeriod.values()]
@@ -102,7 +105,7 @@ function ownPeriods(requests: BorrowRequest[] | null): OwnPeriod[] {
 }
 
 function shortDateTime(value: string) {
-  return new Date(value).toLocaleString("de-DE", {
+  return formatWith(new Date(value), {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -136,19 +139,13 @@ function dayKind(day: Date, unit: CalendarUnit): "defective" | "borrowed" | "ope
 }
 
 const dateTime = (value: string) =>
-  new Date(value).toLocaleString("de-DE", {
+  formatWith(new Date(value), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
-
-const stateLabel: Record<string, string> = {
-  RETURNED: "Zurückgegeben",
-  OPEN: "Angefragt",
-  APPROVED: "Bestätigt",
-};
 
 /**
  * True when the unit already has an open or approved booking overlapping the period, the same rule
@@ -213,6 +210,8 @@ export function PieceCalendarDialog({
   const [fieldValues, setFieldValues] = useState<Record<string, string | boolean>>({});
   const { data: form } = useApi<RequestForm>("/api/settings/request-form");
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.calendar;
   const [formError, setFormError] = useState("");
   const [info, setInfo] = useState("");
   // Calendar and request form are two views of one dialog, never two dialogs on top of each other.
@@ -223,7 +222,7 @@ export function PieceCalendarDialog({
   const { data: allRooms, error: roomsError } = useApi<Room[]>("/api/rooms");
   const { data: myRequests, reload: reloadMyRequests } =
     useApi<BorrowRequest[]>("/api/requests/mine");
-  const periods = useMemo(() => ownPeriods(myRequests), [myRequests]);
+  const periods = useMemo(() => ownPeriods(myRequests, m), [myRequests, m]);
   // A period of one of the user's own requests, picked above the calendar.
   const [chosen, setChosen] = useState<OwnPeriod | null>(null);
   const {
@@ -324,7 +323,7 @@ export function PieceCalendarDialog({
 
   async function submitRequest() {
     if (desiredUntil <= startsAt) {
-      setFormError("Das Ende muss nach dem Start liegen.");
+      setFormError(t.endAfterStart);
       return;
     }
     setFormError("");
@@ -341,9 +340,10 @@ export function PieceCalendarDialog({
           fields: fieldValues,
         }),
       });
-      const message = form?.autoApprove
-        ? `${deviceName} (${current.serialNumber}): Ausleihe bestätigt. Die Bestätigung kommt auch per E-Mail.`
-        : `${deviceName} (${current.serialNumber}): Anfrage gesendet. Die Verwaltung prüft sie.`;
+      const message = format(form?.autoApprove ? t.sentAuto : t.sent, {
+        device: deviceName,
+        serial: current.serialNumber,
+      });
       if (onRequested) {
         onRequested(message);
         return;
@@ -355,13 +355,13 @@ export function PieceCalendarDialog({
       setFieldValues({});
       setRequestOpen(false);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Anfrage fehlgeschlagen");
+      setFormError(err instanceof Error ? err.message : t.failed);
     } finally {
       setSending(false);
     }
   }
 
-  const monthLabel = cursor.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+  const monthLabel = formatWith(cursor, { month: "long", year: "numeric" });
   // The server refuses longer loans; the picker already stops at the limit.
   const latestEnd =
     form && startsAt
@@ -371,17 +371,17 @@ export function PieceCalendarDialog({
   if (requestOpen) {
     return (
       <Modal
-        title="Ausleihe anfragen"
+        title={t.requestTitle}
         description={`${deviceName} · ${terms.unit} ${current.serialNumber}`}
         onClose={onClose}
         size="sm"
         footer={
           <>
             <button type="button" className="secondary" onClick={() => setRequestOpen(false)}>
-              <Icon name="calendar" /> Im Kalender ansehen
+              <Icon name="calendar" /> {t.viewCalendar}
             </button>
             <button type="submit" form="request-form" disabled={sending}>
-              {sending ? "Wird gesendet…" : "Anfrage senden"}
+              {sending ? t.sending : t.send}
             </button>
           </>
         }
@@ -395,7 +395,7 @@ export function PieceCalendarDialog({
             void submitRequest();
           }}
         >
-          <Field label="Start" htmlFor="cal-from">
+          <Field label={t.start} htmlFor="cal-from">
             <input
               id="cal-from"
               type="datetime-local"
@@ -404,7 +404,7 @@ export function PieceCalendarDialog({
               required
             />
           </Field>
-          <Field label="Ende" htmlFor="cal-until">
+          <Field label={t.end} htmlFor="cal-until">
             <input
               id="cal-until"
               type="datetime-local"
@@ -421,7 +421,7 @@ export function PieceCalendarDialog({
               htmlFor="cal-room"
               className="span-full"
               optional={form?.room === "optional"}
-              hint="Wo es eingesetzt wird."
+              hint={t.roomHint}
             >
               <select
                 id="cal-room"
@@ -429,7 +429,7 @@ export function PieceCalendarDialog({
                 onChange={(event) => setRoomId(event.target.value)}
                 required={form?.room !== "optional"}
               >
-                <option value="">{terms.room} wählen…</option>
+                <option value="">{format(t.chooseRoom, { room: terms.room })}</option>
                 {rooms.map((room) => (
                   <option key={room.id} value={room.id}>
                     {room.name}
@@ -449,7 +449,10 @@ export function PieceCalendarDialog({
           ))}
           {form?.comment !== "hidden" && (
             <Field
-              label={form?.commentLabel ?? "Kommentar"}
+              label={localizedDefault(
+                form?.commentLabel ?? m.formDefaults.commentLabel,
+                (d) => d.formDefaults.commentLabel
+              )}
               htmlFor="cal-comment"
               optional={form?.comment !== "required"}
               className="span-full"
@@ -460,7 +463,10 @@ export function PieceCalendarDialog({
                 onChange={(event) => setComment(event.target.value)}
                 maxLength={1000}
                 required={form?.comment === "required"}
-                placeholder={form?.commentHint ?? "z. B. Zweck oder Zubehörwunsch"}
+                placeholder={localizedDefault(
+                  form?.commentHint ?? m.formDefaults.commentHint,
+                  (d) => d.formDefaults.commentHint
+                )}
               />
             </Field>
           )}
@@ -482,7 +488,7 @@ export function PieceCalendarDialog({
     >
       {onBack && (
         <button type="button" className="ghost sm back-link" onClick={onBack}>
-          <Icon name="left" /> Alle {terms.units}
+          <Icon name="left" /> {format(t.allUnits, { units: terms.units })}
         </button>
       )}
       <Alert>{calendarError || roomsError}</Alert>
@@ -491,26 +497,26 @@ export function PieceCalendarDialog({
         <div className="period-bar">
           <div>
             <span className="muted small">
-              {chosen ? `Zeitraum Ihrer Anfrage · ${chosen.detail}` : "Zeitraum aus der Suche"}
+              {chosen ? format(t.ownPeriod, { detail: chosen.detail }) : t.searchPeriod}
             </span>
             <strong>
               {dateTime(highlight.startsAt)} – {dateTime(highlight.desiredUntil)}
             </strong>
           </div>
           {!canRequest ? null : unitBusy(current, highlight) ? (
-            <span className="muted small">In diesem Zeitraum schon belegt.</span>
+            <span className="muted small">{t.busy}</span>
           ) : (
             <button type="button" onClick={() => openRequest(highlight, chosen?.roomId)}>
-              Für diesen Zeitraum anfragen
+              {t.requestPeriod}
             </button>
           )}
         </div>
       ) : (
-        <p className="muted small">Wählen Sie einen freien Tag, um eine Anfrage zu stellen.</p>
+        <p className="muted small">{t.pickDay}</p>
       )}
       {periods.length > 0 && (
         <fieldset className="chips own-periods">
-          <legend>Zeitraum aus meinen Anfragen</legend>
+          <legend>{t.ownPeriods}</legend>
           {periods.map((entry) => (
             <button
               key={entry.key}
@@ -530,7 +536,7 @@ export function PieceCalendarDialog({
           type="button"
           className="secondary sm icon"
           onClick={() => setCursor(new Date(year, month - 1, 1))}
-          aria-label="Vorheriger Monat"
+          aria-label={t.previousMonth}
         >
           <Icon name="left" />
         </button>
@@ -539,7 +545,7 @@ export function PieceCalendarDialog({
           type="button"
           className="secondary sm icon"
           onClick={() => setCursor(new Date(year, month + 1, 1))}
-          aria-label="Nächster Monat"
+          aria-label={t.nextMonth}
         >
           <Icon name="right" />
         </button>
@@ -551,12 +557,12 @@ export function PieceCalendarDialog({
         // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
         role="grid"
         tabIndex={-1}
-        aria-label={`Kalender ${monthLabel}. Pfeiltasten wechseln den Tag, Bild auf/ab den Monat.`}
+        aria-label={format(t.gridLabel, { month: monthLabel })}
         onKeyDown={onGridKeyDown}
       >
         <thead>
           <tr>
-            {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((label) => (
+            {weekdayNames().map((label) => (
               <th key={label} scope="col" className="cal-head">
                 {label}
               </th>
@@ -568,14 +574,7 @@ export function PieceCalendarDialog({
             <tr key={week[0]?.toISOString()}>
               {week.map((day) => {
                 const kind = dayKind(day, current);
-                const label =
-                  kind === "borrowed"
-                    ? "belegt"
-                    : kind === "open"
-                      ? "angefragt"
-                      : kind === "defective"
-                        ? "defekt"
-                        : "frei";
+                const label = t.day[kind];
                 return (
                   <td key={day.toISOString()}>
                     <button
@@ -583,8 +582,8 @@ export function PieceCalendarDialog({
                       className={`cal-day cal-${kind}${day.getMonth() === month ? "" : " cal-out"}${
                         highlight && overlapsDay(day, highlight) ? " cal-selected" : ""
                       }`}
-                      title={`${day.toLocaleDateString("de-DE")}: ${label}`}
-                      aria-label={`${day.toLocaleDateString("de-DE")}, ${label}`}
+                      title={`${formatWith(day, { dateStyle: "medium" })}: ${label}`}
+                      aria-label={`${formatWith(day, { dateStyle: "full" })}, ${label}`}
                       // Not `disabled`: taken days stay reachable, so their status can be read out.
                       aria-disabled={kind !== "free"}
                       tabIndex={day.toDateString() === tabDay ? 0 : -1}
@@ -603,36 +602,38 @@ export function PieceCalendarDialog({
       </table>
       <div className="legend" aria-hidden="true">
         <span>
-          <i /> frei
+          <i /> {t.day.free}
         </span>
         <span>
-          <i className="open" /> angefragt
+          <i className="open" /> {t.day.open}
         </span>
         <span>
-          <i className="borrowed" /> belegt
+          <i className="borrowed" /> {t.day.borrowed}
         </span>
         <span>
-          <i className="defective" /> defekt
+          <i className="defective" /> {t.day.defective}
         </span>
         {period && (
           <span>
-            <i className="selected" /> gesuchter Zeitraum
+            <i className="selected" /> {t.searched}
           </span>
         )}
       </div>
 
       <div className="section-title">
-        <h2>Zeiträume</h2>
+        <h2>{t.periods}</h2>
       </div>
       <ul className="period-list">
-        {current.bookings.length === 0 && <li className="muted">Noch keine Buchungen.</li>}
+        {current.bookings.length === 0 && <li className="muted">{t.noBookings}</li>}
         {current.bookings.map((booking) => (
           <li key={booking.id}>
             <span>
               {dateTime(booking.startsAt)} – {dateTime(booking.endsAt)}
               {booking.borrower ? <span className="muted"> · {booking.borrower}</span> : null}
             </span>
-            <span className="muted">{stateLabel[booking.state] ?? booking.state}</span>
+            <span className="muted">
+              {(t.booking as Partial<Record<string, string>>)[booking.state] ?? booking.state}
+            </span>
           </li>
         ))}
       </ul>
@@ -653,6 +654,7 @@ function CustomField({
   onChange: (value: string | boolean) => void;
 }) {
   const id = `cal-field-${field.id}`;
+  const { m } = useI18n();
   if (field.type === "checkbox") {
     return (
       <div className="field span-full">
@@ -686,7 +688,7 @@ function CustomField({
           required={field.required}
           onChange={(event) => onChange(event.target.value)}
         >
-          <option value="">Bitte wählen…</option>
+          <option value="">{m.calendar.pleaseChoose}</option>
           {field.options.map((option) => (
             <option key={option} value={option}>
               {option}
@@ -726,6 +728,7 @@ export function PieceListDialog({
   onClose: () => void;
 }) {
   const terms = useTerms();
+  const { m } = useI18n();
   const [selected, setSelected] = useState<CalendarUnit | null>(null);
   // With one bookable piece the list is an extra step for nothing: open its calendar right away.
   const [listWanted, setListWanted] = useState(false);
@@ -755,7 +758,7 @@ export function PieceListDialog({
   return (
     <Modal
       title={name}
-      description={`Alle ${terms.units}. Zum Anfragen den Kalender öffnen.`}
+      description={format(m.calendar.unitsIntro, { units: terms.units })}
       onClose={onClose}
     >
       <Alert>{error}</Alert>
@@ -763,10 +766,10 @@ export function PieceListDialog({
         <table>
           <thead>
             <tr>
-              <th>Seriennummer</th>
-              <th>Status</th>
+              <th>{m.calendar.serial}</th>
+              <th>{m.table.status}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -774,7 +777,7 @@ export function PieceListDialog({
             {units?.length === 0 && (
               <tr>
                 <td colSpan={3} className="empty">
-                  Keine {terms.units} vorhanden.
+                  {format(m.calendar.noUnits, { units: terms.units })}
                 </td>
               </tr>
             )}
@@ -786,7 +789,7 @@ export function PieceListDialog({
                 </td>
                 <td className="actions-cell">
                   <button type="button" className="secondary sm" onClick={() => setSelected(unit)}>
-                    <Icon name="calendar" /> Kalender & anfragen
+                    <Icon name="calendar" /> {m.calendar.calendarAndRequest}
                   </button>
                 </td>
               </tr>
@@ -812,6 +815,7 @@ export function ImagePopup({
   onClose: () => void;
 }) {
   const image = images[index] ?? images[0];
+  const { m } = useI18n();
   if (!image) return null;
 
   // Arrow keys page through the images, wherever the focus is inside the dialog.
@@ -824,7 +828,11 @@ export function ImagePopup({
   return (
     <Modal
       title={alt}
-      description={images.length > 1 ? `Bild ${index + 1} von ${images.length}` : undefined}
+      description={
+        images.length > 1
+          ? format(m.calendar.imageOf, { index: index + 1, count: images.length })
+          : undefined
+      }
       onClose={onClose}
       onKeyDown={onKeyDown}
       size="lg"
@@ -836,14 +844,14 @@ export function ImagePopup({
               className="secondary"
               onClick={() => onIndex((index + images.length - 1) % images.length)}
             >
-              <Icon name="left" /> Zurück
+              <Icon name="left" /> {m.calendar.previous}
             </button>
             <button
               type="button"
               className="secondary"
               onClick={() => onIndex((index + 1) % images.length)}
             >
-              Weiter <Icon name="right" />
+              {m.calendar.next} <Icon name="right" />
             </button>
           </>
         ) : undefined

@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
 import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader } from "../components/ui";
+import { useI18n } from "../i18n";
 
 type MailSettings = {
   senderName: string;
@@ -21,14 +22,13 @@ type Preview = { subject: string; html: string; text: string };
 
 export function AdminEmailsPage() {
   const { data: stored, error, reload } = useApi<MailSettings>("/api/admin/settings/mail");
+  const { m, locale } = useI18n();
   return (
     <>
       <SettingsTabs />
-      <PageHeader
-        title="E-Mails"
-        description="Absender, Texte und Signatur der Benachrichtigungen bei Bestätigung, Ablehnung und Rückgabe."
-      />
+      <PageHeader title={m.mail.title} description={m.mail.description} />
       <Alert>{error}</Alert>
+      {locale !== "de" && <p className="muted small page-note">{m.mail.languageNote}</p>}
       {stored && <MailForm key={JSON.stringify(stored)} stored={stored} onSaved={reload} />}
     </>
   );
@@ -41,6 +41,8 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
   const [saveError, setSaveError] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const changed = JSON.stringify(draft) !== JSON.stringify(stored);
+  const { m } = useI18n();
+  const t = m.mail;
 
   // The preview follows the draft with a short delay, so typing does not flood the server.
   useEffect(() => {
@@ -74,22 +76,22 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
     setSaveError("");
     try {
       await api("/api/admin/settings/mail", { method: "PUT", body: JSON.stringify(draft) });
-      setInfo("E-Mail-Einstellungen gespeichert.");
+      setInfo(t.saved);
       onSaved();
     } catch (err) {
-      setSaveError(errorMessage(err, "Speichern fehlgeschlagen"));
+      setSaveError(errorMessage(err, t.saveFailed));
       setSaving(false);
     }
   }
 
   async function restoreDefaults() {
-    if (!window.confirm("Alle E-Mail-Texte auf den Standard zurücksetzen?")) return;
+    if (!window.confirm(t.confirmRestore)) return;
     try {
       await api("/api/admin/settings/mail", { method: "PUT", body: "{}" });
-      setInfo("Standardtexte wiederhergestellt.");
+      setInfo(t.restored);
       onSaved();
     } catch (err) {
-      setSaveError(errorMessage(err, "Zurücksetzen fehlgeschlagen"));
+      setSaveError(errorMessage(err, t.restoreFailed));
     }
   }
 
@@ -101,14 +103,9 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
         <section className="card">
           <form className="form-stack" onSubmit={(event) => void onSubmit(event)}>
             <div className="card-title">
-              <h2>Absender und Rahmen</h2>
+              <h2>{t.frame}</h2>
             </div>
-            <Field
-              label="Absendername"
-              htmlFor="mail-sender"
-              optional
-              hint="Name, den das Postfach anzeigt, z. B. „IT-Service Muster GmbH“. Die Adresse selbst kommt aus der Server-Konfiguration (SMTP_FROM)."
-            >
+            <Field label={t.sender} htmlFor="mail-sender" optional hint={t.senderHint}>
               <input
                 id="mail-sender"
                 value={draft.senderName}
@@ -123,10 +120,9 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
                 checked={draft.showLogo}
                 onChange={(event) => set("showLogo", event.target.checked)}
               />
-              Logo oben in der E-Mail zeigen (PNG, JPG oder WEBP; ein SVG-Logo zeigen viele
-              E-Mail-Programme nicht)
+              {t.showLogo}
             </label>
-            <Field label="Anrede" htmlFor="mail-greeting" hint="Danach folgt der Name.">
+            <Field label={t.greeting} htmlFor="mail-greeting" hint={t.greetingHint}>
               <input
                 id="mail-greeting"
                 value={draft.greeting}
@@ -134,7 +130,7 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
                 onChange={(event) => set("greeting", event.target.value)}
               />
             </Field>
-            <Field label="Signatur" htmlFor="mail-signature" optional>
+            <Field label={t.signature} htmlFor="mail-signature" optional>
               <textarea
                 id="mail-signature"
                 value={draft.signature}
@@ -142,7 +138,7 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
                 onChange={(event) => set("signature", event.target.value)}
               />
             </Field>
-            <Field label="Fußzeile" htmlFor="mail-footer" optional>
+            <Field label={t.footer} htmlFor="mail-footer" optional>
               <textarea
                 id="mail-footer"
                 value={draft.footer}
@@ -152,14 +148,9 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
             </Field>
 
             <div className="card-title">
-              <h2>Texte je Nachricht</h2>
+              <h2>{t.texts}</h2>
             </div>
-            <Field
-              label="Bestätigung"
-              htmlFor="mail-approved"
-              optional
-              hint="Z. B. wo und wann abgeholt wird und was mitzubringen ist."
-            >
+            <Field label={t.approved} htmlFor="mail-approved" optional hint={t.approvedHint}>
               <textarea
                 id="mail-approved"
                 value={draft.approvedText}
@@ -167,12 +158,7 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
                 onChange={(event) => set("approvedText", event.target.value)}
               />
             </Field>
-            <Field
-              label="Ablehnung"
-              htmlFor="mail-rejected"
-              optional
-              hint="Steht unter dem Ablehnungsgrund, z. B. an wen man sich wenden kann."
-            >
+            <Field label={t.rejected} htmlFor="mail-rejected" optional hint={t.rejectedHint}>
               <textarea
                 id="mail-rejected"
                 value={draft.rejectedText}
@@ -180,7 +166,7 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
                 onChange={(event) => set("rejectedText", event.target.value)}
               />
             </Field>
-            <Field label="Rückgabe" htmlFor="mail-returned" optional>
+            <Field label={t.returned} htmlFor="mail-returned" optional>
               <textarea
                 id="mail-returned"
                 value={draft.returnedText}
@@ -188,15 +174,13 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
                 onChange={(event) => set("returnedText", event.target.value)}
               />
             </Field>
-            <p className="muted small">
-              Nur Text: Zeilenumbrüche bleiben erhalten, HTML wird nicht ausgeführt.
-            </p>
+            <p className="muted small">{t.plainText}</p>
             <div className="form-actions">
               <button type="submit" disabled={saving || !changed}>
-                Speichern
+                {m.common.save}
               </button>
               <button type="button" className="ghost" onClick={() => void restoreDefaults()}>
-                Standard wiederherstellen
+                {t.restore}
               </button>
             </div>
           </form>
@@ -204,26 +188,24 @@ function MailForm({ stored, onSaved }: { stored: MailSettings; onSaved: () => vo
 
         <section className="card">
           <div className="card-title">
-            <h2>Vorschau: Bestätigung</h2>
-            {changed && <span className="badge st-open">Nicht gespeichert</span>}
+            <h2>{t.preview}</h2>
+            {changed && <span className="badge st-open">{t.unsaved}</span>}
           </div>
           {preview && (
             <>
               <p className="small">
-                <span className="muted">Betreff:</span> {preview.subject}
+                <span className="muted">{t.subject}</span> {preview.subject}
               </p>
               {/* No scripts, no forms, no navigation: the mail is only rendered. */}
               <iframe
                 className="mail-preview"
-                title="Vorschau der Bestätigungs-E-Mail"
+                title={t.previewTitle}
                 sandbox=""
                 srcDoc={preview.html}
               />
             </>
           )}
-          <p className="muted small">
-            Zum Ausprobieren im echten Postfach: Wartung → „Test-E-Mail an mich senden“.
-          </p>
+          <p className="muted small">{t.tryIt}</p>
         </section>
       </div>
     </>

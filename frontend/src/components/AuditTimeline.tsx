@@ -1,7 +1,9 @@
+import type { Messages } from "../i18n/de";
 import type { IconName } from "./icons";
 
 import { useState } from "react";
 
+import { format, formatWith, useI18n } from "../i18n";
 import { Icon } from "./icons";
 
 type AuditChange = { field: string; from: string | null; to: string | null };
@@ -21,45 +23,9 @@ export type AuditEvent = {
 
 export type AuditPage = { items: AuditEvent[]; nextCursor: string | null };
 
-const actionLabels: Record<string, string> = {
-  REQUEST_CREATED: "Anfrage gestellt",
-  REQUEST_APPROVED: "Anfrage bestätigt",
-  REQUEST_REJECTED: "Anfrage abgelehnt",
-  REQUEST_RETURNED: "Rückgabe erfasst",
-  DEVICE_CREATED: "Gerät angelegt",
-  DEVICE_UPDATED: "Gerät geändert",
-  DEVICE_DELETED: "Gerät gelöscht",
-  IMAGE_ADDED: "Bild hochgeladen",
-  IMAGE_REMOVED: "Bild entfernt",
-  CATEGORY_CREATED: "Kategorie angelegt",
-  CATEGORY_UPDATED: "Kategorie geändert",
-  CATEGORY_DELETED: "Kategorie gelöscht",
-  ROOM_CREATED: "Raum angelegt",
-  ROOM_UPDATED: "Raum geändert",
-  ROOM_DELETED: "Raum gelöscht",
-  USER_CREATED: "Benutzer angelegt",
-  USER_UPDATED: "Benutzer geändert",
-  USER_DELETED: "Benutzer gelöscht",
-  USER_REGISTERED: "Registrierung",
-  LOGIN_SUCCEEDED: "Anmeldung",
-  LOGIN_FAILED: "Anmeldung fehlgeschlagen",
-  LOGOUT: "Abmeldung",
-  LOGIN_BLOCKED: "Anmeldung wegen Wartung abgewiesen",
-  PASSWORD_CHANGED: "Passwort geändert",
-  SESSION_REUSE_DETECTED: "Kopiertes Sitzungs-Token erkannt",
-  USER_SESSIONS_REVOKED: "Sitzungen beendet",
-  MAINTENANCE_ON: "Wartungsmodus an",
-  MAINTENANCE_OFF: "Wartungsmodus aus",
-  MAINTENANCE_UPDATED: "Wartungshinweis geändert",
-  MAINTENANCE_TASK: "Wartungsaufgabe",
-  BRANDING_UPDATED: "Erscheinungsbild geändert",
-  SETTINGS_UPDATED: "Einstellungen geändert",
-  REQUEST_CANCELLED: "Anfrage zurückgezogen",
-  REQUESTS_BULK_REJECTED: "Offene Anfragen gesammelt abgelehnt",
-};
-
-function actionLabel(action: string) {
-  return actionLabels[action] ?? action;
+function actionLabel(action: string, m: Messages) {
+  const labels: Partial<Record<string, string>> = m.audit.actions;
+  return labels[action] ?? action;
 }
 
 const entityIcons: Record<string, IconName> = {
@@ -68,6 +34,7 @@ const entityIcons: Record<string, IconName> = {
   CATEGORY: "tag",
   ROOM: "door",
   USER: "users",
+  GROUP: "users",
   AUTH: "login",
   SYSTEM: "tool",
 };
@@ -81,14 +48,14 @@ function tone(action: string): "bad" | "ok" | "" {
   return "";
 }
 
-function dayLabel(date: Date, today: Date): string {
+function dayLabel(date: Date, today: Date, m: Messages): string {
   const days = Math.round(
     (new Date(today.toDateString()).getTime() - new Date(date.toDateString()).getTime()) /
       86_400_000
   );
-  if (days === 0) return "Heute";
-  if (days === 1) return "Gestern";
-  return date.toLocaleDateString("de-DE", {
+  if (days === 0) return m.audit.today;
+  if (days === 1) return m.audit.yesterday;
+  return formatWith(date, {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -113,17 +80,17 @@ const systems: [needle: string, name: string][] = [
   ["Linux", "Linux"],
 ];
 
-function browser(userAgent: string | null): string | null {
+function browser(userAgent: string | null, m: Messages): string | null {
   if (!userAgent) return null;
   const name = browsers.find(([needle]) => userAgent.includes(needle))?.[1] ?? "Browser";
   const system = systems.find(([needle]) => userAgent.includes(needle))?.[1];
-  return system ? `${name} auf ${system}` : name;
+  return system ? format(m.audit.browserOn, { browser: name, system }) : name;
 }
 
-function address(ip: string | null): string | null {
+function address(ip: string | null, m: Messages): string | null {
   if (!ip) return null;
   const plain = ip.replace(/^::ffff:/, "");
-  return plain === "127.0.0.1" || plain === "::1" ? "lokal" : plain;
+  return plain === "127.0.0.1" || plain === "::1" ? m.audit.local : plain;
 }
 
 function groupByDay(events: AuditEvent[]) {
@@ -139,11 +106,12 @@ function groupByDay(events: AuditEvent[]) {
 }
 
 export function AuditTimeline({ events, today }: { events: AuditEvent[]; today: Date }) {
+  const { m } = useI18n();
   return (
     <div className="audit">
       {groupByDay(events).map((group) => (
         <section key={group.key} className="audit-day">
-          <h3 className="audit-day-label">{dayLabel(group.date, today)}</h3>
+          <h3 className="audit-day-label">{dayLabel(group.date, today, m)}</h3>
           <ol className="audit-list">
             {group.events.map((event) => (
               <AuditItem key={event.id} event={event} />
@@ -157,14 +125,12 @@ export function AuditTimeline({ events, today }: { events: AuditEvent[]; today: 
 
 function AuditItem({ event }: { event: AuditEvent }) {
   const [open, setOpen] = useState(false);
+  const { m } = useI18n();
   const changes = event.details?.changes ?? [];
   const context = Object.entries(event.details?.context ?? {});
-  const where = [address(event.ip), browser(event.userAgent)].filter(Boolean).join(" · ");
+  const where = [address(event.ip, m), browser(event.userAgent, m)].filter(Boolean).join(" · ");
   const hasDetails = changes.length > 0 || context.length > 0 || where !== "";
-  const time = new Date(event.createdAt).toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = formatWith(new Date(event.createdAt), { hour: "2-digit", minute: "2-digit" });
   const detailsId = `audit-${event.id}`;
 
   return (
@@ -175,7 +141,7 @@ function AuditItem({ event }: { event: AuditEvent }) {
       <div className="audit-body">
         <div className="audit-head">
           <p className="audit-summary">{event.summary}</p>
-          <span className="tag">{actionLabel(event.action)}</span>
+          <span className="tag">{actionLabel(event.action, m)}</span>
         </div>
         <div className="audit-meta">
           <span>{event.actorName}</span>
@@ -184,9 +150,7 @@ function AuditItem({ event }: { event: AuditEvent }) {
           {changes.length > 0 && (
             <>
               <span aria-hidden="true">·</span>
-              <span>
-                {changes.length} {changes.length === 1 ? "Änderung" : "Änderungen"}
-              </span>
+              <span>{format(m.audit.changes, { count: changes.length })}</span>
             </>
           )}
           {hasDetails && (
@@ -197,7 +161,7 @@ function AuditItem({ event }: { event: AuditEvent }) {
               aria-controls={detailsId}
               onClick={() => setOpen((value) => !value)}
             >
-              {open ? "Weniger" : "Details"}
+              {open ? m.audit.less : m.audit.details}
               <Icon name="chevron" />
             </button>
           )}
@@ -206,7 +170,7 @@ function AuditItem({ event }: { event: AuditEvent }) {
           <div className="audit-details" id={detailsId}>
             {changes.length > 0 && (
               <table className="audit-changes">
-                <caption className="sr-only">Änderungen</caption>
+                <caption className="sr-only">{m.audit.changesCaption}</caption>
                 <tbody>
                   {changes.map((change) => (
                     <tr key={`${change.field}|${change.from}|${change.to}`}>
@@ -217,7 +181,7 @@ function AuditItem({ event }: { event: AuditEvent }) {
                         ) : (
                           <del>{change.from}</del>
                         )}
-                        <span className="audit-arrow" aria-label="geändert zu">
+                        <span className="audit-arrow" aria-label={m.audit.changedTo}>
                           →
                         </span>
                         {change.to === null ? (
@@ -241,7 +205,7 @@ function AuditItem({ event }: { event: AuditEvent }) {
                 ))}
                 {where && (
                   <div>
-                    <dt>Zugriff</dt>
+                    <dt>{m.audit.access}</dt>
                     <dd>{where}</dd>
                   </div>
                 )}

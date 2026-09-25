@@ -11,6 +11,8 @@ import {
   requestApprovedTemplate,
   requestRejectedTemplate,
 } from "../emails/templates.js";
+import { de } from "../i18n/de.js";
+import { type Locale, defaultLocale, format, isLocale, t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { formatPeriod, recordAudit } from "./auditService.js";
@@ -18,14 +20,18 @@ import { type FormField, getSetting } from "./settingsService.js";
 import { refreshUnitStatuses } from "./unitStatus.js";
 
 const requestInclude = {
-  user: { select: { id: true, name: true, email: true } },
+  user: { select: { id: true, name: true, email: true, locale: true } },
   unit: { select: { id: true, serialNumber: true, status: true } },
   room: { select: { id: true, name: true, building: true } },
   device: { select: { id: true, name: true, category: { select: { name: true } } } },
 } as const;
 
 // Built only when sent, with the company's mail settings of that moment.
-type PendingMail = { to: string; build: (ctx: MailContext) => MailMessage };
+type PendingMail = {
+  to: string;
+  locale: string | null;
+  build: (ctx: MailContext) => MailMessage;
+};
 
 const UNASSIGNED_ROOM = "room-unassigned";
 
@@ -42,13 +48,23 @@ function collectFields(defs: FormField[], input: Record<string, string | boolean
     let value: string;
     if (def.type === "checkbox") {
       if (def.required && raw !== true)
-        throw new HttpError(400, `„${def.label}“ muss bestätigt werden`);
+        throw new HttpError(
+          400,
+          t((m) => m.errors.fieldMustConfirm, { label: def.label })
+        );
       value = raw === true ? "Ja" : "Nein";
     } else {
       value = typeof raw === "string" ? raw.trim() : "";
-      if (def.required && !value) throw new HttpError(400, `„${def.label}“ fehlt`);
+      if (def.required && !value)
+        throw new HttpError(
+          400,
+          t((m) => m.errors.fieldMissing, { label: def.label })
+        );
       if (def.type === "select" && value && !def.options.includes(value)) {
-        throw new HttpError(400, `„${def.label}“: ungültige Auswahl`);
+        throw new HttpError(
+          400,
+          t((m) => m.errors.fieldInvalidChoice, { label: def.label })
+        );
       }
     }
     if (value) answers.push({ label: def.label, value });
@@ -89,17 +105,24 @@ function presentRequest<
   };
 }
 
-function parseLocalDateTime(value: string, label: string): Date {
+function parseLocalDateTime(value: string, which: "start" | "end"): Date {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new HttpError(400, `${label} ist ungültig`);
+  if (Number.isNaN(date.getTime()))
+    throw new HttpError(
+      400,
+      t((m) => (which === "start" ? m.errors.startInvalid : m.errors.endInvalid))
+    );
   return date;
 }
 
 async function dispatch(mails: PendingMail[]): Promise<void> {
   if (mails.length === 0) return;
-  const ctx = await mailContext();
+  const contexts = new Map<Locale, MailContext>();
   for (const mail of mails) {
     try {
+      const locale = isLocale(mail.locale) ? mail.locale : defaultLocale;
+      const ctx = contexts.get(locale) ?? (await mailContext(locale));
+      contexts.set(locale, ctx);
       await sendMail(mail.to, mail.build(ctx));
     } catch (error) {
       console.error("E-Mail-Versand fehlgeschlagen", error);
@@ -133,30 +156,45 @@ export async function createRequest(
     maxOpenPerUser: groupRules.maxOpenPerUser ?? policy.rules.maxOpenPerUser,
     autoApprove: groupRules.autoApprove ?? policy.rules.autoApprove,
   };
-  const startsAt = parseLocalDateTime(input.startsAt, "Startzeit");
-  const desiredUntil = parseLocalDateTime(input.desiredUntil, "Endzeit");
+  const startsAt = parseLocalDateTime(input.startsAt, "start");
+  const desiredUntil = parseLocalDateTime(input.desiredUntil, "end");
   if (desiredUntil <= startsAt)
-    throw new HttpError(400, "Die Endzeit muss nach der Startzeit liegen");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.endAfterStart)
+    );
   if (desiredUntil.getTime() < Date.now())
-    throw new HttpError(400, "Die Endzeit muss in der Zukunft liegen");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.endInFuture)
+    );
   // Today counts from midnight, so "Heute" still works in the afternoon.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   if (startsAt < today)
-    throw new HttpError(400, "Der Start darf nicht in der Vergangenheit liegen");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.startInPast)
+    );
   if (desiredUntil.getTime() - startsAt.getTime() > rules.maxDays * 24 * 60 * 60 * 1000) {
     throw new HttpError(
       400,
-      `Eine Ausleihe dauert höchstens ${rules.maxDays} Tag${rules.maxDays === 1 ? "" : "e"}`
+      t((m) => m.errors.maxDays, { count: rules.maxDays })
     );
   }
   const comment = form.comment === "hidden" ? "" : input.comment;
   if (form.comment === "required" && !comment) {
-    throw new HttpError(400, `„${form.commentLabel}“ fehlt`);
+    throw new HttpError(
+      400,
+      t((m) => m.errors.fieldMissing, { label: form.commentLabel })
+    );
   }
   const roomId = form.room === "hidden" ? "" : input.roomId;
   if (form.room === "required" && (!roomId || roomId === UNASSIGNED_ROOM)) {
-    throw new HttpError(400, "Raum fehlt");
+    throw new HttpError(
+      400,
+      t((m) => m.errors.roomMissing)
+    );
   }
   const fields = collectFields(form.fields, input.fields);
   let request;
@@ -167,18 +205,29 @@ export async function createRequest(
           where: { id: input.unitId },
           include: { device: true },
         });
-        if (!unit) throw new HttpError(404, "Stück nicht gefunden");
+        if (!unit)
+          throw new HttpError(
+            404,
+            t((m) => m.errors.unitNotFound)
+          );
         if (unit.status === "DEFECTIVE")
-          throw new HttpError(409, "Defekte Stücke können nicht angefragt werden");
+          throw new HttpError(
+            409,
+            t((m) => m.errors.defectiveNotRequestable)
+          );
         const open = await tx.borrowRequest.count({ where: { userId, status: "OPEN" } });
         if (open >= rules.maxOpenPerUser) {
           throw new HttpError(
             409,
-            `Sie haben bereits ${open === 1 ? "eine offene Anfrage" : `${open} offene Anfragen`}. Mehr als ${rules.maxOpenPerUser === 1 ? "eine" : rules.maxOpenPerUser} gleichzeitig ${rules.maxOpenPerUser === 1 ? "ist" : "sind"} nicht möglich; warten Sie auf die Entscheidung oder ziehen Sie eine zurück.`
+            t((m) => m.errors.tooManyOpen, { count: open, max: rules.maxOpenPerUser })
           );
         }
         const room = await tx.room.findUnique({ where: { id: roomId || UNASSIGNED_ROOM } });
-        if (!room) throw new HttpError(404, "Raum nicht gefunden");
+        if (!room)
+          throw new HttpError(
+            404,
+            t((m) => m.errors.roomNotFound)
+          );
         const overlapping = await tx.borrowRequest.count({
           where: {
             unitId: unit.id,
@@ -188,7 +237,10 @@ export async function createRequest(
           },
         });
         if (overlapping > 0)
-          throw new HttpError(409, "Dieses Stück ist im Zeitraum schon vergeben oder angefragt");
+          throw new HttpError(
+            409,
+            t((m) => m.errors.unitTaken)
+          );
         const created = await tx.borrowRequest.create({
           data: {
             userId,
@@ -208,7 +260,10 @@ export async function createRequest(
           action: "REQUEST_CREATED",
           entityType: "REQUEST",
           entityId: presented.id,
-          summary: `Ausleihe von „${presented.device.name}“ (${presented.device.serialNumber}) angefragt`,
+          summary: {
+            key: "audit.requestCreated",
+            params: { device: presented.device.name, serial: presented.device.serialNumber },
+          },
           details: { context: auditContext(presented) },
         });
         return presented;
@@ -219,7 +274,7 @@ export async function createRequest(
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
       throw new HttpError(
         409,
-        "Das Gerät wurde gerade anderweitig angefragt. Bitte erneut versuchen."
+        t((m) => m.errors.requestConcurrent)
       );
     }
     throw error;
@@ -235,15 +290,26 @@ export async function createRequest(
 export async function cancelRequest(id: string, userId: string) {
   const current = await prisma.borrowRequest.findUnique({ where: { id }, include: requestInclude });
   // Someone else's request looks exactly like a missing one.
-  if (!current || current.userId !== userId) throw new HttpError(404, "Anfrage nicht gefunden");
+  if (!current || current.userId !== userId)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.requestNotFound)
+    );
   if (current.status !== "OPEN") {
-    throw new HttpError(409, "Nur offene Anfragen können zurückgezogen werden");
+    throw new HttpError(
+      409,
+      t((m) => m.errors.onlyOpenCancel)
+    );
   }
   const changed = await prisma.borrowRequest.updateMany({
     where: { id, status: "OPEN" },
     data: { status: "CANCELLED", cancelledAt: new Date() },
   });
-  if (changed.count !== 1) throw new HttpError(409, "Anfrage wurde bereits bearbeitet");
+  if (changed.count !== 1)
+    throw new HttpError(
+      409,
+      t((m) => m.errors.alreadyProcessed)
+    );
   const result = presentRequest(
     await prisma.borrowRequest.findUniqueOrThrow({ where: { id }, include: requestInclude })
   );
@@ -252,7 +318,10 @@ export async function cancelRequest(id: string, userId: string) {
     action: "REQUEST_CANCELLED",
     entityType: "REQUEST",
     entityId: id,
-    summary: `Anfrage für „${result.device.name}“ (${result.device.serialNumber}) zurückgezogen`,
+    summary: {
+      key: "audit.requestCancelled",
+      params: { device: result.device.name, serial: result.device.serialNumber },
+    },
     details: {
       changes: [{ field: "Status", from: "Offen", to: "Zurückgezogen" }],
       context: auditContext(result),
@@ -267,7 +336,11 @@ export async function cancelRequest(id: string, userId: string) {
  */
 export async function rejectOpenRequestsOfUser(userId: string, reason: string, actorId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-  if (!user) throw new HttpError(404, "Benutzer nicht gefunden");
+  if (!user)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.userNotFound)
+    );
   const { count } = await prisma.borrowRequest.updateMany({
     where: { userId, status: "OPEN" },
     data: { status: "REJECTED", rejectionReason: reason },
@@ -277,7 +350,7 @@ export async function rejectOpenRequestsOfUser(userId: string, reason: string, a
     action: "REQUESTS_BULK_REJECTED",
     entityType: "USER",
     entityId: userId,
-    summary: `${count} offene Anfrage${count === 1 ? "" : "n"} von „${user.name}“ abgelehnt`,
+    summary: { key: "audit.requestsBulkRejected", params: { count, name: user.name } },
     details: { context: { Grund: reason || "ohne Angabe", "E-Mails": "keine" } },
   });
   return { rejected: count };
@@ -315,11 +388,22 @@ export async function approveRequest(
       where: { id },
       include: requestInclude,
     });
-    if (!current) throw new HttpError(404, "Anfrage nicht gefunden");
+    if (!current)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.requestNotFound)
+      );
     if (current.status !== "OPEN")
-      throw new HttpError(409, "Nur offene Anfragen können bestätigt werden");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.onlyOpenApprove)
+      );
 
-    if (!current.unitId || !current.unit) throw new HttpError(409, "Anfrage hat kein Stück");
+    if (!current.unitId || !current.unit)
+      throw new HttpError(
+        409,
+        t((m) => m.errors.requestNoUnit)
+      );
     const conflict = await tx.borrowRequest.findFirst({
       where: {
         id: { not: current.id },
@@ -329,8 +413,16 @@ export async function approveRequest(
         desiredUntil: { gt: current.startsAt },
       },
     });
-    if (conflict) throw new HttpError(409, "Dieses Stück ist im Zeitraum nicht mehr frei");
-    if (current.unit.status === "DEFECTIVE") throw new HttpError(409, "Stück ist defekt");
+    if (conflict)
+      throw new HttpError(
+        409,
+        t((m) => m.errors.unitNoLongerFree)
+      );
+    if (current.unit.status === "DEFECTIVE")
+      throw new HttpError(
+        409,
+        t((m) => m.errors.unitDefective)
+      );
     const unit = current.unit;
 
     const approvedAt = new Date();
@@ -338,10 +430,15 @@ export async function approveRequest(
       where: { id, status: "OPEN" },
       data: { status: "APPROVED", approvedAt },
     });
-    if (changed.count !== 1) throw new HttpError(409, "Anfrage wurde bereits bearbeitet");
+    if (changed.count !== 1)
+      throw new HttpError(
+        409,
+        t((m) => m.errors.alreadyProcessed)
+      );
 
     mails.push({
       to: current.user.email,
+      locale: current.user.locale,
       build: (ctx) =>
         requestApprovedTemplate(ctx, {
           recipientName: current.user.name,
@@ -364,9 +461,14 @@ export async function approveRequest(
     action: "REQUEST_APPROVED",
     entityType: "REQUEST",
     entityId: result.id,
-    summary: options.automatic
-      ? `Ausleihe von „${result.device.name}“ (${result.device.serialNumber}) für ${result.user.name} automatisch bestätigt`
-      : `Ausleihe von „${result.device.name}“ (${result.device.serialNumber}) für ${result.user.name} bestätigt`,
+    summary: {
+      key: options.automatic ? "audit.requestAutoApproved" : "audit.requestApproved",
+      params: {
+        device: result.device.name,
+        serial: result.device.serialNumber,
+        name: result.user.name,
+      },
+    },
     details: {
       changes: [{ field: "Status", from: "Offen", to: "Bestätigt" }],
       context: auditContext(result),
@@ -377,15 +479,26 @@ export async function approveRequest(
 
 export async function rejectRequest(id: string, rejectionReason: string, actorId: string) {
   const current = await prisma.borrowRequest.findUnique({ where: { id }, include: requestInclude });
-  if (!current) throw new HttpError(404, "Anfrage nicht gefunden");
+  if (!current)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.requestNotFound)
+    );
   if (current.status !== "OPEN")
-    throw new HttpError(409, "Nur offene Anfragen können abgelehnt werden");
+    throw new HttpError(
+      409,
+      t((m) => m.errors.onlyOpenReject)
+    );
 
   const changed = await prisma.borrowRequest.updateMany({
     where: { id, status: "OPEN" },
     data: { status: "REJECTED", rejectionReason },
   });
-  if (changed.count !== 1) throw new HttpError(409, "Anfrage wurde bereits bearbeitet");
+  if (changed.count !== 1)
+    throw new HttpError(
+      409,
+      t((m) => m.errors.alreadyProcessed)
+    );
 
   const updated = await prisma.borrowRequest.findUniqueOrThrow({
     where: { id },
@@ -394,6 +507,7 @@ export async function rejectRequest(id: string, rejectionReason: string, actorId
   await dispatch([
     {
       to: updated.user.email,
+      locale: updated.user.locale,
       build: (ctx) =>
         requestRejectedTemplate(ctx, {
           recipientName: updated.user.name,
@@ -408,7 +522,14 @@ export async function rejectRequest(id: string, rejectionReason: string, actorId
     action: "REQUEST_REJECTED",
     entityType: "REQUEST",
     entityId: result.id,
-    summary: `Ausleihe von „${result.device.name}“ (${result.device.serialNumber}) für ${result.user.name} abgelehnt`,
+    summary: {
+      key: "audit.requestRejected",
+      params: {
+        device: result.device.name,
+        serial: result.device.serialNumber,
+        name: result.user.name,
+      },
+    },
     details: {
       changes: [{ field: "Status", from: "Offen", to: "Abgelehnt" }],
       context: { Grund: rejectionReason || "ohne Angabe", ...auditContext(result) },
@@ -421,15 +542,26 @@ export async function returnRequest(id: string, actorId: string) {
   const returnedAt = new Date();
   const current = await prisma.$transaction(async (tx) => {
     const request = await tx.borrowRequest.findUnique({ where: { id }, include: requestInclude });
-    if (!request) throw new HttpError(404, "Anfrage nicht gefunden");
+    if (!request)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.requestNotFound)
+      );
     if (request.status !== "APPROVED")
-      throw new HttpError(409, "Nur bestätigte Ausleihen können zurückgegeben werden");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.onlyApprovedReturn)
+      );
 
     const changed = await tx.borrowRequest.updateMany({
       where: { id, status: "APPROVED" },
       data: { status: "RETURNED", returnedAt },
     });
-    if (changed.count !== 1) throw new HttpError(409, "Ausleihe wurde bereits abgeschlossen");
+    if (changed.count !== 1)
+      throw new HttpError(
+        409,
+        t((m) => m.errors.loanClosed)
+      );
 
     return tx.borrowRequest.findUniqueOrThrow({ where: { id }, include: requestInclude });
   });
@@ -438,6 +570,7 @@ export async function returnRequest(id: string, actorId: string) {
   await dispatch([
     {
       to: current.user.email,
+      locale: current.user.locale,
       build: (ctx) =>
         deviceReturnedTemplate(ctx, {
           recipientName: current.user.name,
@@ -452,7 +585,14 @@ export async function returnRequest(id: string, actorId: string) {
     action: "REQUEST_RETURNED",
     entityType: "REQUEST",
     entityId: result.id,
-    summary: `Rückgabe von „${result.device.name}“ (${result.device.serialNumber}) durch ${result.user.name} erfasst`,
+    summary: {
+      key: "audit.requestReturned",
+      params: {
+        device: result.device.name,
+        serial: result.device.serialNumber,
+        name: result.user.name,
+      },
+    },
     details: {
       changes: [{ field: "Status", from: "Bestätigt", to: "Zurückgegeben" }],
       context: {
@@ -495,8 +635,9 @@ function auditContext(request: {
 function punctuality(due: Date, returnedAt: Date): string {
   const lateMinutes = Math.round((returnedAt.getTime() - due.getTime()) / 60_000);
   if (lateMinutes <= 0) return "rechtzeitig";
-  if (lateMinutes < 60) return `${lateMinutes} Min. verspätet`;
+  const late = de.auditPatterns;
+  if (lateMinutes < 60) return format(late.lateMinutes, { count: lateMinutes }, "de");
   const hours = Math.round(lateMinutes / 60);
-  if (hours < 48) return `${hours} Std. verspätet`;
-  return `${Math.round(hours / 24)} Tage verspätet`;
+  if (hours < 48) return format(late.lateHours, { count: hours }, "de");
+  return format(late.lateDays, { count: Math.round(hours / 24) }, "de");
 }

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 
+import { t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { diff, recordAudit } from "./auditService.js";
@@ -11,7 +12,11 @@ export async function listCategories() {
 export async function updateCategory(id: string, name: string, actorId: string) {
   try {
     const before = await prisma.category.findUnique({ where: { id } });
-    if (!before) throw new HttpError(404, "Kategorie nicht gefunden");
+    if (!before)
+      throw new HttpError(
+        404,
+        t((m) => m.errors.categoryNotFound)
+      );
     const updated = await prisma.category.update({ where: { id }, data: { name } });
     await recordAudit({
       actorId,
@@ -20,17 +25,23 @@ export async function updateCategory(id: string, name: string, actorId: string) 
       entityId: updated.id,
       summary:
         before.name === updated.name
-          ? `Kategorie „${updated.name}“ gespeichert (keine Änderung)`
-          : `Kategorie „${before.name}“ in „${updated.name}“ umbenannt`,
+          ? { key: "audit.categoryUnchanged", params: { name: updated.name } }
+          : { key: "audit.categoryRenamed", params: { from: before.name, to: updated.name } },
       details: { changes: diff(before, updated, [{ key: "name", label: "Name" }]) },
     });
     return updated;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      throw new HttpError(404, "Kategorie nicht gefunden");
+      throw new HttpError(
+        404,
+        t((m) => m.errors.categoryNotFound)
+      );
     }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new HttpError(409, "Diese Kategorie gibt es bereits");
+      throw new HttpError(
+        409,
+        t((m) => m.errors.categoryExists)
+      );
     }
     throw error;
   }
@@ -41,9 +52,16 @@ export async function deleteCategory(id: string, actorId: string) {
     where: { id },
     include: { _count: { select: { devices: true } } },
   });
-  if (!category) throw new HttpError(404, "Kategorie nicht gefunden");
+  if (!category)
+    throw new HttpError(
+      404,
+      t((m) => m.errors.categoryNotFound)
+    );
   if (category._count.devices > 0) {
-    throw new HttpError(409, "Kategorie wird von Geräten verwendet und kann nicht gelöscht werden");
+    throw new HttpError(
+      409,
+      t((m) => m.errors.categoryInUse)
+    );
   }
   // An emptied group scope would mean "all categories" and widen the group's rights: the group
   // must be changed first.
@@ -56,7 +74,9 @@ export async function deleteCategory(id: string, actorId: string) {
   if (scoped.length > 0) {
     throw new HttpError(
       409,
-      `Die Kategorie ist in der Gruppe ${scoped.map((group) => `„${group.name}“`).join(", ")} ausgewählt. Bitte dort zuerst entfernen.`
+      t((m) => m.errors.categoryInGroupScope, {
+        groups: scoped.map((group) => `„${group.name}“`).join(", "),
+      })
     );
   }
   await prisma.category.delete({ where: { id } });
@@ -65,7 +85,7 @@ export async function deleteCategory(id: string, actorId: string) {
     action: "CATEGORY_DELETED",
     entityType: "CATEGORY",
     entityId: id,
-    summary: `Kategorie „${category.name}“ gelöscht`,
+    summary: { key: "audit.categoryDeleted", params: { name: category.name } },
   });
 }
 
@@ -77,7 +97,7 @@ export async function createCategory(name: string, actorId: string) {
       action: "CATEGORY_CREATED",
       entityType: "CATEGORY",
       entityId: created.id,
-      summary: `Kategorie „${created.name}“ angelegt`,
+      summary: { key: "audit.categoryCreated", params: { name: created.name } },
     });
     return created;
   } catch (error) {

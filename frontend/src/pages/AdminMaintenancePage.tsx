@@ -1,14 +1,19 @@
+import type { Terms } from "../branding/BrandingContext";
 import type { IconName } from "../components/icons";
+import type { Messages } from "../i18n/de";
 
 import type { SubmitEvent } from "react";
 import { useState } from "react";
 
 import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
+import { useTerms } from "../branding/BrandingContext";
 import { Icon } from "../components/icons";
 import { SettingsTabs } from "../components/SettingsTabs";
 import { Alert, Field, PageHeader, refreshNav } from "../components/ui";
-import { formatDate, toLocalInput } from "../types";
+import { format, formatDate, formatNumber, localizedDefault, useI18n } from "../i18n";
+import { de } from "../i18n/de";
+import { toLocalInput } from "../types";
 
 type MaintenanceMode = {
   enabled: boolean;
@@ -38,9 +43,9 @@ type SystemStatus = {
 type Task = {
   id: string;
   icon: IconName;
-  title: string;
-  description: (status: SystemStatus) => string;
-  confirm?: string;
+  title: (m: Messages) => string;
+  description: (status: SystemStatus, m: Messages, terms: Terms) => string;
+  confirm?: (m: Messages) => string;
   danger?: boolean;
 };
 
@@ -48,58 +53,67 @@ const tasks: Task[] = [
   {
     id: "cleanup-sessions",
     icon: "trash",
-    title: "Abgelaufene Sitzungen bereinigen",
-    description: (s) =>
-      `${s.sessions.stale} abgelaufene oder beendete Sitzungen liegen noch in der Datenbank. Aktive Sitzungen bleiben unberührt.`,
+    title: (m) => m.maintenance.tasks.cleanupSessions.title,
+    description: (s, m) =>
+      format(m.maintenance.tasks.cleanupSessions.description, { count: s.sessions.stale }),
   },
   {
     id: "cleanup-uploads",
     icon: "image",
-    title: "Verwaiste Bilddateien löschen",
-    description: (s) =>
+    title: (m) => m.maintenance.tasks.cleanupUploads.title,
+    description: (s, m, terms) =>
       s.uploads.orphans === 0
-        ? "Keine verwaisten Dateien: Jede Bilddatei gehört zu einem Gerät."
-        : `${s.uploads.orphans} Dateien (${megabytes(s.uploads.orphanBytes)}) gehören zu keinem Gerät mehr.`,
-    confirm: "Verwaiste Bilddateien endgültig löschen?",
+        ? format(m.maintenance.tasks.cleanupUploads.none, { device: terms.device })
+        : format(m.maintenance.tasks.cleanupUploads.description, {
+            count: s.uploads.orphans,
+            size: megabytes(s.uploads.orphanBytes),
+            device: terms.device,
+          }),
+    confirm: (m) => m.maintenance.tasks.cleanupUploads.confirm,
   },
   {
     id: "refresh-units",
     icon: "refresh",
-    title: "Gerätestatus neu berechnen",
-    description: () =>
-      "Setzt „Verfügbar“ und „Ausgeliehen“ aller Stücke anhand der bestätigten Ausleihen neu. Defekte Stücke bleiben defekt.",
+    title: (m) => m.maintenance.tasks.refreshUnits.title,
+    description: (_s, m, terms) =>
+      format(m.maintenance.tasks.refreshUnits.description, { units: terms.units }),
   },
   {
     id: "test-mail",
     icon: "mail",
-    title: "Test-E-Mail an mich senden",
-    description: (s) =>
+    title: (m) => m.maintenance.tasks.testMail.title,
+    description: (s, m) =>
       s.integrations.smtp
-        ? `Prüft den Versand über ${s.integrations.smtp}.`
-        : "SMTP ist nicht eingerichtet: Die E-Mail wird nur in der Server-Konsole ausgegeben.",
+        ? format(m.maintenance.tasks.testMail.smtp, { smtp: s.integrations.smtp })
+        : m.maintenance.tasks.testMail.console,
   },
   {
     id: "end-sessions",
     icon: "logout",
-    title: "Alle Sitzungen beenden",
-    description: (s) =>
-      `Meldet alle ${s.sessions.active} aktiven Sitzungen außer Ihrer eigenen ab, z. B. nach einer Passwortpanne.`,
-    confirm: "Wirklich alle anderen Personen abmelden? Sie müssen sich neu anmelden.",
+    title: (m) => m.maintenance.tasks.endSessions.title,
+    description: (s, m) =>
+      format(m.maintenance.tasks.endSessions.description, { count: s.sessions.active }),
+    confirm: (m) => m.maintenance.tasks.endSessions.confirm,
     danger: true,
   },
 ];
 
 function megabytes(bytes: number): string {
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${formatNumber(Math.round((bytes / 1024 / 1024) * 10) / 10)} MB`;
 }
 
-function duration(seconds: number): string {
+function duration(seconds: number, m: Messages): string {
   const days = Math.floor(seconds / 86_400);
   const hours = Math.floor((seconds % 86_400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days} ${days === 1 ? "Tag" : "Tage"}, ${hours} Std.`;
-  if (hours > 0) return `${hours} Std., ${minutes} Min.`;
-  return `${minutes} Min.`;
+  const t = m.maintenance;
+  if (days > 0) {
+    return `${format(t.days, { count: days })}, ${format(t.hoursShort, { count: hours })}`;
+  }
+  if (hours > 0) {
+    return `${format(t.hoursShort, { count: hours })}, ${format(t.minutesShort, { count: minutes })}`;
+  }
+  return format(t.minutesShort, { count: minutes });
 }
 
 export function AdminMaintenancePage() {
@@ -107,9 +121,12 @@ export function AdminMaintenancePage() {
   const [running, setRunning] = useState<string | null>(null);
   const [result, setResult] = useState("");
   const [taskError, setTaskError] = useState("");
+  const { m } = useI18n();
+  const t = m.maintenance;
+  const terms = useTerms();
 
   async function run(task: Task) {
-    if (task.confirm && !window.confirm(task.confirm)) return;
+    if (task.confirm && !window.confirm(task.confirm(m))) return;
     setRunning(task.id);
     setResult("");
     setTaskError("");
@@ -120,7 +137,7 @@ export function AdminMaintenancePage() {
       setResult(response.message);
       reload();
     } catch (err) {
-      setTaskError(errorMessage(err, "Aufgabe fehlgeschlagen"));
+      setTaskError(errorMessage(err, t.taskFailed));
     } finally {
       setRunning(null);
     }
@@ -134,10 +151,7 @@ export function AdminMaintenancePage() {
   return (
     <>
       <SettingsTabs />
-      <PageHeader
-        title="Wartung"
-        description="Wartungsmodus, Systemzustand und Aufräumarbeiten. Jede Aktion wird im Protokoll festgehalten."
-      />
+      <PageHeader title={t.title} description={t.description} />
       <Alert>{error || taskError}</Alert>
       <Alert tone="ok">{result}</Alert>
 
@@ -151,33 +165,36 @@ export function AdminMaintenancePage() {
             />
             <section className="card">
               <div className="card-title">
-                <h2>Systemstatus</h2>
+                <h2>{t.status}</h2>
                 <button type="button" className="ghost sm" onClick={reload}>
-                  <Icon name="refresh" /> Aktualisieren
+                  <Icon name="refresh" /> {t.refresh}
                 </button>
               </div>
               <dl className="status-list">
                 <div>
-                  <dt>Datenbank</dt>
+                  <dt>{t.database}</dt>
                   <dd>
                     {status.database.ok ? (
                       <span className="badge st-available">
-                        erreichbar · {status.database.latencyMs} ms
+                        {format(t.reachable, { ms: status.database.latencyMs ?? "–" })}
                       </span>
                     ) : (
-                      <span className="badge st-rejected">nicht erreichbar</span>
+                      <span className="badge st-rejected">{t.unreachable}</span>
                     )}
                   </dd>
                 </div>
                 <div>
-                  <dt>Laufzeit</dt>
+                  <dt>{t.uptime}</dt>
                   <dd>
-                    {duration(status.app.uptimeSeconds)}
-                    <span className="muted"> · seit {formatDate(status.app.startedAt)}</span>
+                    {duration(status.app.uptimeSeconds, m)}
+                    <span className="muted">
+                      {" "}
+                      · {format(t.since, { date: formatDate(status.app.startedAt) })}
+                    </span>
                   </dd>
                 </div>
                 <div>
-                  <dt>Version</dt>
+                  <dt>{t.version}</dt>
                   <dd>
                     LendLine {status.app.version}
                     <span className="muted">
@@ -187,46 +204,62 @@ export function AdminMaintenancePage() {
                   </dd>
                 </div>
                 <div>
-                  <dt>E-Mail</dt>
+                  <dt>{t.email}</dt>
                   <dd>
-                    {status.integrations.smtp ?? (
-                      <span className="muted">nur Konsole (kein SMTP)</span>
-                    )}
+                    {status.integrations.smtp ?? <span className="muted">{t.consoleOnly}</span>}
                   </dd>
                 </div>
                 <div>
-                  <dt>Verzeichnis (LDAP)</dt>
-                  <dd>{status.integrations.ldap ?? <span className="muted">aus</span>}</dd>
+                  <dt>{t.directory}</dt>
+                  <dd>{status.integrations.ldap ?? <span className="muted">{t.off}</span>}</dd>
                 </div>
                 <div>
-                  <dt>Sitzungen</dt>
+                  <dt>{t.sessions}</dt>
                   <dd>
-                    {status.sessions.active} aktiv
-                    <span className="muted"> · {status.sessions.stale} abgelaufen</span>
+                    {format(t.sessionsActive, { count: status.sessions.active })}
+                    <span className="muted">
+                      {" "}
+                      · {format(t.sessionsStale, { count: status.sessions.stale })}
+                    </span>
                   </dd>
                 </div>
                 <div>
-                  <dt>Bilder</dt>
+                  <dt>{t.images}</dt>
                   <dd>
-                    {status.uploads.files} Dateien, {megabytes(status.uploads.bytes)}
+                    {format(t.files, {
+                      count: status.uploads.files,
+                      size: megabytes(status.uploads.bytes),
+                    })}
                     {status.uploads.orphans > 0 && (
-                      <span className="muted"> · {status.uploads.orphans} verwaist</span>
+                      <span className="muted">
+                        {" "}
+                        · {format(t.orphans, { count: status.uploads.orphans })}
+                      </span>
                     )}
                   </dd>
                 </div>
                 <div>
-                  <dt>Daten</dt>
+                  <dt>{t.data}</dt>
                   <dd>
-                    {status.counts.users} Benutzer · {status.counts.devices} Geräte ·{" "}
-                    {status.counts.units} Stücke · {status.counts.requests} Anfragen
+                    {format(t.dataCounts, {
+                      users: status.counts.users,
+                      devices: status.counts.devices,
+                      devicesTerm: terms.devices,
+                      units: status.counts.units,
+                      unitsTerm: terms.units,
+                      requests: status.counts.requests,
+                    })}
                   </dd>
                 </div>
                 <div>
-                  <dt>Protokoll</dt>
+                  <dt>{t.audit}</dt>
                   <dd>
-                    {status.audit.events} Einträge
+                    {format(t.entries, { count: status.audit.events })}
                     {status.audit.since && (
-                      <span className="muted"> · seit {formatDate(status.audit.since)}</span>
+                      <span className="muted">
+                        {" "}
+                        · {format(t.since, { date: formatDate(status.audit.since) })}
+                      </span>
                     )}
                   </dd>
                 </div>
@@ -235,7 +268,7 @@ export function AdminMaintenancePage() {
           </div>
 
           <div className="section-title">
-            <h2>Wartungsaufgaben</h2>
+            <h2>{t.tasksTitle}</h2>
           </div>
           <ul className="task-list">
             {tasks.map((task) => (
@@ -244,8 +277,8 @@ export function AdminMaintenancePage() {
                   <Icon name={task.icon} />
                 </span>
                 <div className="task-body">
-                  <strong>{task.title}</strong>
-                  <p>{task.description(status)}</p>
+                  <strong>{task.title(m)}</strong>
+                  <p>{task.description(status, m, terms)}</p>
                 </div>
                 <button
                   type="button"
@@ -253,7 +286,7 @@ export function AdminMaintenancePage() {
                   disabled={running !== null}
                   onClick={() => void run(task)}
                 >
-                  {running === task.id ? "Läuft…" : "Ausführen"}
+                  {running === task.id ? t.running : t.run}
                 </button>
               </li>
             ))}
@@ -265,7 +298,13 @@ export function AdminMaintenancePage() {
 }
 
 function MaintenanceForm({ mode, onSaved }: { mode: MaintenanceMode; onSaved: () => void }) {
-  const [message, setMessage] = useState(mode.message);
+  const { m } = useI18n();
+  const t = m.maintenance;
+  // The built-in notice is shown in the reader's language and stays the built-in one when saved,
+  // so every user keeps getting it in their own language.
+  const [message, setMessage] = useState(() =>
+    localizedDefault(mode.message, (d) => d.maintenance.defaultMessage)
+  );
   const [until, setUntil] = useState(mode.until ? toLocalInput(new Date(mode.until)) : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -276,23 +315,22 @@ function MaintenanceForm({ mode, onSaved }: { mode: MaintenanceMode; onSaved: ()
     try {
       await api("/api/admin/maintenance/mode", {
         method: "PUT",
-        body: JSON.stringify({ enabled, message, until: until || null }),
+        body: JSON.stringify({
+          enabled,
+          message: message === t.defaultMessage ? de.maintenance.defaultMessage : message,
+          until: until || null,
+        }),
       });
       onSaved();
     } catch (err) {
-      setError(errorMessage(err, "Speichern fehlgeschlagen"));
+      setError(errorMessage(err, t.saveFailed));
       setSaving(false);
     }
   }
 
   function onSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (
-      !mode.enabled &&
-      !window.confirm(
-        "Wartungsmodus einschalten?\n\nNutzer werden sofort abgemeldet und können sich erst danach wieder anmelden. Die Verwaltung arbeitet weiter."
-      )
-    ) {
+    if (!mode.enabled && !window.confirm(t.confirmOn)) {
       return;
     }
     void save(true);
@@ -301,21 +339,17 @@ function MaintenanceForm({ mode, onSaved }: { mode: MaintenanceMode; onSaved: ()
   return (
     <section className={`card${mode.enabled ? " maintenance-on" : ""}`}>
       <div className="card-title">
-        <h2>Wartungsmodus</h2>
+        <h2>{t.mode}</h2>
         {mode.enabled ? (
-          <span className="badge st-open">Aktiv</span>
+          <span className="badge st-open">{t.active}</span>
         ) : (
-          <span className="badge st-returned">Aus</span>
+          <span className="badge st-returned">{t.inactive}</span>
         )}
       </div>
-      <p className="muted small">
-        Während der Wartung können sich nur Personen der Verwaltung anmelden. Nutzer sehen den
-        Hinweis auf der Anmeldeseite; ihre Sitzung läuft nach der Wartung ohne neue Anmeldung
-        weiter.
-      </p>
+      <p className="muted small">{t.modeHint}</p>
       <Alert>{error}</Alert>
       <form className="form-stack" onSubmit={onSubmit}>
-        <Field label="Hinweis für Nutzer" htmlFor="maintenance-message">
+        <Field label={t.message} htmlFor="maintenance-message" hint={t.messageHint}>
           <textarea
             id="maintenance-message"
             value={message}
@@ -323,7 +357,7 @@ function MaintenanceForm({ mode, onSaved }: { mode: MaintenanceMode; onSaved: ()
             onChange={(event) => setMessage(event.target.value)}
           />
         </Field>
-        <Field label="Voraussichtlich bis" htmlFor="maintenance-until" optional>
+        <Field label={t.until} htmlFor="maintenance-until" optional>
           <input
             id="maintenance-until"
             type="datetime-local"
@@ -335,23 +369,24 @@ function MaintenanceForm({ mode, onSaved }: { mode: MaintenanceMode; onSaved: ()
           {mode.enabled ? (
             <>
               <button type="submit" className="secondary" disabled={saving}>
-                Hinweis speichern
+                {t.saveNotice}
               </button>
               <button type="button" disabled={saving} onClick={() => void save(false)}>
-                Wartungsmodus beenden
+                {t.end}
               </button>
             </>
           ) : (
             <button type="submit" disabled={saving}>
-              <Icon name="tool" /> Wartungsmodus einschalten
+              <Icon name="tool" /> {t.start}
             </button>
           )}
         </div>
       </form>
       {mode.updatedAt && (
         <p className="muted small" style={{ margin: "12px 0 0" }}>
-          Zuletzt geändert {formatDate(mode.updatedAt)}
-          {mode.updatedBy ? ` von ${mode.updatedBy}` : ""}.
+          {mode.updatedBy
+            ? format(t.lastChangedBy, { date: formatDate(mode.updatedAt), name: mode.updatedBy })
+            : format(t.lastChanged, { date: formatDate(mode.updatedAt) })}
         </p>
       )}
     </section>

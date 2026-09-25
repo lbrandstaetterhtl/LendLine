@@ -20,7 +20,8 @@ import { Icon } from "../components/icons";
 import { RequestSent } from "../components/RequestSent";
 import { RequestBadge } from "../components/StatusBadge";
 import { Alert, Field, PageHeader } from "../components/ui";
-import { formatDate, toLocalInput } from "../types";
+import { format, formatDate, useI18n } from "../i18n";
+import { toLocalInput } from "../types";
 
 type Hit = {
   unitId: string;
@@ -33,7 +34,7 @@ type Hit = {
   images: { id: string; url: string }[];
 };
 
-type Preset = { label: string; period: Period };
+type Preset = { id: "today" | "tomorrow" | "restOfWeek" | "nextWeek"; period: Period };
 
 function at(base: Date, dayOffset: number, hour: number): string {
   const date = new Date(base);
@@ -52,25 +53,25 @@ function presets(now: Date): Preset[] {
     const nextHour = new Date(now);
     nextHour.setHours(now.getHours() + 1, 0, 0, 0);
     list.push({
-      label: "Heute",
+      id: "today",
       period: { startsAt: toLocalInput(nextHour), desiredUntil: at(now, 0, 17) },
     });
   }
   if (weekday < 4 || weekday === 6) {
     list.push({
-      label: "Morgen",
+      id: "tomorrow",
       period: { startsAt: at(now, 1, 8), desiredUntil: at(now, 1, 17) },
     });
   }
   if (weekday < 3) {
     list.push({
-      label: "Rest der Woche",
+      id: "restOfWeek",
       period: { startsAt: at(now, 1, 8), desiredUntil: at(now, 4 - weekday, 17) },
     });
   }
   const toMonday = 7 - weekday;
   list.push({
-    label: "Nächste Woche",
+    id: "nextWeek",
     period: { startsAt: at(now, toMonday, 8), desiredUntil: at(now, toMonday + 4, 17) },
   });
   return list;
@@ -94,6 +95,8 @@ function searchPath(
 
 export function SearchPage() {
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.search;
   const canRequest = can(useAuth().user, "requests.create");
   const [now] = useState(() => new Date());
   const [quickPeriods] = useState(() => presets(now));
@@ -129,7 +132,7 @@ export function SearchPage() {
   function runSearch(period: Period) {
     setError("");
     if (period.desiredUntil <= period.startsAt) {
-      setError("Das Ende muss nach dem Start liegen.");
+      setError(t.endAfterStart);
       return;
     }
     const path = searchPath(period, categoryId, q, fieldFilter);
@@ -159,8 +162,8 @@ export function SearchPage() {
   return (
     <>
       <PageHeader
-        title={`${terms.unit} suchen`}
-        description={`Zeitraum wählen, freie ${terms.units} finden und direkt anfragen.`}
+        title={format(m.nav.searchUnits, { unit: terms.unit })}
+        description={format(t.description, { units: terms.units })}
       />
       <Alert>{error || searchError}</Alert>
       <RequestSent message={sent} />
@@ -169,27 +172,27 @@ export function SearchPage() {
         <div>
           <form className="panel" onSubmit={search}>
             <fieldset className="chips">
-              <legend className="sr-only">Schnellauswahl Zeitraum</legend>
+              <legend className="sr-only">{t.presetsLegend}</legend>
               {quickPeriods.map((preset) => {
                 const active =
                   preset.period.startsAt === startsAt &&
                   preset.period.desiredUntil === desiredUntil;
                 return (
                   <button
-                    key={preset.label}
+                    key={preset.id}
                     type="button"
                     className="chip"
                     aria-pressed={active}
                     disabled={busy}
                     onClick={() => applyPreset(preset.period)}
                   >
-                    {preset.label}
+                    {t.presets[preset.id]}
                   </button>
                 );
               })}
             </fieldset>
             <div className="form-grid cols-2">
-              <Field label="Start" htmlFor="from">
+              <Field label={t.start} htmlFor="from">
                 <input
                   id="from"
                   type="datetime-local"
@@ -198,7 +201,7 @@ export function SearchPage() {
                   required
                 />
               </Field>
-              <Field label="Ende" htmlFor="until">
+              <Field label={t.end} htmlFor="until">
                 <input
                   id="until"
                   type="datetime-local"
@@ -208,30 +211,31 @@ export function SearchPage() {
                   required
                 />
               </Field>
-              <Field label="Kategorie" htmlFor="category" optional>
+              <Field label={t.category} htmlFor="category" optional>
                 <CategorySelect
                   id="category"
                   value={categoryId}
                   onChange={setCategoryId}
-                  emptyLabel="Alle Kategorien"
+                  emptyLabel={t.allCategories}
                 />
               </Field>
-              <Field label="Name" htmlFor="q" optional>
+              <Field label={t.name} htmlFor="q" optional>
                 <input
                   id="q"
                   data-shortcut="search"
-                  title="Tastenkürzel: /"
+                  title={m.catalog.searchShortcut}
                   type="search"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="z. B. ThinkPad"
+                  placeholder={t.namePlaceholder}
                 />
               </Field>
               <FieldFilter options={fieldOptions} filter={fieldFilter} onChange={setFieldFilter} />
             </div>
             <div className="form-actions">
               <button type="submit" disabled={busy}>
-                <Icon name="search" /> {busy ? "Suche…" : `Freie ${terms.units} suchen`}
+                <Icon name="search" />{" "}
+                {busy ? t.submitting : format(t.submit, { units: terms.units })}
               </button>
             </div>
           </form>
@@ -239,9 +243,9 @@ export function SearchPage() {
           {hits && (
             <>
               <div className="section-title">
-                <h2>Ergebnisse</h2>
+                <h2>{t.results}</h2>
                 <span className="muted small">
-                  {hits.length} {hits.length === 1 ? terms.unit : terms.units} frei
+                  {format(t.free, { count: hits.length, unit: terms.unit, units: terms.units })}
                 </span>
               </div>
               <div className="table-wrap">
@@ -249,10 +253,10 @@ export function SearchPage() {
                   <thead>
                     <tr>
                       <th>{terms.device}</th>
-                      <th>Seriennummer</th>
-                      <th>Kategorie</th>
+                      <th>{t.serial}</th>
+                      <th>{t.category}</th>
                       <th>
-                        <span className="sr-only">Aktionen</span>
+                        <span className="sr-only">{m.table.actions}</span>
                       </th>
                     </tr>
                   </thead>
@@ -260,8 +264,7 @@ export function SearchPage() {
                     {hits.length === 0 && (
                       <tr>
                         <td colSpan={4} className="empty">
-                          Nichts frei in diesem Zeitraum. Versuchen Sie einen anderen Zeitraum oder
-                          eine andere Kategorie.
+                          {t.nothing}
                         </td>
                       </tr>
                     )}
@@ -300,11 +303,11 @@ export function SearchPage() {
                           >
                             {canRequest ? (
                               <>
-                                <Icon name="plus" /> Anfragen
+                                <Icon name="plus" /> {t.request}
                               </>
                             ) : (
                               <>
-                                <Icon name="calendar" /> Kalender
+                                <Icon name="calendar" /> {t.calendar}
                               </>
                             )}
                           </button>
@@ -318,17 +321,17 @@ export function SearchPage() {
           )}
         </div>
 
-        <aside className="aside-stack" aria-label="Meine Termine und Hilfe">
+        <aside className="aside-stack" aria-label={t.asideLabel}>
           <section className="card">
             <div className="card-title">
-              <h2>Meine nächsten Termine</h2>
+              <h2>{t.upcoming}</h2>
               <Link to="/my-requests" className="small">
-                Alle
+                {t.all}
               </Link>
             </div>
             {upcoming.length === 0 ? (
               <p className="muted small" style={{ margin: 0 }}>
-                Keine anstehenden Ausleihen.
+                {t.noUpcoming}
               </p>
             ) : (
               <ul className="mini-list">
@@ -354,12 +357,12 @@ export function SearchPage() {
 
           <section className="card">
             <div className="card-title">
-              <h2>So funktioniert’s</h2>
+              <h2>{t.howTitle}</h2>
             </div>
             <ol className="steps">
-              <li>Zeitraum wählen oder eine Schnellauswahl nutzen.</li>
-              <li>Beim passenden Eintrag „Anfragen“ klicken, Formular ausfüllen, senden.</li>
-              <li>Die Verwaltung bestätigt, Sie erhalten eine E-Mail.</li>
+              {t.how.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
             </ol>
           </section>
         </aside>

@@ -13,7 +13,7 @@ import {
 } from "../services/categoryService.js";
 
 const categorySchema = z.object({
-  name: z.string().trim().min(2, "Kategorie muss mindestens 2 Zeichen haben").max(80),
+  name: z.string().trim().min(2, "validation.categoryNameMin").max(80),
 });
 
 export const categoryRouter = Router();

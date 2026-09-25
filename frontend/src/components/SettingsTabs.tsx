@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 
+import { useI18n } from "../i18n";
 import { useCanOpen } from "../ui/UiContext";
 
 type Tab = { to: string; label: string };
@@ -27,27 +28,29 @@ function PageTabs({ title, tabs }: { title: string; tabs: Tab[] }) {
 }
 
 export function SettingsTabs() {
+  const { m } = useI18n();
   return (
     <PageTabs
-      title="Einstellungen"
+      title={m.nav.settings}
       tabs={[
-        { to: "/admin/modus", label: "Modus" },
-        { to: "/admin/erscheinungsbild", label: "Erscheinungsbild" },
-        { to: "/admin/einstellungen", label: "Regeln & Formular" },
-        { to: "/admin/emails", label: "E-Mails" },
-        { to: "/admin/wartung", label: "Wartung" },
+        { to: "/admin/modus", label: m.nav.tabMode },
+        { to: "/admin/erscheinungsbild", label: m.nav.tabAppearance },
+        { to: "/admin/einstellungen", label: m.nav.tabRules },
+        { to: "/admin/emails", label: m.nav.tabMail },
+        { to: "/admin/wartung", label: m.nav.tabMaintenance },
       ]}
     />
   );
 }
 
 export function UserTabs() {
+  const { m } = useI18n();
   return (
     <PageTabs
-      title="Benutzer"
+      title={m.nav.users}
       tabs={[
-        { to: "/admin/users", label: "Benutzer" },
-        { to: "/admin/gruppen", label: "Gruppen und Rechte" },
+        { to: "/admin/users", label: m.nav.users },
+        { to: "/admin/gruppen", label: m.nav.tabGroups },
       ]}
     />
   );

@@ -7,9 +7,10 @@ import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../auth/permissions";
+import { useTerms } from "../branding/BrandingContext";
 import { AuditTimeline } from "../components/AuditTimeline";
 import { Alert, PageHeader } from "../components/ui";
-import { formatDate } from "../types";
+import { format, formatDate, useI18n } from "../i18n";
 import { useFeature } from "../ui/UiContext";
 
 type Summary = {
@@ -33,6 +34,9 @@ export function AdminHomePage() {
   const [now] = useState(() => new Date());
   const { data: summary, error } = useApi<Summary>("/api/admin/summary");
   const { user } = useAuth();
+  const { m } = useI18n();
+  const t = m.home;
+  const terms = useTerms();
   const seesRequests = can(user, "requests.view");
   const seesLoans = can(user, "loans.manage");
   const auditShown = useFeature("audit");
@@ -52,35 +56,39 @@ export function AdminHomePage() {
 
   return (
     <>
-      <PageHeader
-        title="Übersicht"
-        description="Offene Anfragen und laufende Ausleihen auf einen Blick."
-      />
+      <PageHeader title={t.title} description={t.description} />
       <Alert>{error}</Alert>
       {summary && (
         <div className="stats">
           <Link className="stat" to="/admin/requests">
-            <div className="label">Offene Anfragen</div>
+            <div className="label">{t.openRequests}</div>
             <div className="value">{summary.openRequests}</div>
-            <div className="sub">warten auf Entscheidung</div>
+            <div className="sub">{t.openRequestsSub}</div>
           </Link>
           <Link className="stat" to="/admin/borrowed">
-            <div className="label">Laufende Ausleihen</div>
+            <div className="label">{t.activeLoans}</div>
             <div className="value">{summary.activeLoans}</div>
-            <div className="sub">bestätigt, nicht zurück</div>
+            <div className="sub">{t.activeLoansSub}</div>
           </Link>
           <Link className="stat" to="/admin/devices">
-            <div className="label">Stücke verfügbar</div>
+            <div className="label">{format(t.unitsAvailable, { units: terms.units })}</div>
             <div className="value">{summary.devicesAvailable}</div>
             <div className="sub">
-              {summary.devicesBorrowed} ausgeliehen · {summary.devicesDefective} defekt
+              {format(t.unitsSub, {
+                borrowed: summary.devicesBorrowed,
+                defective: summary.devicesDefective,
+              })}
             </div>
           </Link>
           <Link className="stat" to="/admin/users">
-            <div className="label">Benutzer</div>
+            <div className="label">{t.users}</div>
             <div className="value">{summary.users}</div>
             <div className="sub">
-              {summary.devices} Geräte · {summary.categories} Kategorien
+              {format(t.usersSub, {
+                devices: summary.devices,
+                devicesTerm: terms.devices,
+                categories: summary.categories,
+              })}
             </div>
           </Link>
         </div>
@@ -90,14 +98,14 @@ export function AdminHomePage() {
         {seesRequests && (
           <section className="card">
             <div className="card-title">
-              <h2>Warten auf Entscheidung</h2>
+              <h2>{t.waiting}</h2>
               <Link to="/admin/requests" className="small">
-                Alle prüfen
+                {t.reviewAll}
               </Link>
             </div>
             {waiting.length === 0 ? (
               <p className="muted small" style={{ margin: 0 }}>
-                Keine offenen Anfragen.
+                {t.noOpen}
               </p>
             ) : (
               <ul className="mini-list">
@@ -111,7 +119,7 @@ export function AdminHomePage() {
                     </div>
                     <div className="muted small">
                       {formatDate(item.startsAt)} – {formatDate(item.desiredUntil)}
-                      {item.room ? ` · Raum ${item.room.name}` : ""}
+                      {item.room ? ` · ${terms.room} ${item.room.name}` : ""}
                     </div>
                   </li>
                 ))}
@@ -123,14 +131,14 @@ export function AdminHomePage() {
         {seesLoans && (
           <section className="card">
             <div className="card-title">
-              <h2>Rückgaben heute & überfällig</h2>
+              <h2>{t.due}</h2>
               <Link to="/admin/borrowed" className="small">
-                Alle Ausleihen
+                {t.allLoans}
               </Link>
             </div>
             {dueToday.length === 0 ? (
               <p className="muted small" style={{ margin: 0 }}>
-                Heute ist keine Rückgabe fällig.
+                {t.noneDue}
               </p>
             ) : (
               <ul className="mini-list">
@@ -145,10 +153,11 @@ export function AdminHomePage() {
                             <span className="muted mono">{loan.device.serialNumber}</span>
                           </strong>
                         </Link>
-                        {overdue && <span className="badge st-rejected">überfällig</span>}
+                        {overdue && <span className="badge st-rejected">{t.overdue}</span>}
                       </div>
                       <div className="muted small">
-                        {loan.user.name} · bis {formatDate(loan.desiredUntil)}
+                        {loan.user.name} ·{" "}
+                        {format(m.common.until, { date: formatDate(loan.desiredUntil) })}
                       </div>
                     </li>
                   );
@@ -162,13 +171,13 @@ export function AdminHomePage() {
       {seesAudit && (
         <>
           <div className="section-title">
-            <h2>Letzte Vorgänge</h2>
+            <h2>{t.recent}</h2>
             <Link to="/admin/protokoll" className="small">
-              Gesamtes Protokoll
+              {t.fullAudit}
             </Link>
           </div>
           {events.length === 0 ? (
-            <div className="panel empty-state">Noch keine Einträge.</div>
+            <div className="panel empty-state">{t.noEntries}</div>
           ) : (
             <AuditTimeline events={events} today={now} />
           )}

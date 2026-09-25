@@ -8,7 +8,7 @@ import { validateBody } from "../middleware/validate.js";
 import { createRoom, deleteRoom, listRooms, updateRoom } from "../services/roomService.js";
 
 const roomSchema = z.object({
-  name: z.string().trim().min(1, "Raumname fehlt").max(80),
+  name: z.string().trim().min(1, "validation.roomNameMissing").max(80),
   building: z.string().trim().max(80).optional().default(""),
   description: z.string().trim().max(500).optional().default(""),
 });

@@ -42,6 +42,8 @@ model User {
   sessionVersion     Int             @default(0)
   /// Set when an admin chose the password: the user must pick their own at the next login.
   mustChangePassword Boolean         @default(false)
+  /// Language of the interface and the e-mails ("de", "en", "es", "zh", "hi"); null = German.
+  locale             String?
   requests           BorrowRequest[]
   refreshTokens      RefreshToken[]
 

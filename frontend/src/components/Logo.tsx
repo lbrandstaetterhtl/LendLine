@@ -1,4 +1,5 @@
 import { useBranding } from "../branding/BrandingContext";
+import { useI18n } from "../i18n";
 
 /**
  * LendLine mark "Rücklauf-Schleife": an L drawn as one line whose foot loops back as an arrow (a
@@ -55,6 +56,7 @@ export function Wordmark() {
  */
 export function BrandLogo({ height }: { height: number }) {
   const { branding } = useBranding();
+  const { m } = useI18n();
   if (!branding.logoUrl) {
     return (
       <>
@@ -68,14 +70,14 @@ export function BrandLogo({ height }: { height: number }) {
       <img
         className="brand-logo-light"
         src={branding.logoUrl}
-        alt="Firmenlogo"
+        alt={m.misc.companyLogo}
         style={{ maxHeight: height }}
       />
       {branding.logoDarkUrl && (
         <img
           className="brand-logo-dark"
           src={branding.logoDarkUrl}
-          alt="Firmenlogo"
+          alt={m.misc.companyLogo}
           style={{ maxHeight: height }}
         />
       )}

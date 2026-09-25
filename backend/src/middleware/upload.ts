@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { t } from "../i18n/index.js";
 import { HttpError } from "../lib/errors.js";
 import { brandingDir } from "../services/brandingService.js";
 import { uploadDir } from "../services/imageService.js";
@@ -28,7 +29,7 @@ const upload = multer({
   fileFilter: (_req, file, callback) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!file.mimetype.startsWith("image/") || !allowed.has(ext)) {
-      callback(new Error("Nur JPG, PNG, WEBP oder GIF"));
+      callback(new Error(t((m) => m.errors.deviceImageTypes)));
       return;
     }
     callback(null, true);
@@ -51,7 +52,7 @@ const logoUpload = multer({
   fileFilter: (_req, file, callback) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!file.mimetype.startsWith("image/") || !logoTypes.has(ext)) {
-      callback(new Error("Nur SVG, PNG, JPG, WEBP oder ICO"));
+      callback(new Error(t((m) => m.errors.brandingImageTypes)));
       return;
     }
     callback(null, true);
@@ -65,10 +66,15 @@ function toHttpError(next: NextFunction) {
       return;
     }
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      next(new HttpError(400, "Die Datei ist zu groß"));
+      next(
+        new HttpError(
+          400,
+          t((m) => m.errors.fileTooLarge)
+        )
+      );
       return;
     }
-    const message = error instanceof Error ? error.message : "Upload fehlgeschlagen";
+    const message = error instanceof Error ? error.message : t((m) => m.errors.uploadFailed);
     next(new HttpError(400, message));
   };
 }

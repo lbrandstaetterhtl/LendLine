@@ -1,5 +1,10 @@
+import type { Locale } from "../i18n/index.js";
 import type { MailSettings } from "../services/settingsService.js";
 
+/**
+ * German date for stored texts (audit details); mails use `formatDateFor` in the recipient's
+ * language.
+ */
 export function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("de-DE", {
     dateStyle: "medium",
@@ -24,6 +29,10 @@ export type MailMessage = {
  * Everything a company can adjust in its mails, resolved once per sending.
  */
 export type MailContext = {
+  /**
+   * Language of the recipient; built-in texts and dates follow it, company texts stay as written.
+   */
+  locale: Locale;
   settings: MailSettings;
   terms: { device: string; unit: string; room: string; subtitle: string };
   /**
@@ -86,7 +95,7 @@ export function composeMail(
   }
 ): MailMessage {
   const { settings } = ctx;
-  const greeting = `${settings.greeting || "Guten Tag"} ${input.recipientName},`;
+  const greeting = `${settings.greeting} ${input.recipientName},`;
   const linkUrl = input.link ? `${ctx.appUrl}${input.link.path}` : "";
   const text = [
     greeting,
@@ -104,7 +113,7 @@ export function composeMail(
     .map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`)
     .join("\n       ");
   const html = `<!DOCTYPE html>
-<html lang="de">
+<html lang="${ctx.locale}">
 <body style="font-family: Arial, Helvetica, sans-serif; color: #1c1f24; font-size: 14px; line-height: 1.45;">
   ${header(ctx)}
   <h1 style="font-size: 16px; margin: 0 0 12px;">${escapeHtml(input.title)}</h1>

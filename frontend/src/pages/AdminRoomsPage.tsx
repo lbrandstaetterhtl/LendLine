@@ -6,6 +6,7 @@ import { useApi } from "../api/useApi";
 import { useTerms } from "../branding/BrandingContext";
 import { Icon } from "../components/icons";
 import { Alert, Field, Modal, PageHeader } from "../components/ui";
+import { format, useI18n } from "../i18n";
 
 type Room = { id: string; name: string; building: string; description: string };
 
@@ -13,6 +14,8 @@ const empty = { name: "", building: "", description: "" };
 
 export function AdminRoomsPage() {
   const terms = useTerms();
+  const { m } = useI18n();
+  const t = m.rooms;
   const { data: rooms, error: loadError, reload } = useApi<Room[]>("/api/rooms");
   const [form, setForm] = useState(empty);
   // null: closed; id null: creating; id set: editing that record.
@@ -39,29 +42,24 @@ export function AdminRoomsPage() {
       } else {
         await api("/api/rooms", { method: "POST", body: JSON.stringify(form) });
       }
-      setInfo(`Raum „${form.name}“ ${editingId ? "gespeichert" : "angelegt"}.`);
+      setInfo(format(editingId ? t.saved : t.created, { room: terms.room, name: form.name }));
       setEditor(null);
       reload();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      setFormError(err instanceof Error ? err.message : m.categories.saveFailed);
     }
   }
 
   async function remove(room: Room) {
-    if (
-      !window.confirm(
-        `Raum „${room.name}“ löschen?\n\nDas geht nur, wenn keine Anfrage ihn verwendet.`
-      )
-    )
-      return;
+    if (!window.confirm(format(t.confirmDelete, { room: terms.room, name: room.name }))) return;
     setError("");
     setInfo("");
     try {
       await api(`/api/rooms/${room.id}`, { method: "DELETE" });
-      setInfo(`Raum „${room.name}“ gelöscht.`);
+      setInfo(format(t.deleted, { room: terms.room, name: room.name }));
       reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : m.categories.deleteFailed);
     }
   }
 
@@ -69,10 +67,15 @@ export function AdminRoomsPage() {
     <>
       <PageHeader
         title={terms.rooms}
-        description="Jede Ausleihe wird für einen Raum angefragt."
+        description={format(t.description, { room: terms.room })}
         actions={
-          <button type="button" onClick={() => open()} data-shortcut="new" title="Tastenkürzel: n">
-            <Icon name="plus" /> Raum anlegen
+          <button
+            type="button"
+            onClick={() => open()}
+            data-shortcut="new"
+            title={m.categories.shortcutNew}
+          >
+            <Icon name="plus" /> {format(t.create, { room: terms.room })}
           </button>
         }
       />
@@ -82,11 +85,11 @@ export function AdminRoomsPage() {
         <table>
           <thead>
             <tr>
-              <th>Raum</th>
-              <th>Gebäude</th>
-              <th>Beschreibung</th>
+              <th>{terms.room}</th>
+              <th>{t.building}</th>
+              <th>{t.descriptionLabel}</th>
               <th>
-                <span className="sr-only">Aktionen</span>
+                <span className="sr-only">{m.table.actions}</span>
               </th>
             </tr>
           </thead>
@@ -99,10 +102,10 @@ export function AdminRoomsPage() {
                 <td className="actions-cell">
                   <div className="actions">
                     <button type="button" className="secondary sm" onClick={() => open(room)}>
-                      Bearbeiten
+                      {m.common.edit}
                     </button>
                     <button type="button" className="danger sm" onClick={() => void remove(room)}>
-                      Löschen
+                      {m.common.delete}
                     </button>
                   </div>
                 </td>
@@ -111,7 +114,7 @@ export function AdminRoomsPage() {
             {rooms?.length === 0 && (
               <tr>
                 <td colSpan={4} className="empty">
-                  Noch keine Räume.
+                  {format(t.none, { rooms: terms.rooms })}
                 </td>
               </tr>
             )}
@@ -122,22 +125,22 @@ export function AdminRoomsPage() {
       {editor && (
         <Modal
           variant="sheet"
-          title={editingId ? "Raum bearbeiten" : "Raum anlegen"}
+          title={format(editingId ? t.edit : t.create, { room: terms.room })}
           onClose={() => setEditor(null)}
           footer={
             <>
               <button type="button" className="secondary" onClick={() => setEditor(null)}>
-                Abbrechen
+                {m.common.cancel}
               </button>
               <button type="submit" form="room-form">
-                {editingId ? "Änderungen speichern" : "Raum anlegen"}
+                {editingId ? t.saveChanges : format(t.create, { room: terms.room })}
               </button>
             </>
           }
         >
           <Alert>{formError}</Alert>
           <form id="room-form" className="form-stack" onSubmit={(event) => void onSubmit(event)}>
-            <Field label="Name" htmlFor="room-name" hint="Eindeutige Raumbezeichnung, z. B. A101.">
+            <Field label={t.name} htmlFor="room-name" hint={t.nameHint}>
               <input
                 id="room-name"
                 value={form.name}
@@ -146,22 +149,22 @@ export function AdminRoomsPage() {
                 maxLength={80}
               />
             </Field>
-            <Field label="Gebäude" htmlFor="building" optional>
+            <Field label={t.building} htmlFor="building" optional>
               <input
                 id="building"
                 value={form.building}
                 onChange={(e) => setForm({ ...form, building: e.target.value })}
                 maxLength={80}
-                placeholder="z. B. Haus A"
+                placeholder={t.buildingPlaceholder}
               />
             </Field>
-            <Field label="Beschreibung" htmlFor="room-desc" optional>
+            <Field label={t.descriptionLabel} htmlFor="room-desc" optional>
               <textarea
                 id="room-desc"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 maxLength={500}
-                placeholder="z. B. Seminarraum, 30 Plätze"
+                placeholder={t.descriptionPlaceholder}
               />
             </Field>
           </form>
