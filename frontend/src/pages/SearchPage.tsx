@@ -136,7 +136,7 @@ export function SearchPage() {
       return;
     }
     const path = searchPath(period, categoryId, q, fieldFilter);
-    // Same query again (e.g. "Suchen" pressed twice): fetch fresh availability anyway.
+    // Same query again (e.g. search pressed twice): fetch fresh availability anyway.
     if (path === searched.path) reloadHits();
     else setSearched({ period, path });
   }

@@ -12,7 +12,7 @@ async function main() {
     !FRONTEND_ORIGIN || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(FRONTEND_ORIGIN);
   if ((NODE_ENV === "production" || !local) && ALLOW_DEMO_SEED !== "true") {
     throw new Error(
-      "Der Demo-Seed legt Konten mit öffentlich bekannten Passwörtern an und läuft nur lokal. Für eine Test-Installation ALLOW_DEMO_SEED=true setzen."
+      "The demo seed creates accounts with publicly known passwords and only runs locally. Set ALLOW_DEMO_SEED=true for a test installation."
     );
   }
   const adminPassword = await bcrypt.hash("Admin123!", 12);

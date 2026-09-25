@@ -148,7 +148,7 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
 
 export function useBranding(): BrandingContextValue {
   const ctx = useContext(BrandingContext);
-  if (!ctx) throw new Error("BrandingProvider fehlt");
+  if (!ctx) throw new Error("BrandingProvider missing");
   return ctx;
 }
 

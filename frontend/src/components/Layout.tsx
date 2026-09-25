@@ -19,7 +19,7 @@ import { NAV_REFRESH_EVENT } from "./ui";
 type NavItem = {
   to: string;
   /**
-   * Text in the current language, with the company's terms ("Stück" → "Ausrüstung").
+   * Text in the current language, with the company's terms ("Piece" → "Equipment").
    */
   label: (m: Messages, terms: Terms) => string;
   icon: IconName;

@@ -12,7 +12,7 @@ import { zh } from "./zh";
  * Languages of the interface. German is the source: the other dictionaries are typed against it, so
  * a missing text fails the type check. The server answers in the same language (Accept-Language).
  */
-export const locales = ["de", "en", "es", "zh", "hi"] as const;
+export const locales = ["en", "de", "es", "zh", "hi"] as const;
 export type Locale = (typeof locales)[number];
 
 /**
@@ -52,16 +52,10 @@ function storedLocale(): Locale | null {
 }
 
 /**
- * The saved choice, else the first browser language we have, else German.
+ * The saved choice, else English (the default language; the browser language is not used).
  */
 function initialLocale(): Locale {
-  const stored = storedLocale();
-  if (stored) return stored;
-  for (const tag of navigator.languages) {
-    const base = tag.toLowerCase().split("-")[0];
-    if (isLocale(base)) return base;
-  }
-  return "de";
+  return storedLocale() ?? "en";
 }
 
 // Also read outside React: the API client sends it, the date helpers format with it. The whole

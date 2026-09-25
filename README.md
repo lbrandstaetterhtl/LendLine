@@ -1,13 +1,15 @@
 # LendLine
 
-Interne Verwaltung für IT-Geräteausleihen. Nutzer stellen Anfragen, die Verwaltung bestätigt oder lehnt ab und erfasst Rückgaben. Statusänderungen lösen E-Mails aus.
+Internal IT equipment lending. Users request devices for a period, the administration approves or rejects the requests and records returns. Status changes trigger e-mails.
 
-## Voraussetzungen
+Project documentation: [`doc/LendLine.md`](doc/LendLine.md).
 
-- Node.js 20 oder neuer
-- Docker (für PostgreSQL) oder eine eigene PostgreSQL-16-Datenbank
+## Requirements
 
-## Einrichtung
+- Node.js 20 or newer
+- Docker (for PostgreSQL) or an own PostgreSQL 16 database
+
+## Setup
 
 ```bash
 docker compose up -d
@@ -19,14 +21,13 @@ npx prisma db seed
 npm run dev
 ```
 
-Vor dem ersten Start in `backend/.env` den Wert `JWT_ACCESS_SECRET` durch einen zufälligen Wert
-ersetzen, mit dem Platzhalter startet die API nicht:
+Before the first start, replace `JWT_ACCESS_SECRET` in `backend/.env` with a random value; the API does not start with the placeholder:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-In einem zweiten Terminal:
+In a second terminal:
 
 ```bash
 cd frontend
@@ -39,50 +40,53 @@ API: http://localhost:3001
 
 ## LDAP
 
-LDAP ist aus, solange `LDAP_URL` leer ist. Zum Aktivieren in `backend/.env`:
+LDAP is off as long as `LDAP_URL` is empty. To turn it on, in `backend/.env`:
 
 ```
 LDAP_URL=ldaps://ldap.example.edu
 LDAP_BIND_DN=cn=lendline,ou=service,dc=example,dc=edu
-LDAP_BIND_PASSWORD=geheim
+LDAP_BIND_PASSWORD=secret
 LDAP_BASE_DN=ou=people,dc=example,dc=edu
 LDAP_ADMIN_GROUP=CN=LendLine-Admins,OU=Groups,DC=example,DC=edu
 ```
 
-Die Anmeldung akzeptiert dann E-Mail, `sAMAccountName` oder `uid`. Ein Treffer wird lokal angelegt (`authSource=LDAP`). Die Gruppe kommt aus den Verzeichnisgruppen, die bei einer LendLine-Gruppe eingetragen sind, sonst führt `LDAP_ADMIN_GROUP` in die Gruppe „Verwaltung“. `LDAP_ADMIN_GROUP` muss vollständige DNs enthalten, mehrere werden mit `;` getrennt; ein bloßer Gruppenname verhindert den Start. In Produktion (`NODE_ENV=production`) startet die API nur mit `ldaps://` und geprüftem Zertifikat, außer mit `LDAP_ALLOW_INSECURE=true`. Lokale Demo-Konten bleiben gültig, wenn der Benutzer im Verzeichnis nicht gefunden wird. `LDAP_ALLOW_LOCAL_REGISTER=false` schaltet die Selbstregistrierung ab.
+Sign-in then accepts the e-mail address, `sAMAccountName` or `uid`. A match is created locally (`authSource=LDAP`). The group comes from the directory groups entered for a LendLine group; otherwise `LDAP_ADMIN_GROUP` leads into the group "Verwaltung". `LDAP_ADMIN_GROUP` must contain full DNs, several separated by `;`; a bare group name stops the start. In production (`NODE_ENV=production`) the API only starts with `ldaps://` and a verified certificate, unless `LDAP_ALLOW_INSECURE=true`. Local demo accounts stay valid when the user is not found in the directory. `LDAP_ALLOW_LOCAL_REGISTER=false` turns self-registration off.
 
-## Anpassen
+## Customizing
 
-Alles Firmenspezifische stellt die Verwaltung in der Oberfläche ein, ohne Neustart:
+The administration sets everything company-specific in the interface, without a restart:
 
-- **Modus:** Einfach, Mittel, Voll oder eigene Auswahl – wie viel der Verwaltung überhaupt angezeigt wird. Ausgeblendete Bereiche behalten ihre Einstellungen.
+- **Mode:** simple, medium, full or a custom selection – how much of the administration is shown at all. Hidden areas keep their settings.
+- **Appearance:** logo (light/dark), accent colour, font, font size, corners, sidebar, browser icon, own terms (e.g. "Equipment" instead of "Device"), heading, text and picture of the sign-in page.
+- **Settings:** self-registration (**off** by default, optionally only for certain e-mail domains), maximum loan duration, open requests per person, automatic approval, request form (room and comment required/optional/hidden, up to 10 own fields).
+- **Devices:** free properties per device (e.g. "RAM: 16 GB", "Ports: HDMI, USB-C"). Users see them in the catalogue and the search and can filter by them.
+- **E-mails:** sender name, logo, greeting, signature, footer and an own text per message, with a preview.
+- **Languages:** German, English, Spanish, Chinese (simplified) and Hindi. Everyone picks their language in the sidebar, on the sign-in page or under "My account"; e-mails go out in the recipient's language. Default texts and terms appear translated, the company's own texts as entered.
 
-- **Erscheinungsbild:** Logo (hell/dunkel), Akzentfarbe, Schrift, Schriftgröße, Ecken, Seitenleiste, Browser-Symbol, eigene Begriffe (z. B. „Ausrüstung“ statt „Gerät“), Überschrift, Text und Bild der Anmeldeseite.
-- **Einstellungen:** Selbstregistrierung (standardmäßig **aus**, optional nur für bestimmte E-Mail-Domains), Höchstdauer einer Ausleihe, offene Anfragen pro Person, automatische Bestätigung, Anfrageformular (Raum und Kommentar Pflicht/optional/ausgeblendet, bis zu 10 eigene Felder).
-- **Geräte:** freie Eigenschaften pro Gerät (z. B. „RAM: 16 GB“, „Anschlüsse: HDMI, USB-C“). Nutzer sehen sie im Katalog und in der Suche und können danach filtern.
-- **E-Mails:** Absendername, Logo, Anrede, Signatur, Fußzeile und ein eigener Text je Nachricht, mit Vorschau.
-- **Sprachen:** Deutsch, Englisch, Spanisch, Chinesisch (vereinfacht) und Hindi. Jede Person wählt ihre Sprache in der Seitenleiste, auf der Anmeldeseite oder unter „Mein Konto“; E-Mails gehen in der Sprache der empfangenden Person hinaus. Standardtexte und -begriffe erscheinen übersetzt, eigene Texte der Firma so, wie sie eingegeben wurden.
+The administration creates accounts under "Users". Every person belongs to exactly one **group**; under "Users → Groups and permissions" the administration creates groups and sets per group what it may do (23 single permissions), which categories it borrows from, which categories it manages and which loan rules apply. Built in are "Verwaltung" (all permissions) and "Nutzer" (catalogue and requests). A password set there is temporary: at the first sign-in the person must choose their own. Everyone can change their password under "My account".
 
-Konten legt die Verwaltung unter „Benutzer“ an. Jede Person gehört zu genau einer **Gruppe**; unter „Benutzer → Gruppen und Rechte“ legt die Verwaltung Gruppen an und stellt pro Gruppe ein, was sie darf (23 einzelne Rechte), aus welchen Kategorien sie ausleiht, welche Kategorien sie verwaltet und welche Ausleihregeln für sie gelten. Vorhanden sind „Verwaltung“ (alle Rechte) und „Nutzer“ (Katalog und Anfragen). Das dabei vergebene Passwort ist vorläufig: Bei der ersten Anmeldung muss die Person ein eigenes festlegen. Unter „Mein Konto“ kann jede Person ihr Passwort selbst ändern.
+## Demo accounts
 
-## Demo-Konten
+| Role           | E-mail               | Password   |
+| -------------- | -------------------- | ---------- |
+| Administration | admin@lendline.local | Admin123!  |
+| User           | user@lendline.local  | User12345! |
 
-| Rolle      | E-Mail               | Passwort   |
-| ---------- | -------------------- | ---------- |
-| Verwaltung | admin@lendline.local | Admin123!  |
-| Nutzer     | user@lendline.local  | User12345! |
+The demo seed only runs while `FRONTEND_ORIGIN` points to `localhost` (for a test installation: `ALLOW_DEMO_SEED=true`).
 
-Der Demo-Seed läuft nur, solange `FRONTEND_ORIGIN` auf `localhost` zeigt (für eine Test-Installation: `ALLOW_DEMO_SEED=true`).
+## E-mail
 
-## E-Mail
+SMTP values are in `backend/.env`. Without `SMTP_HOST`, messages are only printed to the API console; lending carries on regardless.
 
-SMTP-Werte stehen in `backend/.env`. Ohne `SMTP_HOST` werden Nachrichten nur in der API-Konsole ausgegeben. Der Ausleihvorgang bricht dadurch nicht ab.
+Templates are in `backend/src/emails/templates.ts`.
 
-Vorlagen liegen in `backend/src/emails/templates/`.
+## Logs
 
-## Fachregeln
+Server logs and startup errors are in English. The activity log page shows entries in the reader's language.
 
-- Anfragen nur für verfügbare Geräte ohne andere offene oder bestätigte Anfrage.
-- Bestätigen setzt das Gerät auf ausgeliehen und lehnt übrige offene Anfragen für dasselbe Gerät ab.
-- Rückgabe setzt ein ausgeliehenes Gerät wieder auf verfügbar. Ein als defekt markiertes Gerät bleibt defekt.
-- `BORROWED` kann nicht manuell gesetzt werden.
+## Business rules
+
+- A request is for one piece (unit) of a device and a period. Pieces that are defective, or already requested or approved for an overlapping period, cannot be requested.
+- Approving reserves the piece for the period and checks for overlaps again.
+- Recording the return ends the loan and frees the piece. A piece marked defective stays defective.
+- A piece's "borrowed" status follows from the approved loans; it cannot be set by hand.

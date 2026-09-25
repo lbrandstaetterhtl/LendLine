@@ -14,7 +14,7 @@ export type User = {
   permissions: Permission[];
   createdAt: string;
   /**
-   * The password was set by an admin; the app sends the person to "Mein Konto" first.
+   * The password was set by an admin; the app sends the person to "My account" first.
    */
   mustChangePassword: boolean;
   /**

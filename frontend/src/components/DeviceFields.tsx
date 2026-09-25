@@ -18,7 +18,7 @@ export function useFieldOptions() {
 }
 
 /**
- * A device's properties as small "Name Wert" tags.
+ * A device's properties as small "name value" tags.
  */
 export function DeviceFieldList({ fields }: { fields?: DeviceField[] }) {
   const enabled = useFeature("devices.properties");
@@ -38,7 +38,7 @@ export function DeviceFieldList({ fields }: { fields?: DeviceField[] }) {
 export type FieldFilterValue = { field: string; value: string };
 
 /**
- * "Eigenschaft" and "Wert" selects built from the values actually in use. Only a complete pair
+ * "Property" and "Value" selects built from the values actually in use. Only a complete pair
  * filters; changing the property clears the value.
  */
 export function FieldFilter({
@@ -91,8 +91,8 @@ export function FieldFilter({
 }
 
 /**
- * Free "Name: Wert" rows for the device editor. Names and values already used elsewhere are offered
- * as suggestions, so "RAM" does not turn into "Ram" or "Arbeitsspeicher" on the next device.
+ * Free "name: value" rows for the device editor. Names and values already used elsewhere are
+ * offered as suggestions, so "RAM" does not turn into "Ram" or "Memory" on the next device.
  */
 export function DeviceFieldsEditor({
   fields,

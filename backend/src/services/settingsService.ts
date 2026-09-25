@@ -36,7 +36,7 @@ export const policySchema = z.object({
        */
       enabled: z.boolean().default(false),
       /**
-       * Allowed e-mail domains such as "firma.de"; empty = any.
+       * Allowed e-mail domains such as "company.com"; empty = any.
        */
       domains: z
         .array(
@@ -81,7 +81,7 @@ export const policySchema = z.object({
 
 export const mailSchema = z.object({
   /**
-   * Display name before the SMTP_FROM address, e.g. "IT-Service Firma".
+   * Display name before the SMTP_FROM address, e.g. "IT Service Example Ltd".
    */
   senderName: z.string().trim().max(80).default(""),
   /**

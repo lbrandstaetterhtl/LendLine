@@ -1,9 +1,9 @@
 /**
- * Areas of the administration that the settings mode can hide ("Einstellungsmodus"). Hiding only
- * simplifies the interface: what is configured keeps working, and the API still accepts changes
- * from people with the permission. What stays in every mode (logo, accent colour, registration,
- * users, categories, rooms, devices, requests) is not listed. Labels and descriptions are in the
- * dictionaries (`i18n/*.ts`, `uiFeatures`).
+ * Areas of the administration that the settings mode can hide. Hiding only simplifies the
+ * interface: what is configured keeps working, and the API still accepts changes from people with
+ * the permission. What stays in every mode (logo, accent colour, registration, users, categories,
+ * rooms, devices, requests) is not listed. Labels and descriptions are in the dictionaries
+ * (`i18n/*.ts`, `uiFeatures`).
  */
 export const uiModes = ["simple", "medium", "full", "custom"] as const;
 export type UiMode = (typeof uiModes)[number];

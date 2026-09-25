@@ -125,7 +125,7 @@ async function dispatch(mails: PendingMail[]): Promise<void> {
       contexts.set(locale, ctx);
       await sendMail(mail.to, mail.build(ctx));
     } catch (error) {
-      console.error("E-Mail-Versand fehlgeschlagen", error);
+      console.error("Sending an e-mail failed", error);
     }
   }
 }
@@ -168,7 +168,7 @@ export async function createRequest(
       400,
       t((m) => m.errors.endInFuture)
     );
-  // Today counts from midnight, so "Heute" still works in the afternoon.
+  // Today counts from midnight, so the "today" preset still works in the afternoon.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   if (startsAt < today)
@@ -630,7 +630,8 @@ function auditContext(request: {
 }
 
 /**
- * "rechtzeitig" or how late the device came back, e.g. "3 Std. verspätet".
+ * "rechtzeitig" (on time) or how late the device came back, e.g. "3 Std. verspätet" (3 h late);
+ * stored in German like all audit details and translated on reading.
  */
 function punctuality(due: Date, returnedAt: Date): string {
   const lateMinutes = Math.round((returnedAt.getTime() - due.getTime()) / 60_000);

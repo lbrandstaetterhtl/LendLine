@@ -432,7 +432,7 @@ const statusLabel: Record<DeviceStatus, string> = {
 };
 
 /**
- * "1 Stück", "3 Stücke"; after "mit" the dative "3 Stücken".
+ * The pieces with their status for the audit log, e.g. "LT-1001 (Verfügbar), LT-1002 (Defekt)".
  */
 function unitList(units: { serialNumber: string; status: DeviceStatus }[]): string {
   return units

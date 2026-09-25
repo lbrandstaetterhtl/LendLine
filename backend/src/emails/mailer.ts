@@ -24,7 +24,7 @@ function smtpConfigured(): boolean {
 export async function sendMail(to: string, message: MailMessage): Promise<void> {
   if (!smtpConfigured()) {
     console.info(
-      `[mail] SMTP nicht konfiguriert. Nachricht an ${to}: ${message.subject}\n${message.text}`
+      `[mail] SMTP not configured. Message to ${to}: ${message.subject}\n${message.text}`
     );
     return;
   }

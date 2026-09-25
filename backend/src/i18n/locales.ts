@@ -2,9 +2,12 @@
  * The supported languages. Separate from `index.ts` so the request context can resolve the language
  * without importing the dictionaries.
  */
-export const locales = ["de", "en", "es", "zh", "hi"] as const;
+export const locales = ["en", "de", "es", "zh", "hi"] as const;
 export type Locale = (typeof locales)[number];
-export const defaultLocale: Locale = "de";
+/**
+ * Without a header or a saved choice: English.
+ */
+export const defaultLocale: Locale = "en";
 
 /**
  * Tags for Intl (dates, numbers, plural rules).

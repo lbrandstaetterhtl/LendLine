@@ -35,7 +35,7 @@ type UiContextValue = {
 const UiContext = createContext<UiContextValue>({ ui: null, reload: () => undefined });
 
 /**
- * The settings mode ("Einstellungsmodus"): which areas of the administration are shown.
+ * The settings mode: which areas of the administration are shown.
  */
 export function UiProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();

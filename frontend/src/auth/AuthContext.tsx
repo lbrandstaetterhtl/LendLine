@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener(MAINTENANCE_EVENT, onMaintenance);
   }, []);
 
-  // An admin reset the password while the person was signed in: "Mein Konto" asks for a new one.
+  // An admin reset the password while the person was signed in: "My account" asks for a new one.
   useEffect(() => {
     function onPasswordChange() {
       setUser((current) => (current ? { ...current, mustChangePassword: true } : current));
@@ -130,6 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("AuthProvider fehlt");
+  if (!ctx) throw new Error("AuthProvider missing");
   return ctx;
 }

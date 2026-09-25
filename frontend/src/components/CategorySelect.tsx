@@ -8,7 +8,7 @@ type Props = {
   value: string;
   onChange: (categoryId: string) => void;
   /**
-   * Label of the empty option, e.g. "Alle Kategorien" for filters.
+   * Label of the empty option, e.g. "All categories" for filters.
    */
   emptyLabel?: string;
   required?: boolean;

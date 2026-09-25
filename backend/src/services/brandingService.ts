@@ -43,7 +43,7 @@ export const appearanceSchema = z.object({
 });
 
 /**
- * Words the interface uses for the company's things, e.g. "Ausrüstung" instead of "Gerät".
+ * Words the interface uses for the company's things, e.g. "Equipment" instead of "Device".
  */
 export const termsSchema = z.object({
   subtitle: z.string().trim().max(60).default("IT-Geräteausleihe"),

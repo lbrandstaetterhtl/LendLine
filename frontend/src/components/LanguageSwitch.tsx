@@ -1,7 +1,7 @@
 import { isLocale, localeNames, locales, useI18n } from "../i18n";
 
 /**
- * Language menu (sidebar, login page, "Mein Konto"). Each language is named in itself, so a person
+ * Language menu (sidebar, login page, "My account"). Each language is named in itself, so a person
  * finds theirs whatever language is showing.
  */
 export function LanguageSwitch({ id }: { id?: string }) {

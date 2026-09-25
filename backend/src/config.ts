@@ -23,7 +23,7 @@ function parseTtlSeconds(value: string | undefined, fallback: number): number {
 function required(name: string): string {
   const value = env(name);
   if (!value) {
-    throw new Error(`Umgebungsvariable ${name} fehlt. Siehe backend/.env.example.`);
+    throw new Error(`Environment variable ${name} is missing. See backend/.env.example.`);
   }
   return value;
 }
@@ -35,14 +35,14 @@ function required(name: string): string {
  */
 function secret(name: string): string {
   const value = required(name);
-  const hint = `Zufälligen Wert erzeugen: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`;
+  const hint = `Generate a random value: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`;
   if (value.startsWith("change-me")) {
-    throw new Error(`${name} ist noch der Platzhalter aus .env.example. ${hint}`);
+    throw new Error(`${name} is still the placeholder from .env.example. ${hint}`);
   }
   if (value.length >= 32) return value;
-  const problem = `${name} ist zu kurz (mindestens 32 zufällige Zeichen). ${hint}`;
+  const problem = `${name} is too short (at least 32 random characters). ${hint}`;
   if (env("NODE_ENV") === "production") throw new Error(problem);
-  console.warn(`WARNUNG: ${problem} Nur für die Entwicklung zulässig.`);
+  console.warn(`WARNING: ${problem} Allowed in development only.`);
   return value;
 }
 
@@ -58,7 +58,7 @@ function adminGroups(): string[] {
   const bare = groups.filter((group) => !/^cn=/i.test(group) || !group.includes(","));
   if (bare.length > 0) {
     throw new Error(
-      `LDAP_ADMIN_GROUP muss vollständige DNs enthalten (z. B. CN=LendLine-Admins,OU=Groups,DC=firma,DC=de), mehrere mit „;“ getrennt. Ungültig: ${bare.join(", ")}`
+      `LDAP_ADMIN_GROUP must contain full DNs (e.g. CN=LendLine-Admins,OU=Groups,DC=company,DC=com), several separated by ";". Invalid: ${bare.join(", ")}`
     );
   }
   return groups.map((group) => group.toLowerCase());
@@ -124,17 +124,17 @@ function checkLdapTransport(): void {
   const problems = [
     ...(ldap.url.toLowerCase().startsWith("ldaps://")
       ? []
-      : ["LDAP_URL nutzt kein ldaps:// (Passwörter gehen unverschlüsselt über das Netz)"]),
+      : ["LDAP_URL does not use ldaps:// (passwords travel unencrypted over the network)"]),
     ...(ldap.tlsRejectUnauthorized
       ? []
-      : ["LDAP_TLS_REJECT_UNAUTHORIZED=false (jedes Zertifikat wird akzeptiert)"]),
+      : ["LDAP_TLS_REJECT_UNAUTHORIZED=false (any certificate is accepted)"]),
   ];
   if (problems.length === 0) return;
   const message = problems.join("; ");
   if (config.nodeEnv === "production" && !ldap.allowInsecure) {
-    throw new Error(`${message}. In Produktion nur mit LDAP_ALLOW_INSECURE=true erlaubt.`);
+    throw new Error(`${message}. In production only allowed with LDAP_ALLOW_INSECURE=true.`);
   }
-  console.warn(`WARNUNG: ${message}.`);
+  console.warn(`WARNING: ${message}.`);
 }
 
 checkLdapTransport();

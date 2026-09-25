@@ -115,7 +115,7 @@ export async function authenticateLdap(
     };
   } catch (error) {
     if (error instanceof HttpError) throw error;
-    console.error("LDAP-Anmeldung fehlgeschlagen, lokale Anmeldung wird geprüft", error);
+    console.error("LDAP sign-in failed, trying the local account", error);
     return null;
   } finally {
     await searchClient.unbind().catch(() => undefined);

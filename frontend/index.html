@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
     <script>
-      // Apply a saved "Hell"/"Dunkel" choice before the first paint (see src/theme.ts).
+      // Apply a saved light/dark choice before the first paint (see src/theme.ts).
       try {
         var theme = localStorage.getItem("lendline-theme");
         if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;

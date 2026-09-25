@@ -3,12 +3,12 @@ import type { Prisma } from "@prisma/client";
 
 import { formatDate } from "../emails/format.js";
 import { de } from "../i18n/de.js";
-import { type Locale, type Text, format, messages } from "../i18n/index.js";
+import { type Locale, type Text, currentLocale, format, messages } from "../i18n/index.js";
 import { prisma } from "../lib/prisma.js";
 import { currentRequest } from "../lib/requestContext.js";
 
 /**
- * One changed field, as shown in the log: "Rolle: Nutzer → Verwaltung".
+ * One changed field, as shown in the log, e.g. "Name: ThinkPad → ThinkPad T14" (stored in German).
  */
 export type AuditChange = { field: string; from: string | null; to: string | null };
 
@@ -69,7 +69,7 @@ function render(summary: AuditSummary, locale: Locale): string {
  * A summary in the language of the current request, e.g. the result of a maintenance task.
  */
 export function describe(summary: AuditSummary): string {
-  return render(summary, currentRequest().locale ?? "de");
+  return render(summary, currentLocale());
 }
 
 export async function recordAudit(input: {
@@ -105,7 +105,7 @@ export async function recordAudit(input: {
       },
     });
   } catch (error) {
-    console.error("Protokoll konnte nicht geschrieben werden", error);
+    console.error("Could not write the audit log entry", error);
   }
 }
 
@@ -167,9 +167,7 @@ function localize<T extends { summary: string; details: Prisma.JsonValue }>(row:
     context?: Record<string, string>;
   } | null;
   if (!details) return row;
-  const summary = details.i18n
-    ? render(details.i18n, currentRequest().locale ?? "de")
-    : row.summary;
+  const summary = details.i18n ? render(details.i18n, currentLocale()) : row.summary;
   return {
     ...row,
     summary,

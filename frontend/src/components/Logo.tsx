@@ -2,8 +2,8 @@ import { useBranding } from "../branding/BrandingContext";
 import { useI18n } from "../i18n";
 
 /**
- * LendLine mark "Rücklauf-Schleife": an L drawn as one line whose foot loops back as an arrow (a
- * device goes out and comes back). Geometry on a 32 × 32 grid, see doc/LendLine.md.
+ * LendLine mark "return loop": an L drawn as one line whose foot loops back as an arrow (a device
+ * goes out and comes back). Geometry on a 32 × 32 grid, see doc/LendLine.md.
  */
 export function LogoMark({ size = 28 }: { size?: number }) {
   // Below 20 px the arrowhead turns to mush, so small sizes drop it and use a heavier stroke.

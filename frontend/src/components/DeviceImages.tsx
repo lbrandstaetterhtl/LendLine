@@ -62,7 +62,7 @@ type OwnPeriod = Period & {
    */
   label: string;
   /**
-   * Devices and status, e.g. "ThinkPad T14 (offen)".
+   * Devices and status, e.g. "ThinkPad T14 (open)".
    */
   detail: string;
   roomId: string | null;
@@ -192,7 +192,7 @@ export function PieceCalendarDialog({
    */
   startWithRequest?: boolean;
   /**
-   * Shows "← Alle Stücke" and goes back to the piece list that opened this calendar.
+   * Shows "← All pieces" and goes back to the piece list that opened this calendar.
    */
   onBack?: () => void;
   /**
@@ -642,7 +642,7 @@ export function PieceCalendarDialog({
 }
 
 /**
- * One of the company's own request fields (settings → Anfrageformular).
+ * One of the company's own request fields (settings → request form).
  */
 function CustomField({
   field,

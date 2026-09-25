@@ -21,7 +21,7 @@ export function signAccessToken(payload: AccessPayload): string {
 export function verifyAccessToken(token: string): AccessPayload {
   const decoded = jwt.verify(token, config.jwtAccessSecret, { algorithms: ["HS256"] });
   if (typeof decoded === "string" || !decoded.sub || typeof decoded.sv !== "number") {
-    throw new Error("Ungültiges Access-Token");
+    throw new Error("Invalid access token");
   }
   return { sub: decoded.sub, sv: decoded.sv };
 }

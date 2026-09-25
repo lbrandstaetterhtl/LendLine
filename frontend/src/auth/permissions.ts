@@ -32,7 +32,7 @@ export type Permission =
 
 /**
  * What a page needs: any one of the listed permissions. Pages not listed are open to everyone
- * signed in ("Meine Anfragen", "Mein Konto", "Hilfe").
+ * signed in ("My requests", "My account", "Help").
  */
 const pagePermissions: Record<string, Permission[]> = {
   "/search": ["catalog.view"],

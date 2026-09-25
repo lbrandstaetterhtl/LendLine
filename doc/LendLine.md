@@ -3,7 +3,7 @@
 > Internal IT equipment lending system ("IT-Geräteausleihe").
 > Users search for free device units in a time window and request them for a room; administrators ("Verwaltung") approve or reject requests and record returns. Status changes trigger e-mails, and every administrative action is written to an audit log.
 
-The interface, API messages, e-mails and audit log are available in **German, English, Spanish, Simplified Chinese and Hindi** (§13.9); German is the source language, and the README is German. This document is in English and quotes German UI terms where it helps to find them in the code.
+The interface, API messages, e-mails and audit log are shown in **German, English, Spanish, Simplified Chinese and Hindi** (§13.9); English is the default language; German is the source language of the interface texts. Everything for developers and operators (logs, startup errors, README, comments) is English. This document is in English and quotes German UI terms where it helps to find them in the code.
 
 ---
 
@@ -48,7 +48,7 @@ The interface, API messages, e-mails and audit log are available in **German, En
 
 ```
 LendLine/
-├── README.md                  German quick-start (partly outdated, see §15)
+├── README.md                  Quick start
 ├── docker-compose.yml         PostgreSQL 16 container on 127.0.0.1:5432 (user/db = lendline, password from POSTGRES_PASSWORD, default lendline)
 ├── .gitignore                 node_modules, dist, .env, backend/uploads, .idea, .venv
 ├── package.json               Root scripts: check (everything), format:docs (Prettier)
@@ -406,7 +406,7 @@ Runs in a **Serializable** transaction; a serialization conflict (`P2034`) becom
 - Only `OPEN` requests; re-checks for overlapping `OPEN`/`APPROVED` requests on the same unit and that the unit is not defective.
 - Uses `updateMany … where status = OPEN` as an optimistic guard against double processing.
 - Sets `approvedAt`, then recomputes unit statuses, sends the approval e-mail, writes the audit entry.
-- Unlike what the README says, approval does **not** auto-reject other requests (they cannot overlap anyway).
+- Approval does not reject other requests: they cannot overlap anyway.
 
 ### 7.4 Rejecting (`rejectRequest`)
 
@@ -558,7 +558,7 @@ Admins switch it on at `/admin/wartung` with a message and an optional expected 
 ## 9. REST API reference
 
 Base path `/api`. JSON in/out. "Auth": 🔓 public, 👤 any logged-in user, 🛡 admin.
-Errors: `{ "error": "<message in the request's language>" }` (from `Accept-Language`, German by default) with 400/401/403/404/409/413/500, plus 429 with `code: "RATE_LIMITED"` (login/registration, §8) and 503 with `code: "MAINTENANCE"` during maintenance (§8).
+Errors: `{ "error": "<message in the request's language>" }` (from `Accept-Language`, English by default) with 400/401/403/404/409/413/500, plus 429 with `code: "RATE_LIMITED"` (login/registration, §8) and 503 with `code: "MAINTENANCE"` during maintenance (§8).
 
 ### Health & admin
 
@@ -743,7 +743,7 @@ All mails are built by `emails/format.ts → composeMail()` from `emails/templat
 | Return                         | `Rückgabe erfasst: <device>`   | device data, return time, `returnedText`                                                                             |
 | Maintenance task "Test-E-Mail" | `LendLine: Test-E-Mail`        | greeting, signature, footer                                                                                          |
 
-Every mail is written in the **recipient's language** (`User.locale`, set by the language menu; German when unset), whoever triggers it: `dispatch()` builds one `mailContext(locale)` per language. Built-in texts, dates and the default settings and terms come in that language; a company text that differs from the German default is sent as written (`localizedDefault`). The subjects in the table are the German ones.
+Every mail is written in the **recipient's language** (`User.locale`, set by the language menu; English when unset), whoever triggers it: `dispatch()` builds one `mailContext(locale)` per language. Built-in texts, dates and the default settings and terms come in that language; a company text that differs from the German default is sent as written (`localizedDefault`). The subjects in the table are the German ones.
 
 No mail is sent when a request is created, withdrawn or bulk-rejected, and admins get no notification of new requests. Admins edit the texts at `/admin/emails` with a live preview (`/admin/settings/mail/preview`, rendered in a `sandbox` iframe).
 
@@ -914,7 +914,7 @@ Rules: shortcuts never fire while typing in a field (`isTyping`) or while a dial
 
 Five languages: German (source), English, Spanish, Simplified Chinese, Hindi. `frontend/src/i18n/de.ts` and `backend/src/i18n/de.ts` hold the German texts; the other files are typed `Messages` (`typeof de`), so a missing or extra key fails the type check.
 
-- **Choice:** saved in `localStorage` (`lendline-locale`), else the first matching browser language, else German. Language menus: sidebar footer, login and registration pages, „Mein Konto“. When signed in, the choice is saved to the account (`PUT /auth/locale`) for the e-mails; a device without its own choice takes the account's.
+- **Choice:** saved in `localStorage` (`lendline-locale`), else English, the default language (the browser language is not used). Language menus: sidebar footer, login and registration pages, "My account". When signed in, the choice is saved to the account (`PUT /auth/locale`) for the e-mails; a device without its own choice takes the account's.
 - **Server texts:** `api()` sends `Accept-Language`; the server answers errors, validation messages (Zod issues map to `validation.*` keys or generic messages), the permission and settings-mode catalogues, maintenance task results and the audit log in that language. `LocaleBoundary` mounts the app again on a change, so everything is fetched anew.
 - **Placeholders and plurals:** `"{name}"`, `{ one, other }` chosen by `{count}` with `Intl.PluralRules`; `"{unit:lower}"` lower-cases a company term inside an English or Spanish sentence. Dates, weekdays and numbers use `Intl` with the language (time zone Europe/Berlin).
 - **Company texts:** stored defaults are German. A value equal to the German default counts as "not adapted" and is shown in the reader's language (terms, login title, comment field, maintenance notice, e-mail texts); editors show it translated and store the German default again when it is saved unchanged. Everything a company writes itself (names, descriptions, own terms and texts) shows as written in every language.
@@ -957,7 +957,6 @@ check` passes apart from the CRLF formatting noise on Windows checkouts (§3).
 ### Functional inconsistencies
 
 - **Unit status is lazy** (§7.6): `/api/admin/summary` and `/api/devices/search` don't refresh it first, so dashboard counts can be stale; overdue loans show as `AVAILABLE` while the request is still `APPROVED`. There is no overdue detection or reminder.
-- **README "Fachregeln" are outdated**: they describe the old per-device model ("approving rejects other open requests for the same device", "requests only for available devices"). The current rules are per unit and per time window (§7).
 - **Reject reason**: optional in the API, mandatory in the UI.
 - Schema drift: migration `…140000_categories` creates `Device_categoryId_idx`, but `schema.prisma` has no `@@index([categoryId])` on `Device`. The next `prisma migrate dev` will try to drop that index.
 - Admin category creation with a duplicate name returns the existing category with HTTP 201 instead of 409.
