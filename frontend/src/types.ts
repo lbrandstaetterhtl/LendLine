@@ -1,4 +1,4 @@
-export type Role = "USER" | "ADMIN";
+import type { Permission } from "./auth/permissions";
 export type DeviceStatus = "AVAILABLE" | "BORROWED" | "DEFECTIVE";
 export type RequestStatus = "OPEN" | "APPROVED" | "REJECTED" | "RETURNED" | "CANCELLED";
 
@@ -6,7 +6,11 @@ export type User = {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  group: { id: string; name: string };
+  /**
+   * Effective permissions of the group; the interface shows its pages by them.
+   */
+  permissions: Permission[];
   createdAt: string;
   /**
    * The password was set by an admin; the app sends the person to "Mein Konto" first.

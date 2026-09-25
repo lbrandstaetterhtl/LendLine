@@ -45,6 +45,20 @@ export async function deleteCategory(id: string, actorId: string) {
   if (category._count.devices > 0) {
     throw new HttpError(409, "Kategorie wird von Geräten verwendet und kann nicht gelöscht werden");
   }
+  // An emptied group scope would mean "all categories" and widen the group's rights: the group
+  // must be changed first.
+  const scoped = await prisma.group.findMany({
+    where: {
+      OR: [{ borrowCategoryIds: { has: id } }, { manageCategoryIds: { has: id } }],
+    },
+    select: { name: true },
+  });
+  if (scoped.length > 0) {
+    throw new HttpError(
+      409,
+      `Die Kategorie ist in der Gruppe ${scoped.map((group) => `„${group.name}“`).join(", ")} ausgewählt. Bitte dort zuerst entfernen.`
+    );
+  }
   await prisma.category.delete({ where: { id } });
   await recordAudit({
     actorId,

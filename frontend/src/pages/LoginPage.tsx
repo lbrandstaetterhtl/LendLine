@@ -1,9 +1,12 @@
+import type { User } from "../types";
+
 import type { SubmitEvent } from "react";
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { canOpen, homePath } from "../auth/permissions";
 import { useBranding } from "../branding/BrandingContext";
 import { BrandLogo } from "../components/Logo";
 import { Alert, Field } from "../components/ui";
@@ -17,16 +20,16 @@ type AuthOptions = {
 
 /**
  * Where to go after the login: the page that sent the person here (only paths inside the app, never
- * another site), else the start page of the role.
+ * another site) and only if the person's group may open it, else their start page.
  */
-function afterLogin(state: unknown, isAdmin: boolean): string {
-  const home = isAdmin ? "/admin" : "/search";
+function afterLogin(state: unknown, user: User): string {
+  const home = homePath(user);
   const from =
     typeof state === "object" && state !== null && "from" in state && typeof state.from === "string"
       ? state.from
       : "";
   if (!from.startsWith("/") || from.startsWith("//") || from.startsWith("/login")) return home;
-  if (!isAdmin && from.startsWith("/admin")) return home;
+  if (!canOpen(user, from)) return home;
   return from;
 }
 
@@ -51,7 +54,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       const user = await login(email, password);
-      void navigate(afterLogin(state, user.role === "ADMIN"), { replace: true });
+      void navigate(afterLogin(state, user), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Anmeldung fehlgeschlagen");
     } finally {

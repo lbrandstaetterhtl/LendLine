@@ -25,7 +25,8 @@ async function main() {
       name: "IT-Verwaltung",
       email: "admin@lendline.local",
       passwordHash: adminPassword,
-      role: "ADMIN",
+      // Groups from migration 20260925140000_groups.
+      groupId: "group-admin",
     },
   });
 
@@ -36,7 +37,7 @@ async function main() {
       name: "Max Mustermann",
       email: "user@lendline.local",
       passwordHash: userPassword,
-      role: "USER",
+      groupId: "group-user",
     },
   });
 

@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
 import { DeviceFieldList, DeviceFieldsEditor, useFieldOptions } from "../components/DeviceFields";
@@ -35,6 +37,9 @@ export function AdminDevicesPage() {
   const { data: devices, error: loadError, reload } = useApi<Device[]>("/api/devices");
   const [form, setForm] = useState<DeviceForm>(emptyForm);
   const fieldOptions = useFieldOptions();
+  const { user } = useAuth();
+  const canManage = can(user, "devices.manage");
+  const canImages = can(user, "devices.images");
   // null: closed; id null: creating; id set: editing that record.
   const [editor, setEditor] = useState<{ id: string | null } | null>(null);
   const [files, setFiles] = useState<FileList | null>(null);
@@ -87,12 +92,17 @@ export function AdminDevicesPage() {
     setFormError("");
     setSaving(true);
     try {
-      const saved = editingId
-        ? await api<Device>(`/api/devices/${editingId}`, {
-            method: "PATCH",
-            body: JSON.stringify(form),
-          })
-        : await api<Device>("/api/devices", { method: "POST", body: JSON.stringify(form) });
+      const current = devices?.find((device) => device.id === editingId);
+      // With the image right only, the device itself stays as it is.
+      const saved =
+        !canManage && current
+          ? current
+          : editingId
+            ? await api<Device>(`/api/devices/${editingId}`, {
+                method: "PATCH",
+                body: JSON.stringify(form),
+              })
+            : await api<Device>("/api/devices", { method: "POST", body: JSON.stringify(form) });
       if (files?.length) {
         const body = new FormData();
         Array.from(files).forEach((file) => body.append("images", file));
@@ -146,9 +156,11 @@ export function AdminDevicesPage() {
         title={terms.devices}
         description="Ein Gerät ist ein Modell. Jedes Stück hat eine eigene Seriennummer und einen eigenen Status."
         actions={
-          <button type="button" onClick={openNew} data-shortcut="new" title="Tastenkürzel: n">
-            <Icon name="plus" /> Gerät anlegen
-          </button>
+          canManage && (
+            <button type="button" onClick={openNew} data-shortcut="new" title="Tastenkürzel: n">
+              <Icon name="plus" /> Gerät anlegen
+            </button>
+          )
         }
       />
       <Alert>{error || loadError}</Alert>
@@ -207,16 +219,24 @@ export function AdminDevicesPage() {
                 </td>
                 <td className="actions-cell">
                   <div className="actions">
-                    <button
-                      type="button"
-                      className="secondary sm"
-                      onClick={() => startEdit(device)}
-                    >
-                      Bearbeiten
-                    </button>
-                    <button type="button" className="danger sm" onClick={() => void remove(device)}>
-                      Löschen
-                    </button>
+                    {(canManage || canImages) && (
+                      <button
+                        type="button"
+                        className="secondary sm"
+                        onClick={() => startEdit(device)}
+                      >
+                        {canManage ? "Bearbeiten" : "Bilder"}
+                      </button>
+                    )}
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="danger sm"
+                        onClick={() => void remove(device)}
+                      >
+                        Löschen
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

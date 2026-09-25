@@ -64,8 +64,8 @@ export function AccountPage() {
               <dd>{user.email}</dd>
             </div>
             <div>
-              <dt>Rolle</dt>
-              <dd>{user.role === "ADMIN" ? "Verwaltung" : "Nutzer"}</dd>
+              <dt>Gruppe</dt>
+              <dd>{user.group.name}</dd>
             </div>
             <div>
               <dt>Anmeldung</dt>

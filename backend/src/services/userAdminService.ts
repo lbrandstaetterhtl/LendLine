@@ -1,4 +1,4 @@
-import type { Role } from "@prisma/client";
+import type { AuthUser } from "../middleware/auth.js";
 
 import { Prisma } from "@prisma/client";
 
@@ -6,6 +6,7 @@ import { HttpError } from "../lib/errors.js";
 import { hashPassword } from "../lib/password.js";
 import { prisma } from "../lib/prisma.js";
 import { diff, recordAudit } from "./auditService.js";
+import { assertGrantable, assertGroupManagerRemains, defaultGroupId } from "./groupService.js";
 import { listMyRequests } from "./requestService.js";
 import { endAllSessions } from "./sessionService.js";
 
@@ -13,30 +14,50 @@ const publicSelect = {
   id: true,
   name: true,
   email: true,
-  role: true,
   authSource: true,
   createdAt: true,
   mustChangePassword: true,
+  group: { select: { id: true, name: true } },
 } as const;
 
 export async function listUsers() {
   return prisma.user.findMany({
     select: publicSelect,
-    orderBy: [{ role: "asc" }, { name: "asc" }],
+    orderBy: [{ group: { sortOrder: "asc" } }, { name: "asc" }],
   });
 }
 
+async function groupOrThrow(db: Prisma.TransactionClient | typeof prisma, id: string) {
+  const group = await db.group.findUnique({ where: { id } });
+  if (!group) throw new HttpError(400, "Gruppe nicht gefunden");
+  return group;
+}
+
+/**
+ * Working on someone with more rights (resetting their password, moving or deleting them) would be
+ * a way to those rights: only people whose group has no permission beyond the actor's own.
+ */
+function assertNotAbove(actor: AuthUser, target: { group: { permissions: string[] } }): void {
+  try {
+    assertGrantable(actor, target.group.permissions);
+  } catch {
+    throw new HttpError(403, "Diese Person hat Rechte, die Sie selbst nicht haben");
+  }
+}
+
 export async function createUser(
-  input: { name: string; email: string; password: string; role: Role },
-  actorId: string
+  input: { name: string; email: string; password: string; groupId?: string },
+  actor: AuthUser
 ) {
+  const group = await groupOrThrow(prisma, input.groupId ?? (await defaultGroupId()));
+  assertGrantable(actor, group.permissions);
   try {
     const created = await prisma.user.create({
       data: {
         name: input.name,
         email: input.email.toLowerCase(),
         passwordHash: await hashPassword(input.password),
-        role: input.role,
+        groupId: group.id,
         authSource: "LOCAL",
         // The admin knows this password: the person replaces it at the first login.
         mustChangePassword: true,
@@ -44,13 +65,13 @@ export async function createUser(
       select: publicSelect,
     });
     await recordAudit({
-      actorId,
+      actorId: actor.id,
       action: "USER_CREATED",
       entityType: "USER",
       entityId: created.id,
       summary: `Benutzer „${created.name}“ angelegt`,
       details: {
-        context: { "E-Mail": created.email, Rolle: roleLabel(created.role), Anmeldung: "Lokal" },
+        context: { "E-Mail": created.email, Gruppe: created.group.name, Anmeldung: "Lokal" },
       },
     });
     return created;
@@ -64,21 +85,24 @@ export async function createUser(
 
 export async function updateUser(
   id: string,
-  actorId: string,
-  input: { name?: string; role?: Role; password?: string }
+  actor: AuthUser,
+  input: { name?: string; groupId?: string; password?: string }
 ) {
   const passwordHash = input.password ? await hashPassword(input.password) : undefined;
   const { user, updated } = await serializable(async (tx) => {
-    const before = await tx.user.findUnique({ where: { id } });
+    const before = await tx.user.findUnique({ where: { id }, include: { group: true } });
     if (!before) throw new HttpError(404, "Benutzer nicht gefunden");
-    if (input.role && input.role !== "ADMIN" && before.role === "ADMIN") {
-      await assertNotLastAdmin(tx, id, actorId);
+    if (id !== actor.id) assertNotAbove(actor, before);
+    const moving = input.groupId !== undefined && input.groupId !== before.groupId;
+    if (moving) {
+      if (id === actor.id) throw new HttpError(409, "Die eigene Gruppe können Sie nicht ändern");
+      assertGrantable(actor, (await groupOrThrow(tx, input.groupId!)).permissions);
     }
     const after = await tx.user.update({
       where: { id },
       data: {
         name: input.name,
-        role: input.role,
+        groupId: moving ? input.groupId : undefined,
         passwordHash,
         authSource: passwordHash ? "LOCAL" : undefined,
         ldapDn: passwordHash ? null : undefined,
@@ -86,27 +110,26 @@ export async function updateUser(
       },
       select: publicSelect,
     });
-    // A reset password usually means the account was compromised, and a new role must apply
-    // now, not when the current token expires: both end the sessions.
-    if (passwordHash || (input.role && input.role !== before.role)) {
-      await endAllSessions(tx, { id });
-    }
+    if (moving) await assertGroupManagerRemains(tx);
+    // A reset password usually means the account was compromised, and a new group must apply now:
+    // both end the sessions.
+    if (passwordHash || moving) await endAllSessions(tx, { id });
     return { user: before, updated: after };
   });
-  const roleChanged = user.role !== updated.role;
+  const moved = user.groupId !== updated.group.id;
   await recordAudit({
-    actorId,
+    actorId: actor.id,
     action: "USER_UPDATED",
     entityType: "USER",
     entityId: updated.id,
-    summary: roleChanged
-      ? `Rolle von „${updated.name}“ auf ${roleLabel(updated.role)} geändert`
+    summary: moved
+      ? `„${updated.name}“ in die Gruppe „${updated.group.name}“ verschoben`
       : `Benutzer „${updated.name}“ geändert`,
     details: {
       changes: [
-        ...diff(user, updated, [
+        ...diff({ ...user, group: user.group.name }, { ...updated, group: updated.group.name }, [
           { key: "name", label: "Name" },
-          { key: "role", label: "Rolle", format: (value) => roleLabel(value as Role) },
+          { key: "group", label: "Gruppe" },
           {
             key: "authSource",
             label: "Anmeldung",
@@ -122,45 +145,35 @@ export async function updateUser(
   return updated;
 }
 
-export async function deleteUser(id: string, actorId: string) {
-  if (id === actorId) throw new HttpError(409, "Das eigene Konto kann nicht gelöscht werden");
+export async function deleteUser(id: string, actor: AuthUser) {
+  if (id === actor.id) throw new HttpError(409, "Das eigene Konto kann nicht gelöscht werden");
   const user = await serializable(async (tx) => {
     const found = await tx.user.findUnique({
       where: { id },
-      include: { _count: { select: { requests: true } } },
+      include: { group: true, _count: { select: { requests: true } } },
     });
     if (!found) throw new HttpError(404, "Benutzer nicht gefunden");
-    if (found.role === "ADMIN") await assertNotLastAdmin(tx, id, actorId);
+    assertNotAbove(actor, found);
     if (found._count.requests > 0) {
       throw new HttpError(409, "Benutzer hat Anfragen und kann nicht gelöscht werden");
     }
     await tx.user.delete({ where: { id } });
+    await assertGroupManagerRemains(tx);
     return found;
   });
   await recordAudit({
-    actorId,
+    actorId: actor.id,
     action: "USER_DELETED",
     entityType: "USER",
     entityId: id,
     summary: `Benutzer „${user.name}“ gelöscht`,
-    details: { context: { "E-Mail": user.email, Rolle: roleLabel(user.role) } },
+    details: { context: { "E-Mail": user.email, Gruppe: user.group.name } },
   });
 }
 
-function roleLabel(role: Role): string {
-  return role === "ADMIN" ? "Verwaltung" : "Nutzer";
-}
-
-async function assertNotLastAdmin(tx: Prisma.TransactionClient, id: string, actorId: string) {
-  if (id === actorId)
-    throw new HttpError(409, "Die eigene Administratorrolle kann nicht entzogen werden");
-  const admins = await tx.user.count({ where: { role: "ADMIN" } });
-  if (admins <= 1) throw new HttpError(409, "Der letzte Administrator kann nicht entfernt werden");
-}
-
 /**
- * Runs the admin-count check and the change it guards as one unit: two admins demoting each other
- * at the same moment would otherwise both see a second admin and leave none.
+ * Runs the group-manager check and the change it guards as one unit: two people removing each other
+ * at the same moment would otherwise both see a second manager and leave none.
  */
 async function serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   try {

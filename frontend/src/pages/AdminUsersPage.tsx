@@ -1,5 +1,3 @@
-import type { Role } from "../types";
-
 import type { SubmitEvent } from "react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -7,27 +5,48 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { Icon } from "../components/icons";
+import { UserTabs } from "../components/SettingsTabs";
 import { Alert, Field, Modal, PageHeader, refreshNav } from "../components/ui";
 
 type ManagedUser = {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  group: { id: string; name: string };
   authSource: "LOCAL" | "LDAP";
   mustChangePassword: boolean;
   createdAt: string;
 };
 
-const emptyForm = { name: "", email: "", password: "", role: "USER" as Role };
+type GroupSummary = {
+  id: string;
+  name: string;
+  permissions: string[];
+  isDefault: boolean;
+  members: number;
+};
+
+const emptyForm = { name: "", email: "", password: "", groupId: "" };
 
 export function AdminUsersPage() {
   const { user: me } = useAuth();
+  const canManage = can(me, "users.manage");
+  const canEmergency = can(me, "users.emergency");
+  const canRules = can(me, "settings.rules");
   const { data: users, error: loadError, reload } = useApi<ManagedUser[]>("/api/users");
+  const { data: groups } = useApi<GroupSummary[]>("/api/groups");
   const { data: policy } = useApi<{ registration: { enabled: boolean; domains: string[] } }>(
-    "/api/admin/settings/policy"
+    canRules ? "/api/admin/settings/policy" : null
   );
+  const [groupFilter, setGroupFilter] = useState("");
+  const shownUsers = groupFilter ? users?.filter((user) => user.group.id === groupFilter) : users;
+  const mine = new Set<string>(me?.permissions);
+  // The API refuses groups with rights the actor lacks; the list says so up front.
+  const grantable = (group: GroupSummary) =>
+    group.permissions.every((permission) => mine.has(permission));
+  const defaultGroup = groups?.find((group) => group.isDefault)?.id ?? groups?.[0]?.id ?? "";
   const [form, setForm] = useState(emptyForm);
   // null: closed; id null: creating; id set: editing that record.
   const [editor, setEditor] = useState<{ id: string | null } | null>(null);
@@ -39,7 +58,9 @@ export function AdminUsersPage() {
 
   function open(user?: ManagedUser) {
     setForm(
-      user ? { name: user.name, email: user.email, password: "", role: user.role } : emptyForm
+      user
+        ? { name: user.name, email: user.email, password: "", groupId: user.group.id }
+        : { ...emptyForm, groupId: defaultGroup }
     );
     setFormError("");
     setEditor({ id: user?.id ?? null });
@@ -54,7 +75,7 @@ export function AdminUsersPage() {
           method: "PATCH",
           body: JSON.stringify({
             name: form.name,
-            role: form.role,
+            groupId: form.groupId,
             ...(form.password ? { password: form.password } : {}),
           }),
         });
@@ -105,7 +126,7 @@ export function AdminUsersPage() {
   async function remove(user: ManagedUser) {
     if (
       !window.confirm(
-        `Benutzer „${user.name}“ löschen?\n\nKonten mit Anfragen, das eigene Konto und der letzte Administrator können nicht gelöscht werden.`
+        `Benutzer „${user.name}“ löschen?\n\nKonten mit Anfragen und das eigene Konto können nicht gelöscht werden, ebenso die letzte Person, die Gruppen verwalten darf.`
       )
     )
       return;
@@ -122,13 +143,21 @@ export function AdminUsersPage() {
 
   return (
     <>
+      <UserTabs />
       <PageHeader
         title="Benutzer"
-        description="Lokale Konten anlegen, Rollen vergeben und Passwörter zurücksetzen."
+        description="Konten anlegen, einer Gruppe zuordnen und Passwörter zurücksetzen. Was jemand darf, legt die Gruppe fest."
         actions={
-          <button type="button" onClick={() => open()} data-shortcut="new" title="Tastenkürzel: n">
-            <Icon name="plus" /> Benutzer anlegen
-          </button>
+          canManage && (
+            <button
+              type="button"
+              onClick={() => open()}
+              data-shortcut="new"
+              title="Tastenkürzel: n"
+            >
+              <Icon name="plus" /> Benutzer anlegen
+            </button>
+          )
         }
       />
       {policy && (
@@ -143,13 +172,31 @@ export function AdminUsersPage() {
       )}
       <Alert>{error || loadError}</Alert>
       <Alert tone="ok">{info}</Alert>
+      {groups && groups.length > 1 && (
+        <div className="toolbar">
+          <Field label="Gruppe" htmlFor="user-group-filter">
+            <select
+              id="user-group-filter"
+              value={groupFilter}
+              onChange={(event) => setGroupFilter(event.target.value)}
+            >
+              <option value="">Alle Gruppen</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name} ({group.members})
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Name</th>
               <th>E-Mail</th>
-              <th>Rolle</th>
+              <th>Gruppe</th>
               <th>Anmeldung</th>
               <th>
                 <span className="sr-only">Aktionen</span>
@@ -157,7 +204,7 @@ export function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users?.map((user) => (
+            {shownUsers?.map((user) => (
               <tr key={user.id}>
                 <td style={{ fontWeight: 550 }}>
                   {user.name}
@@ -165,11 +212,7 @@ export function AdminUsersPage() {
                 </td>
                 <td className="muted">{user.email}</td>
                 <td>
-                  {user.role === "ADMIN" ? (
-                    <span className="badge st-borrowed">Verwaltung</span>
-                  ) : (
-                    <span className="tag">Nutzer</span>
-                  )}
+                  <span className="tag">{user.group.name}</span>
                 </td>
                 <td className="muted">
                   {user.authSource === "LDAP" ? "Verzeichnis" : "Lokal"}
@@ -181,17 +224,21 @@ export function AdminUsersPage() {
                 </td>
                 <td className="actions-cell">
                   <div className="actions">
-                    <button type="button" className="secondary sm" onClick={() => open(user)}>
-                      Bearbeiten
-                    </button>
-                    <button
-                      type="button"
-                      className="danger sm"
-                      disabled={user.id === me?.id}
-                      onClick={() => void remove(user)}
-                    >
-                      Löschen
-                    </button>
+                    {(canManage || canEmergency) && (
+                      <button type="button" className="secondary sm" onClick={() => open(user)}>
+                        {canManage ? "Bearbeiten" : "Maßnahmen"}
+                      </button>
+                    )}
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="danger sm"
+                        disabled={user.id === me?.id}
+                        onClick={() => void remove(user)}
+                      >
+                        Löschen
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -211,78 +258,96 @@ export function AdminUsersPage() {
               <button type="button" className="secondary" onClick={() => setEditor(null)}>
                 Abbrechen
               </button>
-              <button type="submit" form="user-form">
-                {editingId ? "Änderungen speichern" : "Benutzer anlegen"}
-              </button>
+              {canManage && (
+                <button type="submit" form="user-form">
+                  {editingId ? "Änderungen speichern" : "Benutzer anlegen"}
+                </button>
+              )}
             </>
           }
         >
           <Alert>{formError}</Alert>
           <form id="user-form" className="form-stack" onSubmit={(event) => void onSubmit(event)}>
-            <Field label="Name" htmlFor="user-name">
-              <input
-                id="user-name"
-                value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-                required
-                minLength={2}
-                maxLength={120}
-              />
-            </Field>
-            <Field
-              label="E-Mail"
-              htmlFor="user-email"
-              hint={editingId ? "Die E-Mail-Adresse kann nicht geändert werden." : undefined}
-            >
-              <input
-                id="user-email"
-                type="email"
-                value={form.email}
-                onChange={(event) => setForm({ ...form, email: event.target.value })}
-                required
-                disabled={Boolean(editingId)}
-                autoComplete="off"
-              />
-            </Field>
-            <Field
-              label={editingId ? "Neues Passwort" : "Passwort"}
-              htmlFor="user-password"
-              optional={Boolean(editingId)}
-              hint={
-                editingId
-                  ? editing?.authSource === "LDAP"
-                    ? "Leer lassen, um nichts zu ändern. Ein neues Passwort macht aus dem Verzeichnis-Konto ein lokales Konto."
-                    : "Leer lassen, um das Passwort nicht zu ändern."
-                  : "Mindestens 8 Zeichen."
-              }
-            >
-              <input
-                id="user-password"
-                type="password"
-                value={form.password}
-                onChange={(event) => setForm({ ...form, password: event.target.value })}
-                required={!editingId}
-                minLength={8}
-                autoComplete="new-password"
-              />
-            </Field>
-            <Field
-              label="Rolle"
-              htmlFor="user-role"
-              hint="Die Verwaltung kann Anfragen bestätigen und Stammdaten pflegen."
-            >
-              <select
-                id="user-role"
-                value={form.role}
-                onChange={(event) => setForm({ ...form, role: event.target.value as Role })}
-                disabled={editingId === me?.id}
+            <fieldset className="plain-fieldset" disabled={!canManage}>
+              <Field label="Name" htmlFor="user-name">
+                <input
+                  id="user-name"
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  required
+                  minLength={2}
+                  maxLength={120}
+                />
+              </Field>
+              <Field
+                label="E-Mail"
+                htmlFor="user-email"
+                hint={editingId ? "Die E-Mail-Adresse kann nicht geändert werden." : undefined}
               >
-                <option value="USER">Nutzer</option>
-                <option value="ADMIN">Verwaltung</option>
-              </select>
-            </Field>
+                <input
+                  id="user-email"
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  required
+                  disabled={Boolean(editingId)}
+                  autoComplete="off"
+                />
+              </Field>
+              <Field
+                label={editingId ? "Neues Passwort" : "Passwort"}
+                htmlFor="user-password"
+                optional={Boolean(editingId)}
+                hint={
+                  editingId
+                    ? editing?.authSource === "LDAP"
+                      ? "Leer lassen, um nichts zu ändern. Ein neues Passwort macht aus dem Verzeichnis-Konto ein lokales Konto."
+                      : "Leer lassen, um das Passwort nicht zu ändern."
+                    : "Mindestens 8 Zeichen."
+                }
+              >
+                <input
+                  id="user-password"
+                  type="password"
+                  value={form.password}
+                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  required={!editingId}
+                  minLength={8}
+                  autoComplete="new-password"
+                />
+              </Field>
+              <Field
+                label="Gruppe"
+                htmlFor="user-group"
+                hint={
+                  editingId === me?.id
+                    ? "Die eigene Gruppe können Sie nicht ändern."
+                    : "Die Gruppe legt fest, was die Person darf. Gruppen mit Rechten, die Sie selbst nicht haben, können Sie nicht vergeben."
+                }
+              >
+                <select
+                  id="user-group"
+                  value={form.groupId}
+                  onChange={(event) => setForm({ ...form, groupId: event.target.value })}
+                  disabled={editingId === me?.id}
+                  required
+                >
+                  {groups?.map((group) => (
+                    <option
+                      key={group.id}
+                      value={group.id}
+                      disabled={!grantable(group) && group.id !== editing?.group.id}
+                    >
+                      {group.name}
+                      {group.isDefault ? " (Standard)" : ""}
+                      {grantable(group) ? "" : " – mehr Rechte als Sie"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </fieldset>
           </form>
-          {editing && editing.id !== me?.id && (
+          {editing && editing.id !== me?.id && canEmergency && (
             <div className="modal-section">
               <h3>Sofortmaßnahmen</h3>
               <p className="muted small">

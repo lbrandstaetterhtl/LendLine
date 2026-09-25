@@ -2,7 +2,8 @@ import { Router } from "express";
 
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { routeParam } from "../lib/params.js";
-import { requireAdmin, requireAuth } from "../middleware/auth.js";
+import { categoryOfDevice } from "../lib/scope.js";
+import { assertManageScope, can, requireAuth, requirePermission } from "../middleware/auth.js";
 import { uploadDeviceImages } from "../middleware/upload.js";
 import { validateBody } from "../middleware/validate.js";
 import {
@@ -23,13 +24,23 @@ function queryString(value: unknown): string {
 
 export const deviceRouter = Router();
 
-deviceRouter.use(requireAuth);
+deviceRouter.use(requireAuth, requirePermission("catalog.view"));
 
 deviceRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const query = deviceQuerySchema.parse(req.query);
-    res.json(await listDevices(query, req.user!.role === "ADMIN"));
+    const user = req.user!;
+    // Managers see all pieces of the categories they manage; everyone else the bookable pieces of
+    // the categories their group may borrow from.
+    const manager = can(user, "devices.manage");
+    res.json(
+      await listDevices(
+        query,
+        manager || can(user, "devices.defective"),
+        manager ? user.manageScope : user.borrowScope
+      )
+    );
   })
 );
 
@@ -42,6 +53,7 @@ deviceRouter.get(
         desiredUntil: queryString(req.query.desiredUntil),
         categoryId: queryString(req.query.categoryId),
         q: queryString(req.query.q),
+        scope: req.user!.borrowScope,
         field: queryString(req.query.field).slice(0, 40),
         value: queryString(req.query.value).slice(0, 200),
       })
@@ -59,31 +71,39 @@ deviceRouter.get(
 deviceRouter.get(
   "/:id/calendar",
   asyncHandler(async (req, res) => {
-    res.json(await deviceCalendar(routeParam(req, "id"), req.user!.role === "ADMIN"));
+    res.json(await deviceCalendar(routeParam(req, "id"), can(req.user, "calendar.names")));
   })
 );
 
 deviceRouter.post(
   "/",
-  requireAdmin,
+  requirePermission("devices.manage"),
   validateBody(deviceCreateSchema),
   asyncHandler(async (req, res) => {
+    assertManageScope(req.user!, req.body.categoryId);
     res.status(201).json(await createDevice(req.body, req.user!.id));
   })
 );
 
 deviceRouter.patch(
   "/:id",
-  requireAdmin,
+  requirePermission("devices.manage"),
   validateBody(deviceUpdateSchema),
   asyncHandler(async (req, res) => {
+    assertManageScope(req.user!, await categoryOfDevice(routeParam(req, "id")));
+    if (req.body.categoryId) assertManageScope(req.user!, req.body.categoryId);
     res.json(await updateDevice(routeParam(req, "id"), req.body, req.user!.id));
   })
 );
 
 deviceRouter.post(
   "/:id/images",
-  requireAdmin,
+  requirePermission("devices.images"),
+  // Checked before multer writes the files.
+  asyncHandler(async (req, _res, next) => {
+    assertManageScope(req.user!, await categoryOfDevice(routeParam(req, "id")));
+    next();
+  }),
   uploadDeviceImages,
   asyncHandler(async (req, res) => {
     const files = Array.isArray(req.files) ? req.files : [];
@@ -94,8 +114,9 @@ deviceRouter.post(
 
 deviceRouter.delete(
   "/:id/images/:imageId",
-  requireAdmin,
+  requirePermission("devices.images"),
   asyncHandler(async (req, res) => {
+    assertManageScope(req.user!, await categoryOfDevice(routeParam(req, "id")));
     await deleteImage(routeParam(req, "id"), routeParam(req, "imageId"), req.user!.id);
     res.status(204).send();
   })
@@ -103,8 +124,9 @@ deviceRouter.delete(
 
 deviceRouter.delete(
   "/:id",
-  requireAdmin,
+  requirePermission("devices.manage"),
   asyncHandler(async (req, res) => {
+    assertManageScope(req.user!, await categoryOfDevice(routeParam(req, "id")));
     await deleteDevice(routeParam(req, "id"), req.user!.id);
     res.status(204).send();
   })

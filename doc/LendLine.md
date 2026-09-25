@@ -208,30 +208,30 @@ Company settings that admins change in the UI (registration, loan rules, request
 
 `JWT_ACCESS_SECRET` must not start with `change-me` (the placeholder in `.env.example`, which is public): that aborts the start in every environment, because `NODE_ENV` is easily left unset. It must also be at least 32 characters; a shorter value aborts with `NODE_ENV=production` and only prints a warning otherwise. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 
-| Variable                              | Default                                                                  | Meaning                                                                                                   |
-| ------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                        | — (required)                                                             | PostgreSQL connection string                                                                              |
-| `JWT_ACCESS_SECRET`                   | — (required)                                                             | HMAC secret for access tokens (HS256); ≥ 32 characters, see above                                         |
-| `SESSION_MAX_DAYS`                    | `30`                                                                     | A session ends this many days after the login, however often it is refreshed                              |
-| `JWT_ACCESS_TTL`                      | `15m`                                                                    | Access token lifetime; format `<n>[s                                                                      | m   | h   | d]`, invalid → 15 min |
-| `JWT_REFRESH_TTL_DAYS`                | `7`                                                                      | Refresh token/cookie lifetime in days                                                                     |
-| `PORT`                                | `3001`                                                                   | API port (always bound to `127.0.0.1`)                                                                    |
-| `NODE_ENV`                            | `development`                                                            | `production`: short secret aborts, insecure LDAP aborts, seed refused, `Secure` cookie                    |
-| `FRONTEND_ORIGIN`                     | `http://localhost:5173`                                                  | CORS origin; `https://…` also sets the `Secure` cookie flag; base URL of the logo in e-mails              |
-| `SMTP_HOST`                           | empty                                                                    | Empty → e-mails are only logged to the console                                                            |
-| `SMTP_PORT` / `SMTP_SECURE`           | `587` / `false`                                                          |                                                                                                           |
-| `SMTP_USER` / `SMTP_PASS`             | empty                                                                    | Auth is used only if `SMTP_USER` is set                                                                   |
-| `SMTP_FROM`                           | `LendLine <noreply@lendline.local>`                                      |                                                                                                           |
-| `LDAP_URL`                            | empty                                                                    | LDAP is enabled only when **both** `LDAP_URL` and `LDAP_BASE_DN` are set                                  |
-| `LDAP_BIND_DN` / `LDAP_BIND_PASSWORD` | empty                                                                    | Service account for the search (anonymous search if empty)                                                |
-| `LDAP_BASE_DN`                        | empty                                                                    | Search base                                                                                               |
-| `LDAP_USER_FILTER`                    | `(\|(mail={{username}})(sAMAccountName={{username}})(uid={{username}}))` | `{{username}}` is replaced with the escaped login name                                                    |
-| `LDAP_ADMIN_GROUP`                    | empty                                                                    | Full group DNs, several separated by `;`; membership (`memberOf`) → `ADMIN`. A bare name aborts the start |
-| `LDAP_ATTR_EMAIL` / `LDAP_ATTR_NAME`  | `mail` / `displayName`                                                   | Attribute mapping (name falls back to `cn`, then the login name)                                          |
-| `LDAP_TLS_REJECT_UNAUTHORIZED`        | `true`                                                                   | `false` accepts any certificate (warning; start refused in production)                                    |
-| `LDAP_ALLOW_INSECURE`                 | `false`                                                                  | `true` allows `ldap://` or unchecked certificates in production                                           |
-| `LDAP_ALLOW_LOCAL_REGISTER`           | `true`                                                                   | `false` disables self-registration while LDAP is enabled                                                  |
-| `ALLOW_DEMO_SEED`                     | —                                                                        | Only for `prisma/seed.ts`: `true` allows the demo accounts outside localhost                              |
+| Variable                              | Default                                                                  | Meaning                                                                                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                        | — (required)                                                             | PostgreSQL connection string                                                                                                                                                       |
+| `JWT_ACCESS_SECRET`                   | — (required)                                                             | HMAC secret for access tokens (HS256); ≥ 32 characters, see above                                                                                                                  |
+| `SESSION_MAX_DAYS`                    | `30`                                                                     | A session ends this many days after the login, however often it is refreshed                                                                                                       |
+| `JWT_ACCESS_TTL`                      | `15m`                                                                    | Access token lifetime; format `<n>[s                                                                                                                                               | m   | h   | d]`, invalid → 15 min |
+| `JWT_REFRESH_TTL_DAYS`                | `7`                                                                      | Refresh token/cookie lifetime in days                                                                                                                                              |
+| `PORT`                                | `3001`                                                                   | API port (always bound to `127.0.0.1`)                                                                                                                                             |
+| `NODE_ENV`                            | `development`                                                            | `production`: short secret aborts, insecure LDAP aborts, seed refused, `Secure` cookie                                                                                             |
+| `FRONTEND_ORIGIN`                     | `http://localhost:5173`                                                  | CORS origin; `https://…` also sets the `Secure` cookie flag; base URL of the logo in e-mails                                                                                       |
+| `SMTP_HOST`                           | empty                                                                    | Empty → e-mails are only logged to the console                                                                                                                                     |
+| `SMTP_PORT` / `SMTP_SECURE`           | `587` / `false`                                                          |                                                                                                                                                                                    |
+| `SMTP_USER` / `SMTP_PASS`             | empty                                                                    | Auth is used only if `SMTP_USER` is set                                                                                                                                            |
+| `SMTP_FROM`                           | `LendLine <noreply@lendline.local>`                                      |                                                                                                                                                                                    |
+| `LDAP_URL`                            | empty                                                                    | LDAP is enabled only when **both** `LDAP_URL` and `LDAP_BASE_DN` are set                                                                                                           |
+| `LDAP_BIND_DN` / `LDAP_BIND_PASSWORD` | empty                                                                    | Service account for the search (anonymous search if empty)                                                                                                                         |
+| `LDAP_BASE_DN`                        | empty                                                                    | Search base                                                                                                                                                                        |
+| `LDAP_USER_FILTER`                    | `(\|(mail={{username}})(sAMAccountName={{username}})(uid={{username}}))` | `{{username}}` is replaced with the escaped login name                                                                                                                             |
+| `LDAP_ADMIN_GROUP`                    | empty                                                                    | Full group DNs, several separated by `;`; membership (`memberOf`) → built-in group „Verwaltung“. Groups can map their own directory groups in the UI. A bare name aborts the start |
+| `LDAP_ATTR_EMAIL` / `LDAP_ATTR_NAME`  | `mail` / `displayName`                                                   | Attribute mapping (name falls back to `cn`, then the login name)                                                                                                                   |
+| `LDAP_TLS_REJECT_UNAUTHORIZED`        | `true`                                                                   | `false` accepts any certificate (warning; start refused in production)                                                                                                             |
+| `LDAP_ALLOW_INSECURE`                 | `false`                                                                  | `true` allows `ldap://` or unchecked certificates in production                                                                                                                    |
+| `LDAP_ALLOW_LOCAL_REGISTER`           | `true`                                                                   | `false` disables self-registration while LDAP is enabled                                                                                                                           |
+| `ALLOW_DEMO_SEED`                     | —                                                                        | Only for `prisma/seed.ts`: `true` allows the demo accounts outside localhost                                                                                                       |
 
 `docker-compose.yml` reads `POSTGRES_PASSWORD` (default `lendline`); keep `DATABASE_URL` in step with it.
 
@@ -272,6 +272,7 @@ flowchart LR
 
 ```mermaid
 erDiagram
+  Group ||--o{ User : "has members"
   User ||--o{ BorrowRequest : "makes"
   User ||--o{ RefreshToken : "has"
   Category ||--o{ Device : "groups"
@@ -288,7 +289,7 @@ erDiagram
     string passwordHash "nullable (LDAP users)"
     AuthSource authSource "LOCAL|LDAP"
     string ldapDn UK "nullable"
-    Role role "USER|ADMIN"
+    string groupId FK "exactly one group"
   }
   Category { string id PK
     string name UK }
@@ -491,8 +492,8 @@ On page load `AuthProvider` calls `/api/auth/refresh` and then `/api/auth/me` to
 1. If LDAP is enabled, try `authenticateLdap(identifier, password)`:
    - bind with the service account (if configured), search with `LDAP_USER_FILTER` (`sizeLimit 2`; >1 hit → 409),
    - bind as the found DN with the user's password (wrong password → 401),
-   - map e-mail/name, compute admin from `memberOf` vs `LDAP_ADMIN_GROUP` (full DN match or `cn=<value>,…` prefix),
-   - upsert the local user (matched by `ldapDn` or e-mail) with `authSource=LDAP`, `passwordHash=null`. The role is overwritten from LDAP **only** when `LDAP_ADMIN_GROUP` is set; otherwise an existing role is kept and new users get `USER`.
+   - map e-mail/name and the normalised `memberOf` DNs,
+   - upsert the local user (matched by `ldapDn` or e-mail) with `authSource=LDAP`, `passwordHash=null`. The group comes from `groupForDirectoryUser()`: the first group (by order) whose directory DNs contain a membership, else `LDAP_ADMIN_GROUP` → „Verwaltung“. As soon as any mapping exists, a user without a matching membership goes to the default group; without mappings an existing user keeps their group and a new one gets the default group.
    - when an existing account changes hands — it was `LOCAL`, or its `ldapDn` differs (e.g. a move between OUs) — all its refresh tokens are revoked first, so a session of someone who registered that e-mail locally does not carry over.
    - Any non-HTTP LDAP failure (server down, etc.) is logged and falls through to local login.
 2. Local login: find by lower-cased e-mail; fails if there is no hash, the user is an LDAP user, or bcrypt (12 rounds) does not match. bcrypt always runs (against a dummy hash when the account is missing), so the response time does not reveal whether an account exists.
@@ -524,9 +525,21 @@ New passwords (registration, admin create/reset) must be 8 characters to 72 byte
 
 ### Authorization
 
-- `requireAuth` — valid bearer JWT → `req.user = { id, role }`, else 401.
-- `requireAdmin` — `role === "ADMIN"`, else 403.
-- Frontend guards (`Protected`, `AdminOnly`, `GuestOnly` in `App.tsx`) only affect navigation; the API enforces the real rules.
+**Groups instead of roles.** Every user belongs to exactly one `Group` (migration `20260925140000_groups` created „Verwaltung“ with every permission and „Nutzer“ with `catalog.view` + `requests.create`, and moved former admins and users there). A group holds:
+
+- `permissions`: keys from `backend/src/lib/permissions.ts` (22, in the sections Ausleihe, Anfragen und Ausleihen, Bestand, Benutzer, System). Some imply others (`requests.decide` → `requests.view`, `users.manage` → `users.view`, `requests.create` → `catalog.view`, …); `withImplied()` adds them when saving and when checking.
+- `borrowCategoryIds`: categories the members may borrow from (catalogue, search and new requests); empty = all.
+- `manageCategoryIds`: categories whose requests, loans, devices and images the members manage (lists are filtered, actions outside answer 403); empty = all.
+- `maxDays`, `maxOpenPerUser`, `autoApprove`: the group's loan rules; `null` = company-wide setting.
+- `ldapGroupDns`, `isDefault` (exactly one group; registration and new directory users land there), `sortOrder`.
+
+**Checks:**
+
+- `requireAuth` — valid bearer JWT; loads the user **with their group on every request** → `req.user = { id, groupId, permissions, borrowScope, manageScope, rules }`. A change of group or group permissions applies to the next request.
+- `requirePermission(...keys)` — any of the keys, else 403. Every route names its permission; `assertManageScope()` and the category lookups in `lib/scope.ts` add the category checks.
+- **No escalation:** a group can only be given permissions the acting person holds (`assertGrantable`), a person can only be put into a group whose permissions they hold, and nobody can edit, reset or delete a person whose group has more permissions than their own. Nobody changes their own group.
+- **No lock-out:** after every group or user change at least one user must hold `groups.manage` (`assertGroupManagerRemains`, serialisable transaction). The default group cannot be deleted or lose its flag without another default; a group with members is deleted only with `?moveTo=`. A category used in a group scope cannot be deleted (an emptied scope would mean „all“).
+- Frontend guards (`Protected`, `GuestOnly` in `App.tsx`) use one table page → permissions (`auth/permissions.ts`); the sidebar, settings tabs, shortcuts, start page (`homePath`) and the login return follow from it. They only affect navigation; the API enforces the real rules.
 
 ### Maintenance mode ("Wartungsmodus")
 
@@ -652,13 +665,25 @@ Request response shape: all `BorrowRequest` columns plus
 | PATCH  | `/rooms/:id` | 🛡    | Same body (all fields sent; omitted optional fields reset to `""`)           |
 | DELETE | `/rooms/:id` | 🛡    | 204; 409 if referenced                                                       |
 
-### Users — `/users` (all 🛡)
+### Groups — `/groups`
+
+| Method | Path                  | Permission                      | Notes                                                                                                                                                                    |
+| ------ | --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/groups`             | `users.view` or `groups.manage` | Groups with effective permissions and `members` count, by `sortOrder`                                                                                                    |
+| GET    | `/groups/permissions` | `users.view` or `groups.manage` | The permission catalogue (sections, keys, labels, hints) for the group page                                                                                              |
+| POST   | `/groups`             | `groups.manage`                 | `{ name, description?, permissions[], borrowCategoryIds[], manageCategoryIds[], maxDays?, maxOpenPerUser?, autoApprove?, ldapGroupDns[], isDefault?, sortOrder? }` → 201 |
+| PUT    | `/groups/:id`         | `groups.manage`                 | Same body; 403 for permissions the actor lacks, 409 if nobody could manage groups afterwards                                                                             |
+| DELETE | `/groups/:id?moveTo=` | `groups.manage`                 | Members move to `moveTo` first; 409 for the default group                                                                                                                |
+
+### Users — `/users`
+
+Permissions: listing and profile `users.view`; create, change, delete `users.manage`; sign-out and bulk rejection `users.emergency`. Users carry `group { id, name }` instead of a role; `POST`/`PATCH` take `groupId` (missing on create = default group).
 
 | Method | Path                              | Notes                                                                                                          |
 | ------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| GET    | `/users`                          | `{ id, name, email, role, authSource, createdAt }[]`, admins first                                             |
-| POST   | `/users`                          | `{ name, email, password (8 chars – 72 bytes), role? }` → creates a `LOCAL` user with a temporary password     |
-| PATCH  | `/users/:id`                      | `{ name?, role?, password? }` (e-mail is immutable); a new password ends the user's sessions                   |
+| GET    | `/users`                          | `{ id, name, email, group { id, name }, authSource, createdAt, mustChangePassword }[]`, by group order         |
+| POST   | `/users`                          | `{ name, email, password (8 chars – 72 bytes), groupId? }` → creates a `LOCAL` user with a temporary password  |
+| PATCH  | `/users/:id`                      | `{ name?, groupId?, password? }` (e-mail is immutable); a new password ends the user's sessions                |
 | DELETE | `/users/:id`                      | Rules in §7.8                                                                                                  |
 | GET    | `/users/:id/profile`              | `{ user, activeSessions, lastLogin { createdAt, ip, userAgent }, lastActivityAt, stats, requests }` (API only) |
 | POST   | `/users/:id/sessions/revoke`      | Signs that user out everywhere at once (not yourself) → `{ revoked }` (UI: user editor → Sofortmaßnahmen)      |
@@ -880,6 +905,7 @@ The migrations are dated 2026-09-23 to 25 and show how the model evolved:
 | `20260925110000_token_rotation`   | `RefreshToken.rotatedAt` (reuse detection)                                                                                                                                                                                              |
 | `20260925120000_request_form`     | `RequestStatus.CANCELLED`, `BorrowRequest.cancelledAt`, `BorrowRequest.fields` (JSON)                                                                                                                                                   |
 | `20260925130000_device_fields`    | `Device.fields` (JSON, free properties)                                                                                                                                                                                                 |
+| `20260925140000_groups`           | `Group` table with „Verwaltung“ and „Nutzer“, `User.groupId` (backfilled from the role), drops `User.role` and the `Role` enum                                                                                                          |
 
 ---
 

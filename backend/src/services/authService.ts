@@ -1,31 +1,34 @@
+import type { Permission } from "../lib/permissions.js";
 import type { LdapProfile } from "./ldapService.js";
-import type { AuthSource, Role } from "@prisma/client";
+import type { AuthSource } from "@prisma/client";
 
 import { Prisma } from "@prisma/client";
 
 import { config } from "../config.js";
 import { HttpError } from "../lib/errors.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
+import { withImplied } from "../lib/permissions.js";
 import { prisma } from "../lib/prisma.js";
 import { createRefreshToken, hashToken, signAccessToken } from "../lib/tokens.js";
 import { diff, recordAudit } from "./auditService.js";
+import { defaultGroupId, groupForDirectoryUser } from "./groupService.js";
 import { authenticateLdap } from "./ldapService.js";
 import { assertAccessDuringMaintenance } from "./maintenanceService.js";
 import { endAllSessions } from "./sessionService.js";
 import { getSetting } from "./settingsService.js";
 
-const publicUserSelect = {
+// What login, refresh and /me need; `present()` turns it into what the client sees.
+const userSelect = {
   id: true,
   name: true,
   email: true,
-  role: true,
   createdAt: true,
   mustChangePassword: true,
   authSource: true,
+  sessionVersion: true,
+  group: { select: { id: true, name: true, permissions: true } },
 } as const;
-
-// What issuing tokens needs on top of the public fields; never sent to the client.
-const sessionUserSelect = { ...publicUserSelect, sessionVersion: true } as const;
+type UserRow = Prisma.UserGetPayload<{ select: typeof userSelect }>;
 
 /**
  * A rotated token presented again after this grace period was copied: someone else holds it. Within
@@ -41,16 +44,36 @@ export type PublicUser = {
   id: string;
   name: string;
   email: string;
-  role: Role;
   createdAt: Date;
   /**
    * An admin set the password; the client must ask for a new one before anything else.
    */
   mustChangePassword: boolean;
   authSource: AuthSource;
+  group: { id: string; name: string };
+  /**
+   * Effective permissions of the group (with everything they imply); the client shows and hides its
+   * pages by them, the API checks them again on every request.
+   */
+  permissions: Permission[];
 };
 
-type SessionUser = PublicUser & { sessionVersion: number };
+function permissionsOf(user: UserRow): Set<Permission> {
+  return new Set(withImplied(user.group.permissions));
+}
+
+function present(user: UserRow): PublicUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    createdAt: user.createdAt,
+    mustChangePassword: user.mustChangePassword,
+    authSource: user.authSource,
+    group: { id: user.group.id, name: user.group.name },
+    permissions: withImplied(user.group.permissions),
+  };
+}
 
 export type AuthResult = {
   user: PublicUser;
@@ -62,7 +85,7 @@ export type AuthResult = {
  * `sessionStartedAt` is the login time; rotations pass it on so `SESSION_MAX_DAYS` caps the
  * session.
  */
-async function issueTokens(user: SessionUser, sessionStartedAt = new Date()): Promise<AuthResult> {
+async function issueTokens(user: UserRow, sessionStartedAt = new Date()): Promise<AuthResult> {
   const refreshToken = createRefreshToken();
   const expiresAt = new Date(Date.now() + config.jwtRefreshTtlDays * 24 * 60 * 60 * 1000);
   await prisma.refreshToken.create({
@@ -73,10 +96,9 @@ async function issueTokens(user: SessionUser, sessionStartedAt = new Date()): Pr
       sessionStartedAt,
     },
   });
-  const { sessionVersion, ...publicUser } = user;
   return {
-    user: publicUser,
-    accessToken: signAccessToken({ sub: user.id, role: user.role, sv: sessionVersion }),
+    user: present(user),
+    accessToken: signAccessToken({ sub: user.id, sv: user.sessionVersion }),
     refreshToken,
   };
 }
@@ -86,8 +108,8 @@ export async function register(input: {
   email: string;
   password: string;
 }): Promise<AuthResult> {
-  // New accounts are always users, so registration is closed like a user login.
-  await assertAccessDuringMaintenance("USER");
+  // A new account has no rights yet, so registration is closed during maintenance.
+  await assertAccessDuringMaintenance(new Set());
   if (config.ldap.enabled && !config.ldap.allowLocalRegister) {
     throw new HttpError(
       403,
@@ -114,8 +136,9 @@ export async function register(input: {
         name: input.name,
         email: input.email.toLowerCase(),
         passwordHash: await hashPassword(input.password),
+        groupId: await defaultGroupId(),
       },
-      select: sessionUserSelect,
+      select: userSelect,
     });
     await recordAudit({
       actorId: user.id,
@@ -123,7 +146,7 @@ export async function register(input: {
       entityType: "USER",
       entityId: user.id,
       summary: `${user.name} hat sich registriert`,
-      details: { context: { "E-Mail": user.email } },
+      details: { context: { "E-Mail": user.email, Gruppe: user.group.name } },
     });
     return await issueTokens(user);
   } catch (error) {
@@ -134,9 +157,10 @@ export async function register(input: {
   }
 }
 
-async function upsertLdapUser(profile: LdapProfile): Promise<SessionUser> {
+async function upsertLdapUser(profile: LdapProfile): Promise<UserRow> {
   const existing = await prisma.user.findFirst({
     where: { OR: [{ ldapDn: profile.dn }, { email: profile.email }] },
+    include: { group: { select: { name: true } } },
   });
   if (!existing) {
     const created = await prisma.user.create({
@@ -145,10 +169,10 @@ async function upsertLdapUser(profile: LdapProfile): Promise<SessionUser> {
         email: profile.email,
         authSource: "LDAP",
         ldapDn: profile.dn,
-        role: profile.isAdmin ? "ADMIN" : "USER",
+        groupId: await groupForDirectoryUser(profile.memberOf, null),
         passwordHash: null,
       },
-      select: sessionUserSelect,
+      select: userSelect,
     });
     await recordAudit({
       actorId: created.id,
@@ -157,7 +181,7 @@ async function upsertLdapUser(profile: LdapProfile): Promise<SessionUser> {
       entityId: created.id,
       summary: `Benutzer „${created.name}“ bei der ersten Anmeldung aus dem Verzeichnis übernommen`,
       details: {
-        context: { "E-Mail": created.email, Rolle: roleLabel(created.role), DN: profile.dn },
+        context: { "E-Mail": created.email, Gruppe: created.group.name, DN: profile.dn },
       },
     });
     return created;
@@ -168,8 +192,6 @@ async function upsertLdapUser(profile: LdapProfile): Promise<SessionUser> {
   if (existing.authSource === "LOCAL" || existing.ldapDn !== profile.dn) {
     await endAllSessions(prisma, { id: existing.id });
   }
-  const nextRole: Role =
-    config.ldap.adminGroups.length > 0 ? (profile.isAdmin ? "ADMIN" : "USER") : existing.role;
   const updated = await prisma.user.update({
     where: { id: existing.id },
     data: {
@@ -177,22 +199,26 @@ async function upsertLdapUser(profile: LdapProfile): Promise<SessionUser> {
       email: profile.email,
       authSource: "LDAP",
       ldapDn: profile.dn,
-      role: nextRole,
+      groupId: await groupForDirectoryUser(profile.memberOf, existing.groupId),
       passwordHash: null,
       mustChangePassword: false,
     },
-    select: sessionUserSelect,
+    select: userSelect,
   });
-  const changes = diff(existing, { ...updated, authSource: "LDAP" }, [
-    { key: "name", label: "Name" },
-    { key: "email", label: "E-Mail" },
-    { key: "role", label: "Rolle", format: (value) => roleLabel(value as Role) },
-    {
-      key: "authSource",
-      label: "Anmeldung",
-      format: (value) => (value === "LDAP" ? "Verzeichnis" : "Lokal"),
-    },
-  ]).filter((change) => change.from !== change.to);
+  const changes = diff(
+    { ...existing, group: existing.group.name },
+    { ...updated, group: updated.group.name, authSource: "LDAP" },
+    [
+      { key: "name", label: "Name" },
+      { key: "email", label: "E-Mail" },
+      { key: "group", label: "Gruppe" },
+      {
+        key: "authSource",
+        label: "Anmeldung",
+        format: (value) => (value === "LDAP" ? "Verzeichnis" : "Lokal"),
+      },
+    ]
+  ).filter((change) => change.from !== change.to);
   if (changes.length > 0) {
     await recordAudit({
       actorId: updated.id,
@@ -206,13 +232,9 @@ async function upsertLdapUser(profile: LdapProfile): Promise<SessionUser> {
   return updated;
 }
 
-function roleLabel(role: Role): string {
-  return role === "ADMIN" ? "Verwaltung" : "Nutzer";
-}
-
 export async function login(input: { email: string; password: string }): Promise<AuthResult> {
   const identifier = input.email.trim();
-  let result: { user: SessionUser; method: string };
+  let result: { user: UserRow; method: string };
   try {
     result = await authenticate(identifier, input.password);
   } catch (error) {
@@ -228,7 +250,7 @@ export async function login(input: { email: string; password: string }): Promise
     throw error;
   }
   try {
-    await assertAccessDuringMaintenance(result.user.role);
+    await assertAccessDuringMaintenance(permissionsOf(result.user));
   } catch (error) {
     await recordAudit({
       actorId: result.user.id,
@@ -254,7 +276,7 @@ export async function login(input: { email: string; password: string }): Promise
 async function authenticate(
   identifier: string,
   password: string
-): Promise<{ user: SessionUser; method: string }> {
+): Promise<{ user: UserRow; method: string }> {
   if (config.ldap.enabled) {
     let profile;
     try {
@@ -280,16 +302,7 @@ async function authenticate(
     throw new HttpError(401, "Benutzername oder Passwort ist falsch");
   }
   return {
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      createdAt: user.createdAt,
-      mustChangePassword: user.mustChangePassword,
-      authSource: user.authSource,
-      sessionVersion: user.sessionVersion,
-    },
+    user: await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: userSelect }),
     method: "Lokales Konto",
   };
 }
@@ -301,7 +314,7 @@ export async function refresh(rawToken: string | undefined): Promise<AuthResult>
   const expired = new HttpError(401, "Sitzung abgelaufen. Bitte erneut anmelden.");
   const existing = await prisma.refreshToken.findUnique({
     where: { tokenHash: hashToken(rawToken) },
-    include: { user: { select: sessionUserSelect } },
+    include: { user: { select: userSelect } },
   });
   if (!existing) throw expired;
   const now = Date.now();
@@ -318,7 +331,7 @@ export async function refresh(rawToken: string | undefined): Promise<AuthResult>
     throw expired;
   }
   // Checked before rotating: the session stays valid and simply continues after maintenance.
-  await assertAccessDuringMaintenance(existing.user.role);
+  await assertAccessDuringMaintenance(permissionsOf(existing.user));
   // Atomic: of two requests presenting the same token, only one gets a new pair.
   const rotatedAt = new Date();
   const claimed = await prisma.refreshToken.updateMany({
@@ -333,7 +346,7 @@ export async function refresh(rawToken: string | undefined): Promise<AuthResult>
  * An old refresh token came back: it was copied (stolen cookie, malware, backup). Nobody can tell
  * which copy is legitimate, so every session of the account ends.
  */
-async function reportReuse(user: SessionUser): Promise<void> {
+async function reportReuse(user: UserRow): Promise<void> {
   const revoked = await endAllSessions(prisma, { id: user.id });
   await recordAudit({
     actorId: user.id,
@@ -381,7 +394,7 @@ export async function changePassword(
       data: { passwordHash, mustChangePassword: false },
     });
     await endAllSessions(tx, { id: userId });
-    return tx.user.findUniqueOrThrow({ where: { id: userId }, select: sessionUserSelect });
+    return tx.user.findUniqueOrThrow({ where: { id: userId }, select: userSelect });
   });
   await recordAudit({
     actorId: userId,
@@ -418,7 +431,7 @@ export async function logout(rawToken: string | undefined): Promise<void> {
 }
 
 export async function getMe(userId: string): Promise<PublicUser> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: publicUserSelect });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: userSelect });
   if (!user) throw new HttpError(401, "Benutzer nicht gefunden");
-  return user;
+  return present(user);
 }

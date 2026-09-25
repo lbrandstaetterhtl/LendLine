@@ -1,4 +1,5 @@
 import { useAuth } from "../auth/AuthContext";
+import { canOpen } from "../auth/permissions";
 import { PageHeader } from "../components/ui";
 import { goShortcuts } from "../shortcuts";
 
@@ -44,8 +45,7 @@ function KeyTable({ caption, rows }: { caption: string; rows: [string, string][]
 
 export function HelpPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
-  const pages = goShortcuts.filter((shortcut) => isAdmin || !shortcut.admin);
+  const pages = goShortcuts.filter((shortcut) => canOpen(user, shortcut.to));
 
   return (
     <>

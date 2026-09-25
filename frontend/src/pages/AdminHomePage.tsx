@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { AuditTimeline } from "../components/AuditTimeline";
 import { Alert, PageHeader } from "../components/ui";
 import { formatDate } from "../types";
@@ -29,9 +31,15 @@ function endOfToday(now: Date): number {
 export function AdminHomePage() {
   const [now] = useState(() => new Date());
   const { data: summary, error } = useApi<Summary>("/api/admin/summary");
-  const { data: audit } = useApi<AuditPage>("/api/admin/audit?limit=8");
-  const { data: open } = useApi<BorrowRequest[]>("/api/requests?status=OPEN");
-  const { data: loans } = useApi<BorrowRequest[]>("/api/requests?status=APPROVED");
+  const { user } = useAuth();
+  const seesRequests = can(user, "requests.view");
+  const seesLoans = can(user, "loans.manage");
+  const seesAudit = can(user, "audit.view");
+  const { data: audit } = useApi<AuditPage>(seesAudit ? "/api/admin/audit?limit=8" : null);
+  const { data: open } = useApi<BorrowRequest[]>(seesRequests ? "/api/requests?status=OPEN" : null);
+  const { data: loans } = useApi<BorrowRequest[]>(
+    seesLoans ? "/api/requests?status=APPROVED" : null
+  );
   const events = audit?.items ?? [];
   // The API lists open requests oldest first, which is the order they should be decided in.
   const waiting = (open ?? []).slice(0, 5);
@@ -77,84 +85,92 @@ export function AdminHomePage() {
       )}
 
       <div className="dash-grid">
-        <section className="card">
-          <div className="card-title">
-            <h2>Warten auf Entscheidung</h2>
-            <Link to="/admin/requests" className="small">
-              Alle prüfen
-            </Link>
-          </div>
-          {waiting.length === 0 ? (
-            <p className="muted small" style={{ margin: 0 }}>
-              Keine offenen Anfragen.
-            </p>
-          ) : (
-            <ul className="mini-list">
-              {waiting.map((item) => (
-                <li key={item.id}>
-                  <div className="mini-row">
-                    <Link to={`/admin/requests?focus=${item.id}`}>
-                      <strong>{item.device.name}</strong>
-                    </Link>
-                    <span className="muted small">{item.user.name}</span>
-                  </div>
-                  <div className="muted small">
-                    {formatDate(item.startsAt)} – {formatDate(item.desiredUntil)}
-                    {item.room ? ` · Raum ${item.room.name}` : ""}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="card">
-          <div className="card-title">
-            <h2>Rückgaben heute & überfällig</h2>
-            <Link to="/admin/borrowed" className="small">
-              Alle Ausleihen
-            </Link>
-          </div>
-          {dueToday.length === 0 ? (
-            <p className="muted small" style={{ margin: 0 }}>
-              Heute ist keine Rückgabe fällig.
-            </p>
-          ) : (
-            <ul className="mini-list">
-              {dueToday.map((loan) => {
-                const overdue = new Date(loan.desiredUntil) < now;
-                return (
-                  <li key={loan.id}>
+        {seesRequests && (
+          <section className="card">
+            <div className="card-title">
+              <h2>Warten auf Entscheidung</h2>
+              <Link to="/admin/requests" className="small">
+                Alle prüfen
+              </Link>
+            </div>
+            {waiting.length === 0 ? (
+              <p className="muted small" style={{ margin: 0 }}>
+                Keine offenen Anfragen.
+              </p>
+            ) : (
+              <ul className="mini-list">
+                {waiting.map((item) => (
+                  <li key={item.id}>
                     <div className="mini-row">
-                      <Link to={`/admin/borrowed?focus=${loan.id}`}>
-                        <strong>
-                          {loan.device.name}{" "}
-                          <span className="muted mono">{loan.device.serialNumber}</span>
-                        </strong>
+                      <Link to={`/admin/requests?focus=${item.id}`}>
+                        <strong>{item.device.name}</strong>
                       </Link>
-                      {overdue && <span className="badge st-rejected">überfällig</span>}
+                      <span className="muted small">{item.user.name}</span>
                     </div>
                     <div className="muted small">
-                      {loan.user.name} · bis {formatDate(loan.desiredUntil)}
+                      {formatDate(item.startsAt)} – {formatDate(item.desiredUntil)}
+                      {item.room ? ` · Raum ${item.room.name}` : ""}
                     </div>
                   </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {seesLoans && (
+          <section className="card">
+            <div className="card-title">
+              <h2>Rückgaben heute & überfällig</h2>
+              <Link to="/admin/borrowed" className="small">
+                Alle Ausleihen
+              </Link>
+            </div>
+            {dueToday.length === 0 ? (
+              <p className="muted small" style={{ margin: 0 }}>
+                Heute ist keine Rückgabe fällig.
+              </p>
+            ) : (
+              <ul className="mini-list">
+                {dueToday.map((loan) => {
+                  const overdue = new Date(loan.desiredUntil) < now;
+                  return (
+                    <li key={loan.id}>
+                      <div className="mini-row">
+                        <Link to={`/admin/borrowed?focus=${loan.id}`}>
+                          <strong>
+                            {loan.device.name}{" "}
+                            <span className="muted mono">{loan.device.serialNumber}</span>
+                          </strong>
+                        </Link>
+                        {overdue && <span className="badge st-rejected">überfällig</span>}
+                      </div>
+                      <div className="muted small">
+                        {loan.user.name} · bis {formatDate(loan.desiredUntil)}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
       </div>
 
-      <div className="section-title">
-        <h2>Letzte Vorgänge</h2>
-        <Link to="/admin/protokoll" className="small">
-          Gesamtes Protokoll
-        </Link>
-      </div>
-      {events.length === 0 ? (
-        <div className="panel empty-state">Noch keine Einträge.</div>
-      ) : (
-        <AuditTimeline events={events} today={now} />
+      {seesAudit && (
+        <>
+          <div className="section-title">
+            <h2>Letzte Vorgänge</h2>
+            <Link to="/admin/protokoll" className="small">
+              Gesamtes Protokoll
+            </Link>
+          </div>
+          {events.length === 0 ? (
+            <div className="panel empty-state">Noch keine Einträge.</div>
+          ) : (
+            <AuditTimeline events={events} today={now} />
+          )}
+        </>
       )}
     </>
   );

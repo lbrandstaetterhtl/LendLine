@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
 import { DeviceFieldList, FieldFilter, useFieldOptions } from "../components/DeviceFields";
@@ -15,7 +16,8 @@ import { Alert, Field, PageHeader } from "../components/ui";
 
 export function DevicesPage() {
   const terms = useTerms();
-  const isAdmin = useAuth().user?.role === "ADMIN";
+  const { user } = useAuth();
+  const seesDefective = can(user, "devices.defective") || can(user, "devices.manage");
   const [categoryId, setCategoryId] = useState("");
   const [status, setStatus] = useState<"" | DeviceStatus>("");
   const [fieldFilter, setFieldFilter] = useState({ field: "", value: "" });
@@ -90,7 +92,7 @@ export function DevicesPage() {
             <option value="">Alle</option>
             <option value="AVAILABLE">Mindestens eins frei</option>
             <option value="BORROWED">Mindestens eins ausgeliehen</option>
-            {isAdmin && <option value="DEFECTIVE">Mindestens eins defekt</option>}
+            {seesDefective && <option value="DEFECTIVE">Mindestens eins defekt</option>}
           </select>
         </Field>
         <FieldFilter options={fieldOptions} filter={fieldFilter} onChange={setFieldFilter} />

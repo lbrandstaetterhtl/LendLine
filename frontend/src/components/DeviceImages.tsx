@@ -5,6 +5,8 @@ import { useMemo, useRef, useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { useTerms } from "../branding/BrandingContext";
 import { requestStatusLabel, toLocalInput } from "../types";
 import { Icon } from "./icons";
@@ -214,7 +216,9 @@ export function PieceCalendarDialog({
   const [formError, setFormError] = useState("");
   const [info, setInfo] = useState("");
   // Calendar and request form are two views of one dialog, never two dialogs on top of each other.
-  const [requestOpen, setRequestOpen] = useState(startWithRequest && Boolean(period));
+  // Without the right to ask, the dialog only shows the occupancy.
+  const canRequest = can(useAuth().user, "requests.create");
+  const [requestOpen, setRequestOpen] = useState(canRequest && startWithRequest && Boolean(period));
   const [sending, setSending] = useState(false);
   const { data: allRooms, error: roomsError } = useApi<Room[]>("/api/rooms");
   const { data: myRequests, reload: reloadMyRequests } =
@@ -288,6 +292,7 @@ export function PieceCalendarDialog({
   }
 
   function pickDay(day: Date, kind: string) {
+    if (!canRequest) return;
     if (kind !== "free" || current.status === "DEFECTIVE") return;
     const start = new Date(day);
     start.setHours(8, 0, 0, 0);
@@ -492,7 +497,7 @@ export function PieceCalendarDialog({
               {dateTime(highlight.startsAt)} – {dateTime(highlight.desiredUntil)}
             </strong>
           </div>
-          {unitBusy(current, highlight) ? (
+          {!canRequest ? null : unitBusy(current, highlight) ? (
             <span className="muted small">In diesem Zeitraum schon belegt.</span>
           ) : (
             <button type="button" onClick={() => openRequest(highlight, chosen?.roomId)}>

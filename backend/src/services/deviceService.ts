@@ -97,7 +97,11 @@ function toPublic(device: DeviceWithRelations, includePieces: boolean) {
 
 export async function listDevices(
   filter: { categoryId?: string; status?: DeviceStatus | ""; field?: string; value?: string },
-  includePieces: boolean
+  includePieces: boolean,
+  /**
+   * Categories the caller may see; null = all.
+   */
+  scope: string[] | null = null
 ) {
   if (!includePieces && filter.status === "DEFECTIVE") return [];
   await refreshUnitStatuses();
@@ -108,7 +112,10 @@ export async function listDevices(
       : { some: { status: { not: "DEFECTIVE" } } };
   const rows = await prisma.device.findMany({
     where: {
-      categoryId: filter.categoryId || undefined,
+      AND: [
+        { categoryId: filter.categoryId || undefined },
+        scope ? { categoryId: { in: scope } } : {},
+      ],
       units: unitFilter,
       ...fieldFilter(filter.field, filter.value),
     },

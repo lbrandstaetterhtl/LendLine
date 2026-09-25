@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
+import { canOpen, homePath } from "./auth/permissions";
 import { Layout } from "./components/Layout";
 import { AccountPage } from "./pages/AccountPage";
 import { AdminAuditPage } from "./pages/AdminAuditPage";
@@ -9,6 +10,7 @@ import { AdminBrandingPage } from "./pages/AdminBrandingPage";
 import { AdminCategoriesPage } from "./pages/AdminCategoriesPage";
 import { AdminDevicesPage } from "./pages/AdminDevicesPage";
 import { AdminEmailsPage } from "./pages/AdminEmailsPage";
+import { AdminGroupsPage } from "./pages/AdminGroupsPage";
 import { AdminHomePage } from "./pages/AdminHomePage";
 import { AdminMaintenancePage } from "./pages/AdminMaintenancePage";
 import { AdminRequestsPage } from "./pages/AdminRequestsPage";
@@ -35,21 +37,17 @@ function Protected({ children }: { children: React.ReactNode }) {
   if (!user) return <Navigate to="/login" replace state={{ from: `${pathname}${search}` }} />;
   // The server refuses everything else until then, see requireAuth.
   if (user.mustChangePassword && pathname !== "/konto") return <Navigate to="/konto" replace />;
-  return children;
-}
-
-function AdminOnly({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  if (user?.role !== "ADMIN") return <Navigate to="/search" replace />;
+  // Pages the group may not open lead to the person's start page (the API refuses them anyway).
+  if (!canOpen(user, pathname)) return <Navigate to={homePath(user)} replace />;
   return children;
 }
 
 /**
- * Unknown addresses go to the start page of the person's role.
+ * Unknown addresses go to the start page of the person's group.
  */
 function RoleHome() {
   const { user } = useAuth();
-  return <Navigate to={user?.role === "ADMIN" ? "/admin" : "/search"} replace />;
+  return <Navigate to={homePath(user)} replace />;
 }
 
 function GuestOnly({ children }: { children: React.ReactNode }) {
@@ -60,7 +58,7 @@ function GuestOnly({ children }: { children: React.ReactNode }) {
         <p className="muted">Laden…</p>
       </div>
     );
-  if (user) return <Navigate to={user.role === "ADMIN" ? "/admin" : "/search"} replace />;
+  if (user) return <Navigate to={homePath(user)} replace />;
   return children;
 }
 
@@ -95,102 +93,19 @@ export function App() {
         <Route path="/my-requests" element={<MyRequestsPage />} />
         <Route path="/hilfe" element={<HelpPage />} />
         <Route path="/konto" element={<AccountPage />} />
-        <Route
-          path="/admin"
-          element={
-            <AdminOnly>
-              <AdminHomePage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/devices"
-          element={
-            <AdminOnly>
-              <AdminDevicesPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/categories"
-          element={
-            <AdminOnly>
-              <AdminCategoriesPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/rooms"
-          element={
-            <AdminOnly>
-              <AdminRoomsPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/users"
-          element={
-            <AdminOnly>
-              <AdminUsersPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/requests"
-          element={
-            <AdminOnly>
-              <AdminRequestsPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/borrowed"
-          element={
-            <AdminOnly>
-              <AdminBorrowedPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/protokoll"
-          element={
-            <AdminOnly>
-              <AdminAuditPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/erscheinungsbild"
-          element={
-            <AdminOnly>
-              <AdminBrandingPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/einstellungen"
-          element={
-            <AdminOnly>
-              <AdminSettingsPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/emails"
-          element={
-            <AdminOnly>
-              <AdminEmailsPage />
-            </AdminOnly>
-          }
-        />
-        <Route
-          path="/admin/wartung"
-          element={
-            <AdminOnly>
-              <AdminMaintenancePage />
-            </AdminOnly>
-          }
-        />
+        <Route path="/admin" element={<AdminHomePage />} />
+        <Route path="/admin/devices" element={<AdminDevicesPage />} />
+        <Route path="/admin/categories" element={<AdminCategoriesPage />} />
+        <Route path="/admin/rooms" element={<AdminRoomsPage />} />
+        <Route path="/admin/users" element={<AdminUsersPage />} />
+        <Route path="/admin/requests" element={<AdminRequestsPage />} />
+        <Route path="/admin/borrowed" element={<AdminBorrowedPage />} />
+        <Route path="/admin/gruppen" element={<AdminGroupsPage />} />
+        <Route path="/admin/protokoll" element={<AdminAuditPage />} />
+        <Route path="/admin/erscheinungsbild" element={<AdminBrandingPage />} />
+        <Route path="/admin/einstellungen" element={<AdminSettingsPage />} />
+        <Route path="/admin/emails" element={<AdminEmailsPage />} />
+        <Route path="/admin/wartung" element={<AdminMaintenancePage />} />
       </Route>
       <Route
         path="*"

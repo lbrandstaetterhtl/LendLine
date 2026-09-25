@@ -1,7 +1,10 @@
 /**
  * Keyboard shortcuts: one list for the handler in Layout and the explanation on the help page.
  */
-export type GoShortcut = { key: string; to: string; label: string; admin?: boolean };
+/**
+ * Which shortcuts a person gets follows from the pages they may open (auth/permissions.ts).
+ */
+export type GoShortcut = { key: string; to: string; label: string };
 
 /**
  * "g" followed by one of these keys jumps to the page.
@@ -11,23 +14,23 @@ export const goShortcuts: GoShortcut[] = [
   { key: "k", to: "/devices", label: "Gerätekatalog" },
   { key: "m", to: "/my-requests", label: "Meine Anfragen" },
   { key: "h", to: "/hilfe", label: "Bedienung" },
-  { key: "u", to: "/admin", label: "Übersicht", admin: true },
-  { key: "a", to: "/admin/requests", label: "Anfragen", admin: true },
-  { key: "l", to: "/admin/borrowed", label: "Ausleihen", admin: true },
-  { key: "g", to: "/admin/devices", label: "Geräte", admin: true },
-  { key: "t", to: "/admin/categories", label: "Kategorien", admin: true },
-  { key: "r", to: "/admin/rooms", label: "Räume", admin: true },
-  { key: "b", to: "/admin/users", label: "Benutzer", admin: true },
-  { key: "p", to: "/admin/protokoll", label: "Protokoll", admin: true },
+  { key: "u", to: "/admin", label: "Übersicht" },
+  { key: "a", to: "/admin/requests", label: "Anfragen" },
+  { key: "l", to: "/admin/borrowed", label: "Ausleihen" },
+  { key: "g", to: "/admin/devices", label: "Geräte" },
+  { key: "t", to: "/admin/categories", label: "Kategorien" },
+  { key: "r", to: "/admin/rooms", label: "Räume" },
+  { key: "b", to: "/admin/users", label: "Benutzer" },
+  { key: "q", to: "/admin/gruppen", label: "Gruppen" },
+  { key: "p", to: "/admin/protokoll", label: "Protokoll" },
   {
     key: "e",
     to: "/admin/erscheinungsbild",
     label: "Einstellungen: Erscheinungsbild",
-    admin: true,
   },
-  { key: "i", to: "/admin/einstellungen", label: "Einstellungen: Regeln & Formular", admin: true },
-  { key: "v", to: "/admin/emails", label: "Einstellungen: E-Mails", admin: true },
-  { key: "w", to: "/admin/wartung", label: "Einstellungen: Wartung", admin: true },
+  { key: "i", to: "/admin/einstellungen", label: "Einstellungen: Regeln & Formular" },
+  { key: "v", to: "/admin/emails", label: "Einstellungen: E-Mails" },
+  { key: "w", to: "/admin/wartung", label: "Einstellungen: Wartung" },
 ];
 
 export function goKeyFor(to: string): string | undefined {

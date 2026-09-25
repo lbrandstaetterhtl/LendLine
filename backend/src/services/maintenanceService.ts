@@ -1,5 +1,3 @@
-import type { Role } from "@prisma/client";
-
 import { z } from "zod";
 
 import { formatDate } from "../emails/format.js";
@@ -97,10 +95,12 @@ export async function setMaintenance(
 }
 
 /**
- * Rejects non-admins with 503 while maintenance is on; admins keep working.
+ * Rejects everyone without `maintenance.bypass` with 503 while maintenance is on.
  */
-export async function assertAccessDuringMaintenance(role: Role): Promise<void> {
-  if (role === "ADMIN") return;
+export async function assertAccessDuringMaintenance(
+  permissions: ReadonlySet<string>
+): Promise<void> {
+  if (permissions.has("maintenance.bypass")) return;
   const mode = await getMaintenance();
   if (!mode.enabled) return;
   throw new HttpError(503, mode.message, "MAINTENANCE");

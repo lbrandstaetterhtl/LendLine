@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { errorMessage, useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { useTerms } from "../branding/BrandingContext";
 import { FieldAnswers } from "../components/FieldAnswers";
 import { Icon } from "../components/icons";
@@ -31,6 +33,7 @@ export function MyRequestsPage() {
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const terms = useTerms();
+  const canRequest = can(useAuth().user, "requests.create");
 
   async function cancel(item: BorrowRequest) {
     if (!window.confirm(`Anfrage für „${item.device.name}“ zurückziehen?`)) return;
@@ -54,9 +57,11 @@ export function MyRequestsPage() {
         title="Meine Anfragen"
         description="Offen: Die Verwaltung hat noch nicht entschieden. Bestätigt: für Sie reserviert."
         actions={
-          <Link className="btn" to="/search">
-            <Icon name="plus" /> Neue Anfrage
-          </Link>
+          canRequest && (
+            <Link className="btn" to="/search">
+              <Icon name="plus" /> Neue Anfrage
+            </Link>
+          )
         }
       />
       <Alert>{error || actionError}</Alert>

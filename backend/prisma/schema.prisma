@@ -7,11 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  USER
-  ADMIN
-}
-
 enum AuthSource {
   LOCAL
   LDAP
@@ -39,14 +34,42 @@ model User {
   passwordHash       String?
   authSource         AuthSource      @default(LOCAL)
   ldapDn             String?         @unique
-  role               Role            @default(USER)
+  /// Every user belongs to exactly one group; its permissions decide what the user may do.
+  groupId            String
+  group              Group           @relation(fields: [groupId], references: [id], onDelete: Restrict)
   createdAt          DateTime        @default(now())
-  /// Raised on revocation, password reset and role change; access tokens carry it as `sv`.
+  /// Raised on revocation, password reset and group change; access tokens carry it as `sv`.
   sessionVersion     Int             @default(0)
   /// Set when an admin chose the password: the user must pick their own at the next login.
   mustChangePassword Boolean         @default(false)
   requests           BorrowRequest[]
   refreshTokens      RefreshToken[]
+
+  @@index([groupId])
+}
+
+/// A set of permissions (keys from backend/src/lib/permissions.ts) plus optional limits.
+model Group {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  description       String   @default("")
+  permissions       String[] @default([])
+  /// Categories the members may borrow from; empty = all.
+  borrowCategoryIds String[] @default([])
+  /// Categories whose requests, loans and devices the members manage; empty = all.
+  manageCategoryIds String[] @default([])
+  /// Loan rules for this group; null = the company-wide setting.
+  maxDays           Int?
+  maxOpenPerUser    Int?
+  autoApprove       Boolean?
+  /// Directory groups (full DNs) whose members get this group at login.
+  ldapGroupDns      String[] @default([])
+  /// New accounts (registration, first directory login) land here; exactly one group has it.
+  isDefault         Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  users             User[]
 }
 
 model Category {

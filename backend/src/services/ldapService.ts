@@ -7,7 +7,10 @@ export type LdapProfile = {
   dn: string;
   email: string;
   name: string;
-  isAdmin: boolean;
+  /**
+   * The user's group memberships (`memberOf`), normalised with `normalizeDn`.
+   */
+  memberOf: string[];
 };
 
 function escapeFilter(value: string): string {
@@ -31,20 +34,11 @@ function first(value: unknown): string {
 /**
  * DNs differ only in case and in spaces after the commas between servers and tools.
  */
-function normalizeDn(dn: string): string {
+export function normalizeDn(dn: string): string {
   return dn
     .toLowerCase()
     .replaceAll(/\s*,\s*/g, ",")
     .trim();
-}
-
-/**
- * Exact DN match only (config.ts refuses bare group names).
- */
-function isAdmin(memberOf: string[]): boolean {
-  const groups = new Set(config.ldap.adminGroups.map(normalizeDn));
-  if (groups.size === 0) return false;
-  return memberOf.some((entry) => groups.has(normalizeDn(entry)));
 }
 
 function isInvalidCredentials(error: unknown): boolean {
@@ -110,7 +104,7 @@ export async function authenticateLdap(
       dn,
       email,
       name,
-      isAdmin: isAdmin(asStrings(entry.memberOf)),
+      memberOf: asStrings(entry.memberOf).map(normalizeDn),
     };
   } catch (error) {
     if (error instanceof HttpError) throw error;

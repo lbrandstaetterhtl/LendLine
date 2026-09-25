@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { useTerms } from "../branding/BrandingContext";
 import { FieldAnswers } from "../components/FieldAnswers";
 import { Alert, Field, Modal, PageHeader, refreshNav } from "../components/ui";
@@ -13,6 +15,7 @@ import { formatDate } from "../types";
 
 export function AdminRequestsPage() {
   const focus = useFocusRow();
+  const decides = can(useAuth().user, "requests.decide");
   const terms = useTerms();
   const {
     data: requests,
@@ -110,21 +113,23 @@ export function AdminRequestsPage() {
                   <FieldAnswers fields={item.fields} />
                 </td>
                 <td className="actions-cell">
-                  <div className="actions">
-                    <button
-                      type="button"
-                      className="danger sm"
-                      onClick={() => {
-                        setRejecting(item);
-                        setReason("");
-                      }}
-                    >
-                      Ablehnen
-                    </button>
-                    <button type="button" className="sm" onClick={() => void approve(item)}>
-                      Bestätigen
-                    </button>
-                  </div>
+                  {decides && (
+                    <div className="actions">
+                      <button
+                        type="button"
+                        className="danger sm"
+                        onClick={() => {
+                          setRejecting(item);
+                          setReason("");
+                        }}
+                      >
+                        Ablehnen
+                      </button>
+                      <button type="button" className="sm" onClick={() => void approve(item)}>
+                        Bestätigen
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

@@ -173,7 +173,16 @@ function changedPaths(
 /**
  * What the request dialog needs; readable by every signed-in user.
  */
-export async function requestFormConfig() {
+export async function requestFormConfig(
+  groupRules: { maxDays: number | null; autoApprove: boolean | null } = {
+    maxDays: null,
+    autoApprove: null,
+  }
+) {
   const { form, rules } = await getSetting("policy");
-  return { ...form, maxDays: rules.maxDays, autoApprove: rules.autoApprove };
+  return {
+    ...form,
+    maxDays: groupRules.maxDays ?? rules.maxDays,
+    autoApprove: groupRules.autoApprove ?? rules.autoApprove,
+  };
 }

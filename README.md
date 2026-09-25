@@ -49,7 +49,7 @@ LDAP_BASE_DN=ou=people,dc=example,dc=edu
 LDAP_ADMIN_GROUP=CN=LendLine-Admins,OU=Groups,DC=example,DC=edu
 ```
 
-Die Anmeldung akzeptiert dann E-Mail, `sAMAccountName` oder `uid`. Ein Treffer wird lokal angelegt (`authSource=LDAP`). Die Rolle kommt aus `LDAP_ADMIN_GROUP` (`memberOf`), sofern gesetzt. `LDAP_ADMIN_GROUP` muss vollständige DNs enthalten, mehrere werden mit `;` getrennt; ein bloßer Gruppenname verhindert den Start. In Produktion (`NODE_ENV=production`) startet die API nur mit `ldaps://` und geprüftem Zertifikat, außer mit `LDAP_ALLOW_INSECURE=true`. Lokale Demo-Konten bleiben gültig, wenn der Benutzer im Verzeichnis nicht gefunden wird. `LDAP_ALLOW_LOCAL_REGISTER=false` schaltet die Selbstregistrierung ab.
+Die Anmeldung akzeptiert dann E-Mail, `sAMAccountName` oder `uid`. Ein Treffer wird lokal angelegt (`authSource=LDAP`). Die Gruppe kommt aus den Verzeichnisgruppen, die bei einer LendLine-Gruppe eingetragen sind, sonst führt `LDAP_ADMIN_GROUP` in die Gruppe „Verwaltung“. `LDAP_ADMIN_GROUP` muss vollständige DNs enthalten, mehrere werden mit `;` getrennt; ein bloßer Gruppenname verhindert den Start. In Produktion (`NODE_ENV=production`) startet die API nur mit `ldaps://` und geprüftem Zertifikat, außer mit `LDAP_ALLOW_INSECURE=true`. Lokale Demo-Konten bleiben gültig, wenn der Benutzer im Verzeichnis nicht gefunden wird. `LDAP_ALLOW_LOCAL_REGISTER=false` schaltet die Selbstregistrierung ab.
 
 ## Anpassen
 
@@ -60,7 +60,7 @@ Alles Firmenspezifische stellt die Verwaltung in der Oberfläche ein, ohne Neust
 - **Geräte:** freie Eigenschaften pro Gerät (z. B. „RAM: 16 GB“, „Anschlüsse: HDMI, USB-C“). Nutzer sehen sie im Katalog und in der Suche und können danach filtern.
 - **E-Mails:** Absendername, Logo, Anrede, Signatur, Fußzeile und ein eigener Text je Nachricht, mit Vorschau.
 
-Konten legt die Verwaltung unter „Benutzer“ an. Das dabei vergebene Passwort ist vorläufig: Bei der ersten Anmeldung muss die Person ein eigenes festlegen. Unter „Mein Konto“ kann jede Person ihr Passwort selbst ändern.
+Konten legt die Verwaltung unter „Benutzer“ an. Jede Person gehört zu genau einer **Gruppe**; unter „Benutzer → Gruppen und Rechte“ legt die Verwaltung Gruppen an und stellt pro Gruppe ein, was sie darf (22 einzelne Rechte), aus welchen Kategorien sie ausleiht, welche Kategorien sie verwaltet und welche Ausleihregeln für sie gelten. Vorhanden sind „Verwaltung“ (alle Rechte) und „Nutzer“ (Katalog und Anfragen). Das dabei vergebene Passwort ist vorläufig: Bei der ersten Anmeldung muss die Person ein eigenes festlegen. Unter „Mein Konto“ kann jede Person ihr Passwort selbst ändern.
 
 ## Demo-Konten
 

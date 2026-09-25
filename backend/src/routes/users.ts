@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { routeParam } from "../lib/params.js";
-import { requireAdmin, requireAuth } from "../middleware/auth.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { rejectOpenRequestsOfUser } from "../services/requestService.js";
 import {
@@ -17,27 +17,27 @@ import {
 import { newPassword } from "../validators/auth.js";
 import { rejectOpenSchema } from "../validators/request.js";
 
-const role = z.enum(["USER", "ADMIN"]);
-
 const createSchema = z.object({
   name: z.string().trim().min(2, "Name muss mindestens 2 Zeichen haben").max(120),
   email: z.string().trim().email("Ungültige E-Mail-Adresse").max(200),
   password: newPassword,
-  role: role.default("USER"),
+  // Missing: the default group.
+  groupId: z.string().min(1).max(60).optional(),
 });
 
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
-  role: role.optional(),
+  groupId: z.string().min(1).max(60).optional(),
   password: newPassword.optional(),
 });
 
 export const userRouter = Router();
 
-userRouter.use(requireAuth, requireAdmin);
+userRouter.use(requireAuth);
 
 userRouter.get(
   "/",
+  requirePermission("users.view"),
   asyncHandler(async (_req, res) => {
     res.json(await listUsers());
   })
@@ -45,30 +45,34 @@ userRouter.get(
 
 userRouter.post(
   "/",
+  requirePermission("users.manage"),
   validateBody(createSchema),
   asyncHandler(async (req, res) => {
-    res.status(201).json(await createUser(req.body, req.user!.id));
+    res.status(201).json(await createUser(req.body, req.user!));
   })
 );
 
 userRouter.patch(
   "/:id",
+  requirePermission("users.manage"),
   validateBody(updateSchema),
   asyncHandler(async (req, res) => {
-    res.json(await updateUser(routeParam(req, "id"), req.user!.id, req.body));
+    res.json(await updateUser(routeParam(req, "id"), req.user!, req.body));
   })
 );
 
 userRouter.delete(
   "/:id",
+  requirePermission("users.manage"),
   asyncHandler(async (req, res) => {
-    await deleteUser(routeParam(req, "id"), req.user!.id);
+    await deleteUser(routeParam(req, "id"), req.user!);
     res.status(204).send();
   })
 );
 
 userRouter.get(
   "/:id/profile",
+  requirePermission("users.view"),
   asyncHandler(async (req, res) => {
     res.json(await getUserProfile(routeParam(req, "id")));
   })
@@ -76,6 +80,7 @@ userRouter.get(
 
 userRouter.post(
   "/:id/requests/reject-open",
+  requirePermission("users.emergency"),
   validateBody(rejectOpenSchema),
   asyncHandler(async (req, res) => {
     res.json(await rejectOpenRequestsOfUser(routeParam(req, "id"), req.body.reason, req.user!.id));
@@ -84,6 +89,7 @@ userRouter.post(
 
 userRouter.post(
   "/:id/sessions/revoke",
+  requirePermission("users.emergency"),
   asyncHandler(async (req, res) => {
     res.json(await revokeUserSessions(routeParam(req, "id"), req.user!.id));
   })

@@ -20,7 +20,15 @@ export type AuditDetails = {
 /**
  * Entity types, which the log groups into categories for filtering.
  */
-export type AuditEntity = "REQUEST" | "DEVICE" | "CATEGORY" | "ROOM" | "USER" | "AUTH" | "SYSTEM";
+export type AuditEntity =
+  | "REQUEST"
+  | "DEVICE"
+  | "CATEGORY"
+  | "ROOM"
+  | "USER"
+  | "GROUP"
+  | "AUTH"
+  | "SYSTEM";
 
 export async function recordAudit(input: {
   actorId?: string | null;
@@ -100,7 +108,7 @@ const categoryEntities: Record<string, AuditEntity[]> = {
   requests: ["REQUEST"],
   devices: ["DEVICE"],
   masterdata: ["CATEGORY", "ROOM"],
-  users: ["USER"],
+  users: ["USER", "GROUP"],
   auth: ["AUTH"],
   system: ["SYSTEM"],
 };

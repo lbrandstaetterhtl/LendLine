@@ -12,6 +12,7 @@ import { adminRouter } from "./routes/admin.js";
 import { authRouter } from "./routes/auth.js";
 import { categoryRouter } from "./routes/categories.js";
 import { deviceRouter } from "./routes/devices.js";
+import { groupRouter } from "./routes/groups.js";
 import { requestRouter } from "./routes/requests.js";
 import { roomRouter } from "./routes/rooms.js";
 import { userRouter } from "./routes/users.js";
@@ -63,8 +64,8 @@ export function createApp() {
   app.get(
     "/api/settings/request-form",
     requireAuth,
-    asyncHandler(async (_req, res) => {
-      res.json(await requestFormConfig());
+    asyncHandler(async (req, res) => {
+      res.json(await requestFormConfig(req.user!.rules));
     })
   );
   app.use("/api/auth", authRouter);
@@ -73,6 +74,7 @@ export function createApp() {
   app.use("/api/requests", requestRouter);
   app.use("/api/rooms", roomRouter);
   app.use("/api/users", userRouter);
+  app.use("/api/groups", groupRouter);
   app.use("/api/admin", adminRouter);
   app.use(errorHandler);
   return app;

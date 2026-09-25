@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
+import { can } from "../auth/permissions";
 import { useTerms } from "../branding/BrandingContext";
 import { CategorySelect } from "../components/CategorySelect";
 import {
@@ -92,6 +94,7 @@ function searchPath(
 
 export function SearchPage() {
   const terms = useTerms();
+  const canRequest = can(useAuth().user, "requests.create");
   const [now] = useState(() => new Date());
   const [quickPeriods] = useState(() => presets(now));
   const [startsAt, setStartsAt] = useState(() => at(now, 1, 8));
@@ -295,7 +298,15 @@ export function SearchPage() {
                               setPicked(hit);
                             }}
                           >
-                            <Icon name="plus" /> Anfragen
+                            {canRequest ? (
+                              <>
+                                <Icon name="plus" /> Anfragen
+                              </>
+                            ) : (
+                              <>
+                                <Icon name="calendar" /> Kalender
+                              </>
+                            )}
                           </button>
                         </td>
                       </tr>
@@ -367,7 +378,7 @@ export function SearchPage() {
           }}
           period={searched.period}
           // The period comes from the search: straight to the form, the calendar is one click away.
-          startWithRequest
+          startWithRequest={canRequest}
           onRequested={onRequested}
           onClose={() => setPicked(null)}
         />

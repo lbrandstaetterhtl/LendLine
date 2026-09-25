@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { routeParam } from "../lib/params.js";
-import { requireAdmin, requireAuth } from "../middleware/auth.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { createRoom, deleteRoom, listRooms, updateRoom } from "../services/roomService.js";
 
@@ -25,7 +25,7 @@ roomRouter.get(
 
 roomRouter.post(
   "/",
-  requireAdmin,
+  requirePermission("rooms.manage"),
   validateBody(roomSchema),
   asyncHandler(async (req, res) => {
     res.status(201).json(await createRoom(req.body, req.user!.id));
@@ -34,7 +34,7 @@ roomRouter.post(
 
 roomRouter.patch(
   "/:id",
-  requireAdmin,
+  requirePermission("rooms.manage"),
   validateBody(roomSchema),
   asyncHandler(async (req, res) => {
     res.json(await updateRoom(routeParam(req, "id"), req.body, req.user!.id));
@@ -43,7 +43,7 @@ roomRouter.patch(
 
 roomRouter.delete(
   "/:id",
-  requireAdmin,
+  requirePermission("rooms.manage"),
   asyncHandler(async (req, res) => {
     await deleteRoom(routeParam(req, "id"), req.user!.id);
     res.status(204).end();

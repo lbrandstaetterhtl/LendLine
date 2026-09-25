@@ -15,6 +15,10 @@ export async function searchFreeUnits(input: {
   q?: string;
   field?: string;
   value?: string;
+  /**
+   * Categories the caller's group may borrow from; null = all.
+   */
+  scope?: string[] | null;
 }) {
   const startsAt = parseLocal(input.startsAt, "Startzeit");
   const desiredUntil = parseLocal(input.desiredUntil, "Endzeit");
@@ -25,7 +29,10 @@ export async function searchFreeUnits(input: {
     where: {
       status: { not: "DEFECTIVE" },
       device: {
-        categoryId: input.categoryId || undefined,
+        AND: [
+          { categoryId: input.categoryId || undefined },
+          input.scope ? { categoryId: { in: input.scope } } : {},
+        ],
         ...(input.q ? { name: { contains: input.q, mode: "insensitive" } } : {}),
         ...fieldFilter(input.field, input.value),
       },

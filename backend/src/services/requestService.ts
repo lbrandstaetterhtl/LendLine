@@ -116,9 +116,23 @@ export async function createRequest(
     desiredUntil: string;
     comment: string;
     fields: Record<string, string | boolean>;
-  }
+  },
+  /**
+   * The requester's group rules; null values fall back to the company-wide setting.
+   */
+  groupRules: {
+    maxDays: number | null;
+    maxOpenPerUser: number | null;
+    autoApprove: boolean | null;
+  } = { maxDays: null, maxOpenPerUser: null, autoApprove: null }
 ) {
-  const { rules, form } = await getSetting("policy");
+  const policy = await getSetting("policy");
+  const { form } = policy;
+  const rules = {
+    maxDays: groupRules.maxDays ?? policy.rules.maxDays,
+    maxOpenPerUser: groupRules.maxOpenPerUser ?? policy.rules.maxOpenPerUser,
+    autoApprove: groupRules.autoApprove ?? policy.rules.autoApprove,
+  };
   const startsAt = parseLocalDateTime(input.startsAt, "Startzeit");
   const desiredUntil = parseLocalDateTime(input.desiredUntil, "Endzeit");
   if (desiredUntil <= startsAt)
@@ -278,9 +292,12 @@ export async function listMyRequests(userId: string) {
   return rows.map(presentRequest);
 }
 
-export async function listRequests(status?: RequestStatus) {
+export async function listRequests(status?: RequestStatus, scope: string[] | null = null) {
   const rows = await prisma.borrowRequest.findMany({
-    where: status ? { status } : undefined,
+    where: {
+      ...(status ? { status } : {}),
+      ...(scope ? { device: { categoryId: { in: scope } } } : {}),
+    },
     include: requestInclude,
     orderBy: { requestedAt: "asc" },
   });

@@ -1,8 +1,11 @@
+import type { User } from "../types";
+
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { can, canOpen } from "../auth/permissions";
 import { type Terms, useBranding, useTerms } from "../branding/BrandingContext";
 import { goKeyFor, goShortcuts, isTyping } from "../shortcuts";
 import { Icon, type IconName } from "./icons";
@@ -41,7 +44,12 @@ const adminDataLinks: NavItem[] = [
   { to: "/admin/devices", label: (terms) => terms.devices, icon: "box" },
   { to: "/admin/categories", label: "Kategorien", icon: "tag" },
   { to: "/admin/rooms", label: (terms) => terms.rooms, icon: "door" },
-  { to: "/admin/users", label: "Benutzer", icon: "users" },
+  {
+    to: "/admin/users",
+    label: "Benutzer",
+    icon: "users",
+    alsoActiveOn: ["/admin/users", "/admin/gruppen"],
+  },
 ];
 
 // One entry for everything that configures the installation; the pages are tabs of it
@@ -67,7 +75,7 @@ const adminSystemLinks: NavItem[] = [
  * Global keys: "?" help, "/" search field, "n" create, "g" + letter to jump to a page. Dialogs
  * handle their own keys; while one is open (or a field has focus) nothing fires here.
  */
-function useShortcuts(isAdmin: boolean) {
+function useShortcuts(user: User | null) {
   const navigate = useNavigate();
   useEffect(() => {
     let goPending = 0;
@@ -78,7 +86,7 @@ function useShortcuts(isAdmin: boolean) {
       if (goPending && Date.now() - goPending < 1500) {
         goPending = 0;
         const target = goShortcuts.find(
-          (shortcut) => shortcut.key === event.key.toLowerCase() && (isAdmin || !shortcut.admin)
+          (shortcut) => shortcut.key === event.key.toLowerCase() && canOpen(user, shortcut.to)
         );
         if (target) {
           event.preventDefault();
@@ -108,7 +116,7 @@ function useShortcuts(isAdmin: boolean) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isAdmin, navigate]);
+  }, [user, navigate]);
 }
 
 /**
@@ -157,11 +165,10 @@ function Brand() {
 
 export function Layout() {
   const { user, logout } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
   const [menuOpen, setMenuOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const terms = useTerms();
-  useShortcuts(isAdmin);
+  useShortcuts(user);
   useFocusOnNavigation();
 
   // Mobile menu: focus moves into it, Escape closes it again.
@@ -175,7 +182,7 @@ export function Layout() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);
   const { data: counts, reload: reloadCounts } = useApi<Counts>(
-    isAdmin ? "/api/admin/summary" : null
+    can(user, "dashboard.view") ? "/api/admin/summary" : null
   );
 
   // Pages announce changes (approve, return, …) so the counters never lag behind.
@@ -189,6 +196,29 @@ export function Layout() {
     reloadCounts();
   }
   const { pathname } = useLocation();
+
+  /**
+   * The entries of a group of links the person may open; the settings entry leads to the first
+   * settings tab they have.
+   */
+  function visible(items: NavItem[]): NavItem[] {
+    return items.flatMap((item) => {
+      if (!item.alsoActiveOn) return canOpen(user, item.to) ? [item] : [];
+      const first = item.alsoActiveOn.find((path) => canOpen(user, path));
+      return first ? [{ ...item, to: first }] : [];
+    });
+  }
+
+  function section(title: string, items: NavItem[]) {
+    const shown = visible(items);
+    if (shown.length === 0) return null;
+    return (
+      <>
+        <p className="nav-label">{title}</p>
+        {renderLinks(shown)}
+      </>
+    );
+  }
 
   function renderLinks(items: NavItem[]) {
     return (
@@ -255,23 +285,12 @@ export function Layout() {
           <Brand />
         </div>
         <nav aria-label="Hauptnavigation">
-          {/* Admins start on their overview, so their own work comes first. */}
-          {isAdmin && (
-            <>
-              <p className="nav-label">Verwaltung</p>
-              {renderLinks(adminLinks)}
-            </>
-          )}
-          <p className="nav-label">Ausleihe</p>
-          {renderLinks(lendLinks)}
-          {isAdmin && (
-            <>
-              <p className="nav-label">Stammdaten</p>
-              {renderLinks(adminDataLinks)}
-              <p className="nav-label">System</p>
-              {renderLinks(adminSystemLinks)}
-            </>
-          )}
+          {/* Whoever handles requests starts there, so that work comes first. Every entry is
+              shown only if the person's group may open the page. */}
+          {section("Verwaltung", adminLinks)}
+          {section("Ausleihe", lendLinks)}
+          {section("Stammdaten", adminDataLinks)}
+          {section("System", adminSystemLinks)}
         </nav>
         <div className="sidebar-theme">
           <NavLink
@@ -290,7 +309,7 @@ export function Layout() {
           </span>
           <NavLink to="/konto" className="who" onClick={onNavigate} title="Mein Konto">
             <strong>{user?.name}</strong>
-            <span>{isAdmin ? "Verwaltung" : "Nutzer"} · Mein Konto</span>
+            <span>{user?.group.name} · Mein Konto</span>
           </NavLink>
           <button
             type="button"
