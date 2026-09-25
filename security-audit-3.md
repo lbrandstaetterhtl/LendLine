@@ -1,275 +1,177 @@
-# Security-Audit 3 – LendLine
+# Security audit 3 – LendLine
 
-Stand: 2026-09-25, Commit `0f3b266` (`main`). Gleiche Kriterien und Schweregrade wie
-`security-audit-1.md` und `security-audit-2.md`. Neu gegenüber Audit 2: Das Produkt soll künftig
-an Firmen vermietet werden (eine Installation pro Firma, siehe `doc/LendLine.md` §13.6). Befunde
-wurden deshalb auch danach bewertet, dass eine Installation **aus dem Internet erreichbar** sein
-kann und nicht nur im Firmennetz läuft.
+As of 2026-09-25, commit `0f3b266` (`main`). Same criteria and severities as `security-audit-1.md` and `security-audit-2.md`. New compared with audit 2: the product is to be rented to companies (one installation per company, see `doc/LendLine.md` §13.6). Findings were therefore also rated on the assumption that an installation can be **reachable from the internet**, not only inside the company network.
 
-**Umfang:** gesamtes Backend (`backend/src`, ca. 3 900 Zeilen, vollständig gelesen), Prisma-Schema,
-sicherheitsrelevante Teile des Frontends (Token-Handling, HTML-Senken, Links, `index.html`,
-Vite-Konfiguration), Abhängigkeiten.
+**Scope:** the whole backend (`backend/src`, about 3,900 lines, read completely), the Prisma schema, security-relevant parts of the frontend (token handling, HTML sinks, links, `index.html`, Vite configuration), dependencies.
 
-**Werkzeuge:**
+**Tools:**
 
-- Backend und Frontend: `typecheck`, `lint:types` und `knip` sind grün.
-- `oxfmt --check` meldet 13 Backend-Dateien. Ursache ist wie in Audit 2 der Checkout mit CRLF
-  (`core.autocrlf=true`); kein Sicherheitsbefund.
-- `npm audit`: Frontend und Root 0 Schwachstellen. Backend: `deepmerge-ts` (Dev), von npm jetzt als
-  **High** eingestuft, siehe Finding 9.
+- Backend and frontend: `typecheck`, `lint:types` and `knip` are green.
+- `oxfmt --check` reports 13 backend files. As in audit 2, the cause is the checkout with CRLF (`core.autocrlf=true`); not a security finding.
+- `npm audit`: frontend and root 0 vulnerabilities. Backend: `deepmerge-ts` (dev), now rated **High** by npm, see finding 9.
 
-**Laufzeittests** gegen die lokale Installation mit PostgreSQL. In Audit 2 fehlte die Datenbank;
-diese Pfade sind jetzt erstmals im Betrieb geprüft.
+**Runtime tests** against the local installation with PostgreSQL. Audit 2 had no database; these paths are now checked in operation for the first time.
 
-| Test                                                     | Ergebnis                             |
-| -------------------------------------------------------- | ------------------------------------ |
-| Refresh, danach altes Refresh-Token erneut verwenden     | 200, dann 401                        |
-| Zwei gleichzeitige Refreshes mit demselben Token         | einmal 200, einmal 401               |
-| Refresh mit fremdem `Origin`                             | 403                                  |
-| 11 falsche Logins für dasselbe Konto                     | 10 × 401, dann 429                   |
-| Kaputtes JSON                                            | 400 „Ungültiger Anfrage-Inhalt“      |
-| Antwortzeit unbekanntes vs. vorhandenes lokales Konto    | 333 ms vs. 302 ms (kein Unterschied) |
-| Security-Header (`nosniff`, `X-Frame-Options`, Referrer) | gesetzt, `X-Powered-By` fehlt        |
-| Logo-Upload: SVG mit `<script>`                          | Auslieferung mit `sandbox`-CSP       |
-| Logo-Upload: `.txt`, unbekannte Variante, Nutzerkonto    | 400, 404, 403                        |
-| `GET /api/auth/options` ohne LDAP                        | `allowLocalRegister: true`           |
+| Test                                                      | Result                            |
+| --------------------------------------------------------- | --------------------------------- |
+| Refresh, then reuse the old refresh token                 | 200, then 401                     |
+| Two simultaneous refreshes with the same token            | once 200, once 401                |
+| Refresh with a foreign `Origin`                           | 403                               |
+| 11 wrong logins for the same account                      | 10 × 401, then 429                |
+| Broken JSON                                               | 400 "Invalid request body"        |
+| Response time unknown vs. existing local account          | 333 ms vs. 302 ms (no difference) |
+| Security headers (`nosniff`, `X-Frame-Options`, referrer) | set, `X-Powered-By` missing       |
+| Logo upload: SVG with `<script>`                          | served with `sandbox` CSP         |
+| Logo upload: `.txt`, unknown variant, user account        | 400, 404, 403                     |
+| `GET /api/auth/options` without LDAP                      | `allowLocalRegister: true`        |
 
-## Verifikation der offenen Findings aus Audit 2
+## Verification of the open findings from audit 2
 
-| Audit 2 | Thema                                       | Status heute                                                                                                                                      |
-| ------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1       | Secret-/Seed-Schutz nur mit `NODE_ENV`      | **Teilweise behoben:** Platzhalter-Secret wird überall abgelehnt (`config.ts:39-41`). Seed-Sperre und `Secure`-Cookie hängen weiter an `NODE_ENV` |
-| 2       | Access-Token 15 min nach Widerruf gültig    | Offen, unverändert                                                                                                                                |
-| 3       | Zweiter Verzeichniseintrag übernimmt Konto  | Offen, unverändert                                                                                                                                |
-| 4       | LDAP ohne TLS möglich                       | Offen, unverändert                                                                                                                                |
-| 5       | Rate Limit im Speicher, pro Prozess, pro IP | Offen; Limit selbst im Betrieb bestätigt (429 nach 10 Versuchen)                                                                                  |
-| 6       | Paralleler Refresh aus zwei Tabs            | Offen; Verhalten im Betrieb bestätigt (200/401)                                                                                                   |
-| 7       | `JWT_REFRESH_SECRET` ungenutzt              | Offen, unverändert                                                                                                                                |
-| 8       | `deepmerge-ts`                              | Offen; npm stuft es jetzt als High ein → Finding 9                                                                                                |
-| 9       | Upload-Inhalt nicht geprüft                 | Offen, unverändert; gilt jetzt auch für Firmenlogos (SVG), durch CSP entschärft                                                                   |
-| 10      | E-Mail bei Registrierung nicht verifiziert  | Offen; wiegt im Mietmodell schwerer → Finding 1                                                                                                   |
+| Audit 2 | Topic                                          | Status today                                                                                                                                            |
+| ------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | Secret/seed protection only with `NODE_ENV`    | **Partially fixed:** the placeholder secret is refused everywhere (`config.ts:39-41`). The seed lock and the `Secure` cookie still depend on `NODE_ENV` |
+| 2       | Access token valid for 15 min after revocation | Open, unchanged                                                                                                                                         |
+| 3       | Second directory entry takes over the account  | Open, unchanged                                                                                                                                         |
+| 4       | LDAP without TLS possible                      | Open, unchanged                                                                                                                                         |
+| 5       | Rate limit in memory, per process, per IP      | Open; the limit itself confirmed in operation (429 after 10 attempts)                                                                                   |
+| 6       | Parallel refresh from two tabs                 | Open; behaviour confirmed in operation (200/401)                                                                                                        |
+| 7       | `JWT_REFRESH_SECRET` unused                    | Open, unchanged                                                                                                                                         |
+| 8       | `deepmerge-ts`                                 | Open; npm now rates it High → finding 9                                                                                                                 |
+| 9       | Upload content not checked                     | Open, unchanged; now also applies to company logos (SVG), defused by the CSP                                                                            |
+| 10      | E-mail not verified on registration            | Open; weighs more in the rental model → finding 1                                                                                                       |
 
-## Aktuelle Findings
+## Current findings
 
-| #   | Titel                                                            | Schweregrad | Status                      |
-| --- | ---------------------------------------------------------------- | ----------- | --------------------------- |
-| 1   | Selbstregistrierung ohne LDAP nicht abschaltbar                  | Medium      | neu                         |
-| 2   | Unbegrenzte Anfragen blockieren den gesamten Bestand             | Medium      | neu                         |
-| 3   | Nutzer können ihr Passwort nicht selbst ändern                   | Low         | neu                         |
-| 4   | Antwortzeit verrät Verzeichniskonten (LDAP)                      | Low         | neu                         |
-| 5   | `LDAP_ADMIN_GROUP` als Gruppenname passt auf Gruppen in jeder OU | Low         | neu                         |
-| 6   | Keine Security-Header und keine CSP für das Frontend             | Low         | neu                         |
-| 7   | „Verwaiste Bilddateien löschen“ kann laufende Uploads löschen    | Low         | neu                         |
-| 8   | Sitzungen haben keine absolute Höchstdauer                       | Info        | neu                         |
-| 9   | Dev-Abhängigkeit `deepmerge-ts` jetzt als High eingestuft        | Low         | Neubewertung von Audit 2 #8 |
+| #   | Title                                                        | Severity | Status                  |
+| --- | ------------------------------------------------------------ | -------- | ----------------------- |
+| 1   | Self-registration cannot be turned off without LDAP          | Medium   | new                     |
+| 2   | Unlimited requests block the whole stock                     | Medium   | new                     |
+| 3   | Users cannot change their own password                       | Low      | new                     |
+| 4   | Response time reveals directory accounts (LDAP)              | Low      | new                     |
+| 5   | `LDAP_ADMIN_GROUP` as a group name matches groups in any OU  | Low      | new                     |
+| 6   | No security headers and no CSP for the frontend              | Low      | new                     |
+| 7   | "Delete orphaned image files" can delete uploads in progress | Low      | new                     |
+| 8   | Sessions have no absolute maximum duration                   | Info     | new                     |
+| 9   | Dev dependency `deepmerge-ts` now rated High                 | Low      | re-rating of audit 2 #8 |
 
-Keine Findings mit Schweregrad Critical oder High. Offene Punkte aus Audit 2 (Tabelle oben) gelten
-zusätzlich weiter.
+No findings of severity Critical or High. The open points from audit 2 (table above) still apply in addition.
 
-## 1. Selbstregistrierung ohne LDAP nicht abschaltbar — **Medium**
+## 1. Self-registration cannot be turned off without LDAP — **Medium**
 
-**Dateien:** `backend/src/config.ts:73`, `backend/src/services/authService.ts:65-70`,
-`backend/src/routes/auth.ts:60-61`
+**Files:** `backend/src/config.ts:73`, `backend/src/services/authService.ts:65-70`, `backend/src/routes/auth.ts:60-61`
 
-**Beschreibung:** Die einzige Einstellung zum Abschalten der Registrierung ist
-`LDAP_ALLOW_LOCAL_REGISTER`, und sie wirkt nur, wenn LDAP aktiv ist
-(`config.ldap.enabled && !config.ldap.allowLocalRegister`). Ohne LDAP ist
-`POST /api/auth/register` **immer** offen, nur im Wartungsmodus nicht. Die E-Mail-Adresse wird
-nicht bestätigt (Audit 2 #10) und nicht auf Firmen-Domains beschränkt. Das Rate Limit erlaubt
-10 Konten pro IP und Stunde.
+**Description:** The only setting to turn registration off is `LDAP_ALLOW_LOCAL_REGISTER`, and it only works when LDAP is active (`config.ldap.enabled && !config.ldap.allowLocalRegister`). Without LDAP, `POST /api/auth/register` is **always** open, except in maintenance mode. The e-mail address is not confirmed (audit 2 #10) and not limited to company domains. The rate limit allows 10 accounts per IP and hour.
 
-Im bisherigen Einsatz im Firmennetz war das ein Komfortmerkmal. Eine vermietete Installation einer
-kleinen Firma ohne Verzeichnisdienst ist aber typischerweise aus dem Internet erreichbar.
+In the previous use inside the company network this was a convenience feature. A rented installation of a small company without a directory service is, however, typically reachable from the internet.
 
-**Angriffsszenario:** Eine beliebige Person findet die Installation, registriert sich mit einer
-Wegwerfadresse und ist sofort Nutzer. Sie sieht den vollständigen Gerätekatalog mit Seriennummern,
-alle Räume und die Belegung aller Geräte. Sie kann Anfragen stellen, die den Bestand blockieren
-(Finding 2), und gibt sich gegenüber der Verwaltung als Mitarbeiter aus.
+**Attack scenario:** Anyone finds the installation, registers with a throwaway address and is a user at once. They see the complete device catalogue with serial numbers, all rooms and the bookings of all devices. They can make requests that block the stock (finding 2) and pose as an employee towards the administration.
 
-**Empfohlener Fix:** Eine eigene Einstellung `ALLOW_REGISTRATION` (Standard `false` für neue
-Installationen), besser noch in der Oberfläche unter „Erscheinungsbild“ bzw. einer neuen Seite
-„Einstellungen“ schaltbar. Optional eine Liste erlaubter E-Mail-Domains und/oder neue Konten erst
-nach Freigabe durch die Verwaltung aktivieren.
+**Recommended fix:** A dedicated setting `ALLOW_REGISTRATION` (default `false` for new installations), better still switchable in the interface under "Appearance" or a new "Settings" page. Optionally a list of allowed e-mail domains and/or activating new accounts only after approval by the administration.
 
-## 2. Unbegrenzte Anfragen blockieren den gesamten Bestand — **Medium**
+## 2. Unlimited requests block the whole stock — **Medium**
 
-**Dateien:** `backend/src/validators/request.ts:3-13`,
-`backend/src/services/requestService.ts:63-119`, `backend/src/services/searchService.ts:34-43`
+**Files:** `backend/src/validators/request.ts:3-13`, `backend/src/services/requestService.ts:63-119`, `backend/src/services/searchService.ts:34-43`
 
-**Beschreibung:** Offene Anfragen (`OPEN`) blockieren ein Stück genauso wie bestätigte: Suche und
-Überschneidungsprüfung zählen beide Status. Für neue Anfragen gibt es keine Grenzen:
+**Description:** Open requests (`OPEN`) block a piece just like approved ones: the search and the overlap check count both statuses. There are no limits for new requests:
 
-- keine Höchstzahl offener Anfragen pro Person,
-- keine Höchstdauer (`desiredUntil` darf z. B. `9999-12-31T23:59` sein),
-- keine Prüfung, dass `startsAt` in der Zukunft liegt (nur das Ende muss in der Zukunft liegen),
-- kein Rate Limit auf `POST /api/requests`,
-- Nutzer können eigene Anfragen nicht zurückziehen; nur die Verwaltung kann ablehnen.
+- no maximum number of open requests per person,
+- no maximum duration (`desiredUntil` may be e.g. `9999-12-31T23:59`),
+- no check that `startsAt` is in the future (only the end must be in the future),
+- no rate limit on `POST /api/requests`,
+- users cannot withdraw their own requests; only the administration can reject.
 
-**Angriffsszenario:** Ein Nutzer, zusammen mit Finding 1 auch ein Fremder, fragt per Skript jedes
-Stück für den Zeitraum „jetzt bis 9999“ an. Danach findet niemand mehr ein freies Gerät, bis die
-Verwaltung jede Anfrage einzeln ablehnt. Jede Ablehnung verschickt außerdem eine E-Mail an die
-(eventuell fremde) Adresse des Kontos.
+**Attack scenario:** A user – together with finding 1 also a stranger – requests every piece by script for the period "now until 9999". Afterwards nobody finds a free device until the administration rejects every request individually. Every rejection also sends an e-mail to the (possibly foreign) address of the account.
 
-**Empfohlener Fix:** Höchstdauer (z. B. einstellbar, Standard 30 Tage) und Mindest-Start
-(`startsAt ≥ jetzt − kleine Toleranz`) serverseitig prüfen. Höchstzahl offener Anfragen pro Person
-(z. B. 10). Rate Limit auf das Anlegen. Nutzern das Zurückziehen eigener offener Anfragen erlauben.
-Für die Verwaltung eine Sammelaktion „alle offenen Anfragen dieser Person ablehnen“.
+**Recommended fix:** Check a maximum duration (e.g. configurable, default 30 days) and a minimum start (`startsAt ≥ now − a small tolerance`) server-side. A maximum number of open requests per person (e.g. 10). A rate limit on creating. Let users withdraw their own open requests. For the administration, a bulk action "reject all open requests of this person".
 
-## 3. Nutzer können ihr Passwort nicht selbst ändern — **Low**
+## 3. Users cannot change their own password — **Low**
 
-**Dateien:** `backend/src/routes/auth.ts` (kein Endpunkt), `backend/src/routes/users.ts:27-31`,
-`backend/src/services/userAdminService.ts:61-92`
+**Files:** `backend/src/routes/auth.ts` (no endpoint), `backend/src/routes/users.ts:27-31`, `backend/src/services/userAdminService.ts:61-92`
 
-**Beschreibung:** Passwörter lokaler Konten setzt nur die Verwaltung (beim Anlegen oder
-Zurücksetzen). Es gibt keinen Endpunkt und keine Seite, auf der ein Nutzer sein Passwort ändert,
-und keinen Zwang zur Änderung nach dem ersten Login. Die Verwaltung kennt deshalb dauerhaft die
-Passwörter aller Konten, die sie angelegt hat.
+**Description:** Passwords of local accounts are only set by the administration (on creation or reset). There is no endpoint and no page where users change their password, and no requirement to change it after the first login. The administration therefore permanently knows the passwords of all accounts it created.
 
-**Angriffsszenario:** Ein Admin (oder wer seinen Zugang oder seine Notizen hat) meldet sich als
-beliebiger Nutzer an; im Protokoll erscheint das als Anmeldung des Nutzers. Ein Nutzer, der ein
-gleiches Passwort anderswo verwendet, kann das nicht beheben. Nach einem Verdacht auf Missbrauch
-kann der Nutzer selbst nicht reagieren.
+**Attack scenario:** An admin (or whoever has their access or their notes) signs in as any user; in the log this appears as the user's sign-in. A user who uses the same password elsewhere cannot fix that. After a suspicion of misuse the user cannot react themselves.
 
-**Empfohlener Fix:** `POST /api/auth/password` mit altem und neuem Passwort (Rate Limit, beendet
-alle anderen Sitzungen) und eine Seite „Konto“. Von der Verwaltung gesetzte Passwörter als
-vorläufig markieren und beim ersten Login eine Änderung verlangen.
+**Recommended fix:** `POST /api/auth/password` with the old and the new password (rate limit, ends all other sessions) and an "Account" page. Mark passwords set by the administration as temporary and require a change at the first login.
 
-## 4. Antwortzeit verrät Verzeichniskonten (LDAP) — **Low**
+## 4. Response time reveals directory accounts (LDAP) — **Low**
 
-**Dateien:** `backend/src/services/ldapService.ts:87-97`, `backend/src/services/authService.ts:220-233`
+**Files:** `backend/src/services/ldapService.ts:87-97`, `backend/src/services/authService.ts:220-233`
 
-**Beschreibung:** Der Dummy-Hash aus Audit 1 #9 gleicht nur lokale Konten an. Mit aktivem LDAP gilt:
+**Description:** The dummy hash from audit 1 #9 only evens out local accounts. With LDAP active:
 
-- Wird der Name im Verzeichnis gefunden und das Passwort ist falsch, antwortet die API direkt nach
-  dem LDAP-Bind mit 401, ohne bcrypt (wenige Millisekunden).
-- Wird er nicht gefunden, läuft der lokale Pfad mit bcrypt (ca. 300 ms).
+- If the name is found in the directory and the password is wrong, the API answers 401 right after the LDAP bind, without bcrypt (a few milliseconds).
+- If it is not found, the local path with bcrypt runs (about 300 ms).
 
-**Angriffsszenario:** Ein Angreifer probiert Namen wie `m.mueller` oder `max.mustermann@firma.de`
-aus und erkennt an der Antwortzeit, welche Windows-/AD-Konten existieren. Das ist eine gute
-Grundlage für Passwort-Spraying gegen andere Dienste der Firma. Das Rate Limit bremst, verhindert
-es aber nicht (Audit 2 #5).
+**Attack scenario:** An attacker tries names such as `m.miller` or `john.doe@company.com` and recognizes from the response time which Windows/AD accounts exist. That is a good basis for password spraying against other services of the company. The rate limit slows this down but does not prevent it (audit 2 #5).
 
-**Empfohlener Fix:** Nach einem fehlgeschlagenen LDAP-Bind ebenfalls gegen `DUMMY_HASH` prüfen oder
-jede fehlgeschlagene Anmeldung auf eine feste Mindestdauer auffüllen.
+**Recommended fix:** After a failed LDAP bind, also check against `DUMMY_HASH`, or pad every failed sign-in to a fixed minimum duration.
 
-## 5. `LDAP_ADMIN_GROUP` als Gruppenname passt auf Gruppen in jeder OU — **Low**
+## 5. `LDAP_ADMIN_GROUP` as a group name matches groups in any OU — **Low**
 
-**Dateien:** `backend/src/services/ldapService.ts:31-38`, `README.md` (LDAP-Abschnitt)
+**Files:** `backend/src/services/ldapService.ts:31-38`, `README.md` (LDAP section)
 
-**Beschreibung:** Ist `LDAP_ADMIN_GROUP` ein einfacher Name (z. B. `LendLine-Admins`), wird jede
-`memberOf`-Gruppe akzeptiert, deren DN mit `cn=LendLine-Admins,` beginnt, egal in welcher OU. Nur
-ein vollständiger DN ist eindeutig.
+**Description:** If `LDAP_ADMIN_GROUP` is a plain name (e.g. `LendLine-Admins`), any `memberOf` group whose DN starts with `cn=LendLine-Admins,` is accepted, whatever the OU. Only a full DN is unique.
 
-**Angriffsszenario:** In vielen Verzeichnissen dürfen Abteilungs-Admins oder Helpdesk-Konten in
-ihrer eigenen OU Gruppen anlegen. Wer eine Gruppe `cn=LendLine-Admins,ou=Vertrieb,…` anlegt und
-sich selbst aufnimmt, wird beim nächsten Login LendLine-Admin.
+**Attack scenario:** In many directories, department admins or helpdesk accounts may create groups in their own OU. Whoever creates a group `cn=LendLine-Admins,ou=Sales,…` and adds themselves becomes a LendLine admin at the next login.
 
-**Empfohlener Fix:** Nur vollständige DNs akzeptieren (Start-Warnung oder Abbruch bei einem
-einfachen Namen). Alternativ die gefundene Gruppe per Suche auflösen und ihren DN vergleichen.
+**Recommended fix:** Only accept full DNs (warning or abort at start for a plain name). Alternatively resolve the group found by search and compare its DN.
 
-## 6. Keine Security-Header und keine CSP für das Frontend — **Low**
+## 6. No security headers and no CSP for the frontend — **Low**
 
-**Dateien:** `backend/src/app.ts:25-30` (nur API), `frontend/index.html:11-25`,
-`frontend/vite.config.ts`
+**Files:** `backend/src/app.ts:25-30` (API only), `frontend/index.html:11-25`, `frontend/vite.config.ts`
 
-**Beschreibung:** `X-Frame-Options`, `nosniff` und `Referrer-Policy` setzt nur die API. Für das
-Frontend gibt es weder diese Header noch eine Content-Security-Policy. Eine
-Produktionsauslieferung ist nicht definiert (Vite ist nur der Entwicklungsserver). Eine
-Firmen-Installation wird also mit dem ausgeliefert, was der jeweilige Webserver standardmäßig tut.
-Das Access-Token liegt im JavaScript-Speicher; eine XSS-Lücke hätte deshalb volle Wirkung. Aktuell
-wurde keine gefunden: React escaped alle Ausgaben, es gibt kein `dangerouslySetInnerHTML` und keine
-dynamischen `href`.
+**Description:** `X-Frame-Options`, `nosniff` and `Referrer-Policy` are only set by the API. For the frontend there are neither these headers nor a Content Security Policy. A production delivery is not defined (Vite is only the development server). A company installation is therefore delivered with whatever the respective web server does by default. The access token lives in JavaScript memory; an XSS vulnerability would therefore have full effect. None was found at present: React escapes all output, there is no `dangerouslySetInnerHTML` and no dynamic `href`.
 
-**Angriffsszenario:** Eine fremde Seite bettet LendLine unsichtbar in einen Frame ein und bringt
-einen angemeldeten Admin per Klick dazu, z. B. „Alle Sitzungen beenden“ oder „Wartungsmodus
-einschalten“ auszulösen (Clickjacking). Kommt später eine XSS-Lücke hinzu, fehlt die CSP als
-zweite Verteidigungslinie.
+**Attack scenario:** A foreign page embeds LendLine invisibly in a frame and gets a signed-in admin to trigger e.g. "End all sessions" or "Turn on maintenance mode" with a click (clickjacking). If an XSS vulnerability appears later, the CSP is missing as a second line of defence.
 
-**Empfohlener Fix:** Eine Produktionsauslieferung festlegen (z. B. Express liefert `frontend/dist`
-mit aus, oder eine dokumentierte Reverse-Proxy-Konfiguration) und dort setzen:
-`Content-Security-Policy: default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'`
-mit einem Hash für das Inline-Skript in `index.html`, dazu `X-Frame-Options: DENY`, `nosniff`,
-`Referrer-Policy` und in Produktion HSTS.
+**Recommended fix:** Define a production delivery (e.g. Express also serves `frontend/dist`, or a documented reverse proxy configuration) and set there: `Content-Security-Policy: default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'` with a hash for the inline script in `index.html`, plus `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` and HSTS in production.
 
-## 7. „Verwaiste Bilddateien löschen“ kann laufende Uploads löschen — **Low**
+## 7. "Delete orphaned image files" can delete uploads in progress — **Low**
 
-**Dateien:** `backend/src/services/systemService.ts:31-49` (`uploadFiles`),
-`backend/src/services/systemService.ts:128-134`, `backend/src/middleware/upload.ts:17`,
-`backend/src/services/imageService.ts:29-31`
+**Files:** `backend/src/services/systemService.ts:31-49` (`uploadFiles`), `backend/src/services/systemService.ts:128-134`, `backend/src/middleware/upload.ts:17`, `backend/src/services/imageService.ts:29-31`
 
-**Beschreibung:** Multer schreibt die Datei, bevor `addImages` die Zeile `DeviceImage` anlegt. Läuft
-die Wartungsaufgabe genau in diesem Moment, gilt die Datei als verwaist und wird gelöscht. Die
-Datenbank verweist danach auf eine fehlende Datei. Es geht um Integrität, nicht um Vertraulichkeit;
-auslösen können es nur Admins.
+**Description:** Multer writes the file before `addImages` creates the `DeviceImage` row. If the maintenance task runs exactly at that moment, the file counts as orphaned and is deleted. The database then points to a missing file. This is about integrity, not confidentiality; only admins can trigger it.
 
-**Angriffsszenario:** Kein gezielter Angriff; zwei Admins arbeiten gleichzeitig, ein Gerätebild ist
-danach dauerhaft kaputt.
+**Attack scenario:** No targeted attack; two admins work at the same time, and a device image is permanently broken afterwards.
 
-**Empfohlener Fix:** Nur Dateien löschen, die älter als z. B. 10 Minuten sind (`mtime`).
+**Recommended fix:** Only delete files older than e.g. 10 minutes (`mtime`).
 
-## 8. Sitzungen haben keine absolute Höchstdauer — **Info**
+## 8. Sessions have no absolute maximum duration — **Info**
 
-**Dateien:** `backend/src/services/authService.ts:41-56`, `backend/src/services/authService.ts:246-268`
+**Files:** `backend/src/services/authService.ts:41-56`, `backend/src/services/authService.ts:246-268`
 
-**Beschreibung:** Jeder Refresh stellt ein neues Refresh-Token mit vollen
-`JWT_REFRESH_TTL_DAYS` (7 Tage) aus. Eine regelmäßig genutzte Sitzung läuft deshalb unbegrenzt,
-ohne erneute Passwortabfrage. Das ist üblich, sollte aber bewusst entschieden sein, besonders auf
-gemeinsam genutzten Rechnern.
+**Description:** Every refresh issues a new refresh token with the full `JWT_REFRESH_TTL_DAYS` (7 days). A regularly used session therefore runs indefinitely without asking for the password again. This is common but should be a deliberate decision, especially on shared computers.
 
-**Empfohlener Fix:** Den Beginn der Sitzung am Token mitführen und nach z. B. 30 Tagen eine neue
-Anmeldung verlangen (optional einstellbar).
+**Recommended fix:** Carry the start of the session along with the token and require a new sign-in after e.g. 30 days (optionally configurable).
 
-## 9. Dev-Abhängigkeit `deepmerge-ts` jetzt als High eingestuft — **Low**
+## 9. Dev dependency `deepmerge-ts` now rated High — **Low**
 
-**Dateien:** `backend/package.json` (`prisma` → `@prisma/config@6.19.3` → `deepmerge-ts@7.1.5`)
+**Files:** `backend/package.json` (`prisma` → `@prisma/config@6.19.3` → `deepmerge-ts@7.1.5`)
 
-**Beschreibung:** Derselbe Befund wie Audit 2 #8 (GHSA-ggr8-5vv4-36mx, Stack-Überlauf beim Mergen
-rekursiver Objekte). `npm audit` meldet ihn inzwischen als **3 × High**, weil die Kette drei Pakete
-umfasst. Geprüft: `@prisma/client` hat keine Laufzeitabhängigkeiten, und `deepmerge-ts` kommt im
-Client-Runtime-Code nicht vor. Betroffen ist nur das Prisma-CLI (Migrationen), das keine
-Angreiferdaten verarbeitet. Die Einstufung bleibt deshalb Low.
+**Description:** The same finding as audit 2 #8 (GHSA-ggr8-5vv4-36mx, stack overflow when merging recursive objects). `npm audit` now reports it as **3 × High**, because the chain covers three packages. Checked: `@prisma/client` has no runtime dependencies, and `deepmerge-ts` does not appear in the client runtime code. Only the Prisma CLI (migrations) is affected, which processes no attacker data. The rating therefore stays Low.
 
-Randnotiz: `npm start` nutzt `tsx`, eine Dev-Abhängigkeit. Eine Produktivinstallation braucht also
-alle Dev-Abhängigkeiten, und `npm audit --omit=dev` ist dort nicht aussagekräftig.
+Side note: `npm start` uses `tsx`, a dev dependency. A production installation therefore needs all dev dependencies, and `npm audit --omit=dev` is not meaningful there.
 
-**Angriffsszenario:** Praktisch keines im Betrieb. Die Warnung „3 high“ kann aber Kunden oder
-deren Prüfer verunsichern.
+**Attack scenario:** Practically none in operation. The warning "3 high" can, however, unsettle customers or their auditors.
 
-**Empfohlener Fix:** Prisma aktualisieren, sobald eine Version mit `deepmerge-ts ≥ 8` erscheint.
-Für den Betrieb einen Build (`npm run build`) mit `node dist/index.js` und
-`npm ci --omit=dev` vorsehen.
+**Recommended fix:** Update Prisma once a version with `deepmerge-ts ≥ 8` is released. For operation, provide a build (`npm run build`) with `node dist/index.js` and `npm ci --omit=dev`.
 
-## Geprüft ohne Befund
+## Checked without finding
 
-- **Zugriffskontrolle:** Alle Routen unter `/api/admin`, `/api/users` und alle schreibenden Routen
-  für Geräte, Kategorien, Räume und Anfragen verlangen `requireAdmin`. Nutzer erreichen nur ihre
-  eigenen Anfragen (`/requests/mine`); es gibt keinen Endpunkt mit fremder Anfrage-ID für Nutzer.
-  Belegungskalender zeigen Namen nur der Verwaltung.
-- **Rolle:** kommt bei jeder Anfrage aus der Datenbank (`middleware/auth.ts:39-45`).
-- **CSRF:** Alle schreibenden API-Aufrufe brauchen den Bearer-Header. Refresh/Logout sind per
-  `SameSite=Lax` und Origin-Prüfung geschützt (im Betrieb bestätigt).
-- **Injection:** keine Raw-SQL-Abfragen mit Eingaben (`$queryRaw` nur `SELECT 1`), LDAP-Filter
-  werden escaped (`ldapService.ts:13-18`), E-Mail-HTML wird escaped (`emails/format.ts:21-27`).
-- **Uploads:** Serverseitig erzeugte UUID-Dateinamen, Endungs-Whitelist, 1 MB (Logo) bzw. 5 MB
-  (Gerätebild), `sandbox`-CSP und `nosniff` unter `/api/uploads`, im Betrieb bestätigt. Ersetzte
-  Logos werden gelöscht; eine falsche Variante wird vor dem Schreiben abgewiesen.
-- **Branding:** Die Akzentfarbe wird serverseitig auf `#rrggbb` geprüft, bevor sie als CSS
-  eingesetzt wird; eine CSS-Injection ist nicht möglich. `/api/branding` gibt nur Farbe und
-  Logo-URLs preis.
-- **Wartungsmodus:** Die öffentliche Antwort nennt nicht, wer ihn eingeschaltet hat. Hinweistext
-  und Zeitpunkt werden validiert und in React escaped ausgegeben.
-- **Passwörter:** bcrypt mit Kosten 12, 72-Byte-Grenze, konstante Antwortzeit für lokale Konten
-  (im Betrieb bestätigt).
-- **Frontend:** keine HTML-Senken, keine dynamischen Links, kein `postMessage`. `localStorage` hält
-  nur Theme und Branding, keine Tokens.
+- **Access control:** all routes under `/api/admin`, `/api/users` and all writing routes for devices, categories, rooms and requests require `requireAdmin`. Users only reach their own requests (`/requests/mine`); there is no endpoint with someone else's request ID for users. Booking calendars show names only to the administration.
+- **Role:** comes from the database on every request (`middleware/auth.ts:39-45`).
+- **CSRF:** all writing API calls need the bearer header. Refresh/logout are protected by `SameSite=Lax` and the origin check (confirmed in operation).
+- **Injection:** no raw SQL queries with input (`$queryRaw` only `SELECT 1`), LDAP filters are escaped (`ldapService.ts:13-18`), e-mail HTML is escaped (`emails/format.ts:21-27`).
+- **Uploads:** server-generated UUID file names, extension whitelist, 1 MB (logo) or 5 MB (device image), `sandbox` CSP and `nosniff` under `/api/uploads`, confirmed in operation. Replaced logos are deleted; a wrong variant is rejected before writing.
+- **Branding:** the accent colour is checked server-side against `#rrggbb` before it is used as CSS; CSS injection is not possible. `/api/branding` only reveals the colour and logo URLs.
+- **Maintenance mode:** the public answer does not say who turned it on. Notice text and time are validated and rendered escaped in React.
+- **Passwords:** bcrypt with cost 12, 72-byte limit, constant response time for local accounts (confirmed in operation).
+- **Frontend:** no HTML sinks, no dynamic links, no `postMessage`. `localStorage` only holds theme and branding, no tokens.
 
-## Empfohlene Reihenfolge
+## Recommended order
 
-1. **Vor dem ersten Kunden:** Finding 1 (Registrierung abschaltbar, Standard aus) und Finding 2
-   (Grenzen für Anfragen). Beide sind klein und schließen die Angriffsfläche „Fremder aus dem
-   Internet“.
-2. **Mit der Produktionsauslieferung:** Finding 6 (Header/CSP), Finding 9 (Build statt `tsx`),
-   `NODE_ENV=production` verpflichtend machen (Rest von Audit 2 #1).
-3. **Danach:** Finding 3 (Passwort selbst ändern), Audit 2 #2 (`sessionVersion`), bei
-   LDAP-Kunden Findings 4 und 5 sowie Audit 2 #3 und #4.
-4. **Bei Gelegenheit:** Findings 7 und 8, Audit 2 #6 und #7.
+1. **Before the first customer:** finding 1 (registration can be turned off, off by default) and finding 2 (limits for requests). Both are small and close the attack surface "stranger from the internet".
+2. **With the production delivery:** finding 6 (headers/CSP), finding 9 (build instead of `tsx`), make `NODE_ENV=production` mandatory (rest of audit 2 #1).
+3. **Afterwards:** finding 3 (change own password), audit 2 #2 (`sessionVersion`), for LDAP customers findings 4 and 5 as well as audit 2 #3 and #4.
+4. **When convenient:** findings 7 and 8, audit 2 #6 and #7.

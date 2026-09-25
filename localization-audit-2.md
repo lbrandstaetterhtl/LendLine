@@ -1,128 +1,89 @@
-# Lokalisierungs-Audit 2 – Prüfung des Ergebnisses
+# Localization audit 2 – checking the result
 
-Stand: 2026-09-25, auf `e377461` plus die Lokalisierung (noch nicht committet). Prüft, ob die
-Lokalisierung alles abdeckt, was `localization-audit-1.md` gefunden hat, und was offen bleibt.
+As of 2026-09-25, on `e377461` plus the localization (not yet committed at the time). Checks whether the localization covers everything `localization-audit-1.md` found, and what remains open.
 
-**Ergebnis:** Oberfläche, API-Meldungen, Validierung, E-Mails, Protokoll, Kataloge und Formate sind
-in **Deutsch, Englisch, Spanisch, vereinfachtem Chinesisch und Hindi** vorhanden. Kein
-Oberflächentext ist mehr fest im Code. Offen sind vor allem inhaltliche Grenzen (Firmentexte,
-alte Protokolleinträge, Grammatik bei Firmenbegriffen) und eine Prüfung von Chinesisch und Hindi
-durch Muttersprachler.
+**Update after the audit (commit `bb004bc`):** English is now the default language (API without `Accept-Language`, e-mails for accounts without a saved language, interface without a saved choice; the browser language is no longer used). Server logs, startup errors, `.env.example`, README and code comments are in English. The points below are updated where this changes them.
 
-## Methode
+**Result:** Interface, API messages, validation, e-mails, audit log, catalogues and formats are available in **German, English, Spanish, Simplified Chinese and Hindi**. No interface text is hard-coded any more. Open are mainly limits of content (company texts, old audit log entries, grammar of company terms) and a review of Chinese and Hindi by native speakers.
 
-1. **Vollständigkeit per Typprüfung:** Deutsch ist die Quelle (`de.ts`), die anderen Sprachen sind
-   als `Messages` typisiert. Ein fehlender oder überzähliger Schlüssel lässt `npm run check`
-   scheitern. Zusätzlich lädt ein Skript alle Wörterbücher und vergleicht Schlüssel und Platzhalter.
-2. **Textsuche wie in Audit 1:** dasselbe Suchskript über `frontend/src` und `backend/src`, ohne die
-   Wörterbücher; jede verbleibende Fundstelle eingeordnet.
-3. **Protokollwörter:** ein Skript sammelt alle festen Feldnamen und Werte, die die Services ins
-   Protokoll schreiben, und prüft sie gegen die Übersetzungstabelle `auditTerms`.
-4. **Oberfläche im Browser:** Edge (headless) meldet sich in jeder der fünf Sprachen an, öffnet
-   19 Seiten und sucht im sichtbaren Text, in `title`, `aria-label` und `placeholder` nach deutschen
-   Wörtern; dazu Screenshots und die Konsolenfehler.
-5. **API und E-Mails:** Anfragen mit `Accept-Language` in allen Sprachen; eine echte Ausleihe, die
-   eine Verwaltungsperson auf Deutsch bestätigt, für eine Person mit Sprache Spanisch.
+## Method
 
-## Zahlen
+1. **Completeness by type check:** German is the source (`de.ts`), the other languages are typed as `Messages`. A missing or extra key makes `npm run check` fail. In addition, a script loads all dictionaries and compares keys and placeholders.
+2. **Text search as in audit 1:** the same search script over `frontend/src` and `backend/src`, without the dictionaries; every remaining hit classified.
+3. **Audit log words:** a script collects all fixed field names and values the services write into the audit log and checks them against the translation table `auditTerms`.
+4. **Interface in the browser:** headless Edge signs in in each of the five languages, opens 19 pages and searches the visible text, `title`, `aria-label` and `placeholder` for German words; plus screenshots and the console errors.
+5. **API and e-mails:** requests with `Accept-Language` in all languages; a real loan, approved by an administrator in German, for a person with Spanish as their language.
 
-| Wörterbuch                      | Texte  | Fehlend | Überzählig | Platzhalter abweichend |
-| ------------------------------- | ------ | ------- | ---------- | ---------------------- |
-| Frontend `de` (Quelle)          | 859    | –       | –          | –                      |
-| Frontend `en`, `es`, `zh`, `hi` | je 859 | 0       | 0          | 0                      |
-| Backend `de` (Quelle)           | 398    | –       | –          | –                      |
-| Backend `en`, `es`, `zh`, `hi`  | je 398 | 0       | 0          | 1 (s. u.)              |
+## Numbers
 
-Die eine Abweichung ist gewollt: Chinesisch nutzt in `errors.tooManyOpen` auch für „eine“ Anfrage
-`{count}`, weil es keine eigene Einzahl gibt. Texte, die im Englischen gleich wie im Deutschen sind
-(„Name“, „Status“, „Details“, „System“, „Start“), und „Normal“ im Spanischen sind echte Übersetzungen,
-keine vergessenen.
+| Dictionary                      | Texts    | Missing | Extra | Placeholders differing |
+| ------------------------------- | -------- | ------- | ----- | ---------------------- |
+| Frontend `de` (source)          | 859      | –       | –     | –                      |
+| Frontend `en`, `es`, `zh`, `hi` | 859 each | 0       | 0     | 0                      |
+| Backend `de` (source)           | 398      | –       | –     | –                      |
+| Backend `en`, `es`, `zh`, `hi`  | 398 each | 0       | 0     | 1 (see below)          |
 
-**Textsuche:** Von 785 Fundstellen aus Audit 1 bleiben im Code außerhalb der Wörterbücher nur
-diese Arten übrig, alle mit Absicht:
+The one difference is intended: Chinese also uses `{count}` for "one" request in `errors.tooManyOpen`, because it has no separate singular. Texts that are the same in English as in German ("Name", "Status", "Details", "System", "Start") and "Normal" in Spanish are real translations, not forgotten ones.
 
-| Art                                                          | Beispiele                                                                                        |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Gespeicherte deutsche Vorgaben (werden beim Lesen übersetzt) | Begriffe „Gerät“, „Stück“ (`BrandingContext`, `brandingService`), Kommentarfeld, Wartungshinweis |
-| Protokoll-Rohdaten (werden beim Lesen übersetzt)             | Feldnamen „Kategorie“, „Gebäude“; Werte „Bestätigt“; Muster „Stück LT-1001“, „3 Std. verspätet“  |
-| Server-Logs und Startmeldungen (Konsole)                     | „LendLine API läuft auf …“, „SMTP nicht konfiguriert“, Warnungen in `config.ts`                  |
-| Interne Fehler, die nie bei Nutzern ankommen                 | „Ungültiges Access-Token“ (wird zu 401 „Sitzung abgelaufen“ übersetzt)                           |
+**Text search:** Of the 785 hits from audit 1, only these kinds remain in the code outside the dictionaries, all on purpose:
 
-**Protokollwörter:** 62 feste Wörter gefunden, alle in `auditTerms` (vorher fehlten die
-Stückstatus „Verfügbar“, „Ausgeliehen“, „Defekt“ – ergänzt).
+| Kind                                           | Examples                                                                                             |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Stored German defaults (translated on reading) | Terms "Gerät", "Stück" (`BrandingContext`, `brandingService`), comment field, maintenance notice     |
+| Raw audit log data (translated on reading)     | Field names "Kategorie", "Gebäude"; values "Bestätigt"; patterns "Stück LT-1001", "3 Std. verspätet" |
+| Server logs and start messages (console)       | German at the time of the audit; English since `bb004bc`                                             |
+| Internal errors that never reach users         | "Invalid access token" (translated into 401 "session expired")                                       |
 
-**Browser:** In allen fünf Sprachen keine deutschen Oberflächentexte; übrig sind nur Firmendaten
-aus dem Demo-Bestand (Gerätebeschreibungen, Gruppen, Begrüßungstext) und alte Protokolleinträge.
-Einzige Konsolenmeldung: die gewollte 401 beim absichtlich falschen Passwort. `<html lang>` folgt
-der Sprache.
+**Audit log words:** 62 fixed words found, all in `auditTerms` (the piece statuses "Verfügbar", "Ausgeliehen", "Defekt" were missing before – added).
 
-## Prüfung der Punkte aus Audit 1
+**Browser:** In all five languages no German interface texts; only company data from the demo stock (device descriptions, groups, welcome text) and old audit log entries remain. The only console message: the intended 401 for the deliberately wrong password. `<html lang>` follows the language.
 
-| Audit 1                     | Umsetzung                                                                                                                                                                | Status               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
-| A. Oberfläche               | Alle Seiten und Komponenten lesen aus `frontend/src/i18n`; Statusnamen, Tastenkürzel-Beschriftungen, Rückfragen, `aria-label`, Platzhalter                               | erledigt             |
-| A. Sätze mit Zahlen/Plural  | `format()` mit Platzhaltern und `{ one, other }` über `Intl.PluralRules`; keine `=== 1 ? … :`-Plurale mehr                                                               | erledigt             |
-| A. Firmenbegriffe           | als Platzhalter (`{unit}`); Vorgabe-Begriffe in jeder Sprache übersetzt; `{unit:lower}` im Satz (en/es)                                                                  | erledigt, s. Grenzen |
-| B. Fehlermeldungen der API  | 127 `HttpError` über `t()` in der Sprache der Anfrage (`Accept-Language`), auch Rate Limit, Upload, 500                                                                  | erledigt             |
-| C. Validierung              | eigene Meldungen als Schlüssel `validation.*`; Zod-Standardmeldungen nach Art übersetzt                                                                                  | erledigt             |
-| C. Browser-Validierung      | spricht weiter die Sprache des Browsers                                                                                                                                  | offen (Browser)      |
-| D. E-Mails                  | Sprache der Empfangenden (`User.locale`), Texte, Daten, Standardtexte; Test-E-Mail in der Sprache der auslösenden Person                                                 | erledigt             |
-| E. Protokoll                | neue Einträge: Schlüssel + Werte, Anzeige in der Sprache der Lesenden; Feld- und Wertnamen über `auditTerms`, veränderliche Werte über `auditPatterns`, Status in Listen | erledigt, s. Grenzen |
-| F. Rechte, Modus-Bereiche   | Texte aus den Wörterbüchern, der Server liefert sie übersetzt                                                                                                            | erledigt             |
-| F. Standardwerte            | gleich der deutschen Vorgabe = „nicht angepasst“, in jeder Sprache übersetzt; Editoren zeigen sie übersetzt und speichern unverändert die Vorgabe                        | erledigt             |
-| G. Formate                  | `Intl` mit der Sprache für Datum, Monat, Wochentage, Zahlen; Zeitzone `Europe/Berlin`                                                                                    | erledigt             |
-| H. `index.html`             | `lang` vor dem ersten Zeichnen aus der Wahl; Titel aus dem übersetzten Untertitel                                                                                        | erledigt             |
-| Vorgehen 3: Sprachwahl      | Seitenleiste, Anmelde- und Registrierungsseite, „Mein Konto“; Vorgabe aus dem Browser; am Konto gespeichert                                                              | erledigt             |
-| Vorgehen 7: Muttersprachler | Übersetzungen stammen nicht von Muttersprachlern                                                                                                                         | offen                |
+## Check of the points from audit 1
 
-## Gefunden und behoben während dieses Audits
+| Audit 1                           | Implementation                                                                                                                                           | Status           |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| A. Interface                      | All pages and components read from `frontend/src/i18n`; status names, shortcut labels, confirmations, `aria-label`, placeholders                         | done             |
+| A. Sentences with numbers/plurals | `format()` with placeholders and `{ one, other }` via `Intl.PluralRules`; no more `=== 1 ? … :` plurals                                                  | done             |
+| A. Company terms                  | as placeholders (`{unit}`); default terms translated in every language; `{unit:lower}` inside a sentence (en/es)                                         | done, see limits |
+| B. API error messages             | 127 `HttpError`s through `t()` in the language of the request (`Accept-Language`), also rate limit, upload, 500                                          | done             |
+| C. Validation                     | own messages as keys `validation.*`; Zod's default messages translated by kind                                                                           | done             |
+| C. Browser validation             | still speaks the browser's language                                                                                                                      | open (browser)   |
+| D. E-mails                        | language of the recipient (`User.locale`), texts, dates, default texts; test e-mail in the language of the person triggering it                          | done             |
+| E. Audit log                      | new entries: key + values, shown in the reader's language; field and value names via `auditTerms`, varying values via `auditPatterns`, statuses in lists | done, see limits |
+| F. Permissions, mode areas        | texts from the dictionaries, the server delivers them translated                                                                                         | done             |
+| F. Default values                 | equal to the German default = "not adapted", translated in every language; editors show them translated and store the default when unchanged             | done             |
+| G. Formats                        | `Intl` with the language for date, month, weekdays, numbers; time zone `Europe/Berlin`                                                                   | done             |
+| H. `index.html`                   | `lang` from the choice before the first paint; title from the translated subtitle                                                                        | done             |
+| Approach 3: language choice       | sidebar, sign-in and registration page, "My account"; saved on the account. At the time the default came from the browser; since `bb004bc` it is English | done             |
+| Approach 7: native speakers       | the translations do not come from native speakers                                                                                                        | open             |
 
-- Stückstatus fehlten in `auditTerms` → Statusänderungen blieben im Protokoll deutsch.
-- Listen wie „LT-1001 (Verfügbar), LT-1002 (Defekt)“ im Protokoll werden jetzt übersetzt.
-- Chinesisch und Spanisch nutzten im Backend andere Wörter für „defekt“ als die Oberfläche
-  (损坏/故障, defectuoso/averiado); Chinesisch „Offen“ im Protokoll anders als der Status. Angeglichen.
-- Hindi nutzte „ऋण“ (Kredit) statt „उधार“ (Ausleihe); Chinesisch „件“ allein als Begriff. Ersetzt.
-- Die E-Mail-Einstellungen zeigten Nicht-Deutschsprachigen die deutschen Vorgabetexte zum Bearbeiten;
-  jetzt übersetzt, beim Speichern bleibt die Vorgabe erhalten (getestet: en → gespeichert de).
-- Die Seitenleiste war für Sprachwahl, Hilfe und Darstellung zu schmal („帮助“ brach um); die
-  Sprachwahl hat eine eigene Zeile.
-- Englisch zeigte „Find Piece“: Firmenbegriffe stehen mitten im Satz jetzt klein („Find pieces“).
-- Die Hilfeseite hatte bei „g, dann g“ zwei gleiche React-Schlüssel (auch schon vorher).
-- Gruppen-Aktionen („Gruppe angelegt“ …) fehlten in der Liste der Protokoll-Aktionen (auch schon
-  vorher; erschienen als `GROUP_CREATED`).
+## Found and fixed during this audit
 
-## Grenzen und offene Punkte
+- Piece statuses were missing from `auditTerms` → status changes stayed German in the audit log.
+- Lists such as "LT-1001 (Verfügbar), LT-1002 (Defekt)" in the audit log are now translated.
+- Chinese and Spanish used different words for "defective" in the backend than in the interface (损坏/故障, defectuoso/averiado); Chinese "Offen" in the audit log differed from the status. Aligned.
+- Hindi used "ऋण" (credit) instead of "उधार" (lending); Chinese used "件" alone as a term. Replaced.
+- The e-mail settings showed non-German speakers the German default texts for editing; now translated, and saving keeps the default (tested: en → stored de).
+- The sidebar was too narrow for language choice, help and theme ("帮助" wrapped); the language choice has its own row.
+- English showed "Find Piece": company terms inside a sentence are now lower case ("Find pieces").
+- The help page had two identical React keys for "g, then g" (already before).
+- Group actions ("Group created" …) were missing from the list of audit log actions (already before; they appeared as `GROUP_CREATED`).
 
-1. **Firmentexte sind einsprachig.** Gerätenamen, Beschreibungen, Kategorien, Räume, Gruppen,
-   eigene Begriffe, Formularfelder, Begrüßungstext und eigene E-Mail-Texte erscheinen in jeder
-   Sprache so, wie die Firma sie schreibt. Die Seiten weisen darauf hin. Mehrsprachige Firmentexte
-   wären eine eigene Erweiterung.
-2. **Alte Protokolleinträge** (vor der Lokalisierung) behalten ihre deutsche Zusammenfassung;
-   Feldnamen und bekannte Werte darin werden übersetzt.
-3. **Protokollsuche** durchsucht die deutsche Zusammenfassung. Wer auf Englisch „approved“ sucht,
-   findet nichts; die Seite sagt das in anderen Sprachen unter dem Suchfeld. Namen, Geräte und
-   Seriennummern findet die Suche in jeder Sprache.
-4. **Daten in Protokoll-Details** („Zeitraum: 15.10.2026, 09:00 – …“) sind beim Schreiben deutsch
-   formatiert und bleiben so. Die Zeit der Einträge selbst folgt der Sprache.
-5. **Grammatik bei Firmenbegriffen:** Begriffe werden ohne Geschlecht und Fall eingesetzt. Im
-   Spanischen passt „{room} „A101“ guardada“ zu „Sala“, aber nicht zu einem eigenen männlichen
-   Begriff; im Hindi ähnlich. Im Deutschen war das schon immer so (Begriffe ohne Artikelwahl).
-6. **Übersetzungsqualität:** Englisch und Spanisch sind sorgfältig, aber nicht muttersprachlich
-   geprüft; **Chinesisch und Hindi sollten vor dem Einsatz bei Kunden von Muttersprachlern
-   durchgesehen werden** (Fachbegriffe wie 设备件/इकाई für „Stück“, Tonfall der Anrede).
-7. **Browser-Validierung** (`required`, `minLength`, Datumsfelder) spricht die Sprache des Browsers,
-   nicht die der App.
-8. **Rechts-nach-links** wird nicht gebraucht (keine der fünf Sprachen), ist aber auch nicht
-   vorbereitet.
-9. **Tastenkürzel** bleiben an deutsche Wörter angelehnt (`g k` = Katalog); nur die Beschriftung ist
-   übersetzt.
-10. **Server-Logs** in der Konsole bleiben deutsch (für den Betrieb, nicht für Nutzer).
+## Limits and open points
 
-## Neue Sprache hinzufügen
+1. **Company texts are single-language.** Device names, descriptions, categories, rooms, groups, own terms, form fields, welcome text and own e-mail texts appear in every language as the company writes them. The pages point this out. Multilingual company texts would be an extension of their own.
+2. **Old audit log entries** (before the localization) keep their German summary; field names and known values in them are translated.
+3. **Audit log search** searches the German summary. Whoever searches for "approved" in English finds nothing; in other languages the page says so below the search field. Names, devices and serial numbers are found in every language.
+4. **Dates in audit log details** ("Zeitraum: 15.10.2026, 09:00 – …") are formatted in German when written and stay that way. The time of the entries themselves follows the language.
+5. **Grammar of company terms:** terms are inserted without gender and case. In Spanish "{room} «A101» guardada" fits "Sala", but not an own masculine term; similarly in Hindi. In German this was always so (terms without a choice of article).
+6. **Translation quality:** English and Spanish are careful but not checked by native speakers; **Chinese and Hindi should be reviewed by native speakers before customers use them** (technical terms such as 设备件/इकाई for "piece", tone of the greeting).
+7. **Browser validation** (`required`, `minLength`, date fields) speaks the browser's language, not the app's.
+8. **Right-to-left** is not needed (none of the five languages), but is not prepared either.
+9. **Keyboard shortcuts** stay based on German words (`g k` = Katalog); only the labels are translated.
+10. **Server logs** in the console were German at the time of the audit; since `bb004bc` they are English (for operation, not for users).
 
-1. `backend/src/i18n/<code>.ts` und `frontend/src/i18n/<code>.ts` als Kopie von `en.ts` anlegen,
-   Typ `Messages` behalten und übersetzen – die Typprüfung meldet jeden fehlenden Schlüssel.
-2. Den Code in `locales` und `intlTag` eintragen (`backend/src/i18n/locales.ts`,
-   `frontend/src/i18n/index.tsx`) und das Wörterbuch in `dictionaries` (`backend/src/i18n/index.ts`,
-   `frontend/src/i18n/index.tsx`); im Frontend zusätzlich den Namen in `localeNames`.
-3. `npm run check` im Hauptverzeichnis.
+## Adding a new language
+
+1. Create `backend/src/i18n/<code>.ts` and `frontend/src/i18n/<code>.ts` as a copy of `en.ts`, keep the type `Messages` and translate – the type check reports every missing key.
+2. Add the code to `locales` and `intlTag` (`backend/src/i18n/locales.ts`, `frontend/src/i18n/index.tsx`) and the dictionary to `dictionaries` (`backend/src/i18n/index.ts`, `frontend/src/i18n/index.tsx`); in the frontend also the name in `localeNames`.
+3. `npm run check` in the root directory.

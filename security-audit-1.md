@@ -1,301 +1,208 @@
-# Security-Audit 1 – LendLine
+# Security audit 1 – LendLine
 
-Stand: 2026-09-24, Commit `13e596f`. Geprüft: `backend/src/**`, `backend/prisma/seed.ts`,
-`docker-compose.yml`, `backend/.env.example`, Frontend-Quellcode (`frontend/src/**`, `index.html`,
-`vite.config.ts`) sowie die Abhängigkeiten per `npm audit`.
+As of 2026-09-24, commit `13e596f`. Reviewed: `backend/src/**`, `backend/prisma/seed.ts`, `docker-compose.yml`, `backend/.env.example`, the frontend source (`frontend/src/**`, `index.html`, `vite.config.ts`) and the dependencies via `npm audit`.
 
-Nicht gefunden (geprüft, ohne Befund): SQL-Injection (nur Prisma-Query-API, einziges Raw-Query ist
-das statische `SELECT 1`), Command Injection (keine `child_process`-Nutzung), Path Traversal
-(Dateinamen werden serverseitig als UUID erzeugt, Pfade stammen nie aus Nutzereingaben), unsichere
-Deserialisierung (nur `JSON.parse`/Zod), XSS im Frontend (kein `dangerouslySetInnerHTML`, React
-escaped; SVG-Uploads werden mit `CSP sandbox` + `nosniff` ausgeliefert), HTML-Injection in E-Mails
-(alle Werte laufen durch `escapeHtml`), LDAP-Filter-Injection (`escapeFilter` escaped `\ * ( ) NUL`),
-Secrets im Repository (`backend/.env` ist nicht eingecheckt, `.env.example` enthält nur Platzhalter).
+Not found (checked, no finding): SQL injection (Prisma query API only, the only raw query is the static `SELECT 1`), command injection (no use of `child_process`), path traversal (file names are generated server-side as UUIDs, paths never come from user input), insecure deserialization (only `JSON.parse`/Zod), XSS in the frontend (no `dangerouslySetInnerHTML`, React escapes; SVG uploads are served with `CSP sandbox` + `nosniff`), HTML injection in e-mails (all values go through `escapeHtml`), LDAP filter injection (`escapeFilter` escapes `\ * ( ) NUL`), secrets in the repository (`backend/.env` is not checked in, `.env.example` only contains placeholders).
 
-| #   | Titel                                                                                         | Schweregrad |
-| --- | --------------------------------------------------------------------------------------------- | ----------- |
-| 1   | Kein Brute-Force-Schutz / Rate Limit auf Anmeldung und Registrierung                          | High        |
-| 2   | Kontoübernahme bei LDAP-Anmeldung über gleiche E-Mail-Adresse                                 | High        |
-| 3   | Verwundbare Abhängigkeit `nodemailer` ≤ 9.1.0                                                 | Medium      |
-| 4   | Berechtigung nur aus JWT-Claims – gelöschte/herabgestufte/abgemeldete Nutzer behalten Zugriff | Medium      |
-| 5   | Schwache bzw. Platzhalter-JWT-Secrets werden akzeptiert, Algorithmus nicht festgelegt         | Medium      |
-| 6   | Seed legt Admin-Konto mit bekanntem Passwort in jeder Umgebung an                             | Medium      |
-| 7   | PostgreSQL mit Standard-Zugangsdaten auf allen Netzwerk-Interfaces                            | Medium      |
-| 8   | Passwort-Reset durch Admin beendet bestehende Sitzungen nicht                                 | Medium      |
-| 9   | Benutzer-Enumeration über Antwortzeit des Logins                                              | Low         |
-| 10  | Refresh-Token-Rotation nicht atomar                                                           | Low         |
-| 11  | Race Condition bei der „letzter Administrator“-Prüfung                                        | Low         |
-| 12  | Fehlende Security-Header, `X-Powered-By` verrät Framework                                     | Low         |
-| 13  | Fehlerhafte JSON-Bodies erzeugen 500 und Stacktrace im Log                                    | Low         |
-| 14  | Keine Längenbegrenzung des Login-Passworts, bcrypt-Kürzung auf 72 Byte                        | Low         |
-| 15  | Refresh/Logout ohne Origin-Prüfung (CSRF nur über SameSite=Lax abgesichert)                   | Low         |
-| 16  | Verwundbare Dev-Abhängigkeit `deepmerge-ts` über Prisma-CLI                                   | Low         |
-| 17  | Upload-Inhalt wird nicht geprüft (nur Endung + MIME-Typ des Clients)                          | Low         |
-| 18  | E-Mail-Adresse bei Registrierung wird nicht verifiziert                                       | Low         |
+| #   | Title                                                                             | Severity |
+| --- | --------------------------------------------------------------------------------- | -------- |
+| 1   | No brute-force protection / rate limit on sign-in and registration                | High     |
+| 2   | Account takeover on LDAP sign-in through the same e-mail address                  | High     |
+| 3   | Vulnerable dependency `nodemailer` ≤ 9.1.0                                        | Medium   |
+| 4   | Authorization from JWT claims only – deleted/demoted/signed-out users keep access | Medium   |
+| 5   | Weak or placeholder JWT secrets are accepted, algorithm not fixed                 | Medium   |
+| 6   | Seed creates an admin account with a known password in every environment          | Medium   |
+| 7   | PostgreSQL with default credentials on all network interfaces                     | Medium   |
+| 8   | Password reset by an admin does not end existing sessions                         | Medium   |
+| 9   | User enumeration through the login's response time                                | Low      |
+| 10  | Refresh token rotation not atomic                                                 | Low      |
+| 11  | Race condition in the "last administrator" check                                  | Low      |
+| 12  | Missing security headers, `X-Powered-By` reveals the framework                    | Low      |
+| 13  | Malformed JSON bodies cause a 500 and a stack trace in the log                    | Low      |
+| 14  | No length limit on the login password, bcrypt truncation at 72 bytes              | Low      |
+| 15  | Refresh/logout without origin check (CSRF only covered by SameSite=Lax)           | Low      |
+| 16  | Vulnerable dev dependency `deepmerge-ts` via the Prisma CLI                       | Low      |
+| 17  | Upload content is not checked (only the extension + the client's MIME type)       | Low      |
+| 18  | E-mail address not verified on registration                                       | Low      |
 
 ---
 
-## 1. Kein Brute-Force-Schutz / Rate Limit auf Anmeldung und Registrierung — **High**
+## 1. No brute-force protection / rate limit on sign-in and registration — **High**
 
-**Dateien:** `backend/src/routes/auth.ts:46-64`, `backend/src/services/authService.ts:162-201`
+**Files:** `backend/src/routes/auth.ts:46-64`, `backend/src/services/authService.ts:162-201`
 
-**Beschreibung:** `POST /api/auth/login` und `POST /api/auth/register` haben weder Rate Limit noch
-Sperre. Jeder Versuch wird nur protokolliert. Bei aktiviertem LDAP wird jeder Versuch zusätzlich an
-den Verzeichnisdienst weitergereicht.
+**Description:** `POST /api/auth/login` and `POST /api/auth/register` have neither a rate limit nor a lockout. Every attempt is only logged. With LDAP enabled, every attempt is also passed on to the directory service.
 
-**Angriffsszenario:** Ein Angreifer probiert per Skript tausende Passwörter für
-`admin@lendline.local` oder für aus dem Audit-/Mailverkehr bekannte Adressen (Credential Stuffing).
-Mit LDAP führen die Fehlversuche zusätzlich zur Sperrung der AD-Konten (Lockout-Policy des AD) –
-ein Denial of Service gegen echte Mitarbeiterkonten. Registrierung kann massenhaft Konten anlegen
-(bcrypt mit 12 Runden pro Anfrage → CPU-DoS).
+**Attack scenario:** An attacker tries thousands of passwords by script for `admin@lendline.local` or for addresses known from the audit log or mail traffic (credential stuffing). With LDAP, the failed attempts also lock the AD accounts (the AD's lockout policy) – a denial of service against real employee accounts. Registration can create accounts in bulk (bcrypt with 12 rounds per request → CPU DoS).
 
-**Empfohlener Fix:** Rate Limit pro IP und pro (IP + Benutzername) auf Login, pro IP auf
-Registrierung; bei Überschreitung HTTP 429 mit `Retry-After`. Erfolgreicher Login setzt den Zähler
-für die Kombination zurück.
+**Recommended fix:** Rate limit per IP and per (IP + user name) on login, per IP on registration; when exceeded, HTTP 429 with `Retry-After`. A successful login resets the counter for the combination.
 
-## 2. Kontoübernahme bei LDAP-Anmeldung über gleiche E-Mail-Adresse — **High**
+## 2. Account takeover on LDAP sign-in through the same e-mail address — **High**
 
-**Dateien:** `backend/src/services/authService.ts:93-156` (`upsertLdapUser`),
-`backend/src/services/authService.ts:54-91` (`register`)
+**Files:** `backend/src/services/authService.ts:93-156` (`upsertLdapUser`), `backend/src/services/authService.ts:54-91` (`register`)
 
-**Beschreibung:** Beim LDAP-Login wird ein vorhandener Benutzer über `ldapDn` **oder** `email`
-gesucht und in ein LDAP-Konto umgewandelt. Dabei bleiben alle Refresh-Tokens des bisherigen
-(lokalen) Kontos gültig, und die Rolle wird ohne `LDAP_ADMIN_GROUP` vom alten Konto übernommen.
-Außerdem wird ein Konto, das bereits zu einem **anderen** DN gehört, einfach auf den neuen DN
-umgeschrieben.
+**Description:** On an LDAP login an existing user is looked up by `ldapDn` **or** `email` and converted into an LDAP account. All refresh tokens of the previous (local) account stay valid, and without `LDAP_ADMIN_GROUP` the role is taken over from the old account. An account that already belongs to **another** DN is simply rewritten to the new DN.
 
-**Angriffsszenario (Pre-Account-Takeover):** LDAP ist aktiv, lokale Registrierung erlaubt
-(Standard). Der Angreifer registriert sich lokal mit der Adresse eines Kollegen
-(`chefin@firma.de`), der sich noch nie angemeldet hat, und behält seine Sitzung. Meldet sich die
-Kollegin später per LDAP an, wird genau dieses Konto übernommen; ist sie in der Admin-Gruppe, wird
-es `ADMIN`. Der Refresh-Token des Angreifers ist weiterhin gültig und liefert bei `/auth/refresh`
-nun Access-Tokens mit ihrer Identität und Admin-Rolle. Zweites Szenario: Zwei Verzeichniseinträge
-mit gleicher `mail` – der zweite übernimmt das Konto (inkl. Anfragen und Rolle) des ersten.
+**Attack scenario (pre-account takeover):** LDAP is active, local registration allowed (default). The attacker registers locally with the address of a colleague (`boss@company.com`) who has never signed in, and keeps the session. When the colleague later signs in via LDAP, exactly this account is taken over; if she is in the admin group, it becomes `ADMIN`. The attacker's refresh token stays valid and now yields access tokens with her identity and admin role on `/auth/refresh`. Second scenario: two directory entries with the same `mail` – the second takes over the account (including requests and role) of the first.
 
-**Empfohlener Fix:** Wird ein lokales Konto in ein LDAP-Konto umgewandelt, alle Refresh-Tokens des
-Kontos widerrufen. Gehört das per E-Mail gefundene Konto bereits zu einem anderen DN, Anmeldung mit
-409 ablehnen.
+**Recommended fix:** When a local account is converted into an LDAP account, revoke all refresh tokens of the account. If the account found by e-mail already belongs to another DN, refuse the sign-in with 409.
 
-## 3. Verwundbare Abhängigkeit `nodemailer` ≤ 9.1.0 — **Medium**
+## 3. Vulnerable dependency `nodemailer` ≤ 9.1.0 — **Medium**
 
-**Dateien:** `backend/package.json:39`, `backend/package-lock.json`
+**Files:** `backend/package.json:39`, `backend/package-lock.json`
 
-**Beschreibung:** `npm audit` meldet 10 Advisories (npm-Einstufung „high“), u. a. SMTP-Command-
-Injection (GHSA-c7w3-x93f-qmm8, GHSA-vvjj-xcjg-gr5g), Header-Injection (GHSA-268h-hp4c-crq3),
-Umgehung von Domain-Prüfungen (GHSA-cc9r-2j5m-2m83) und quadratische Laufzeit im `addressparser`
-(GHSA-2x7j-588g-ccc2). Die App nutzt nur `createTransport` + `sendMail` mit Text/HTML, daher ist
-die tatsächliche Ausnutzbarkeit eingeschränkt (→ Medium statt High).
+**Description:** `npm audit` reports 10 advisories (npm rating "high"), among them SMTP command injection (GHSA-c7w3-x93f-qmm8, GHSA-vvjj-xcjg-gr5g), header injection (GHSA-268h-hp4c-crq3), bypassing domain checks (GHSA-cc9r-2j5m-2m83) and quadratic runtime in the `addressparser` (GHSA-2x7j-588g-ccc2). The app only uses `createTransport` + `sendMail` with text/HTML, so the actual exploitability is limited (→ Medium instead of High).
 
-**Angriffsszenario:** Der Empfänger (`to`) stammt aus der vom Nutzer selbst registrierten
-E-Mail-Adresse. Eine präparierte Adresse, die die Zod-Prüfung passiert, kann Parser-Fehler in
-`addressparser` auslösen (DoS beim Versand, Zustellung an falsche Domain).
+**Attack scenario:** The recipient (`to`) comes from the e-mail address the user registered. A crafted address that passes the Zod check can trigger parser errors in `addressparser` (DoS when sending, delivery to the wrong domain).
 
-**Empfohlener Fix:** Auf `nodemailer@^10.0.10` aktualisieren (API für `createTransport`/`sendMail`
-unverändert).
+**Recommended fix:** Update to `nodemailer@^10.0.10` (API for `createTransport`/`sendMail` unchanged).
 
-## 4. Berechtigung nur aus JWT-Claims — **Medium**
+## 4. Authorization from JWT claims only — **Medium**
 
-**Dateien:** `backend/src/middleware/auth.ts:25-39`, `backend/src/lib/tokens.ts:19-29`
+**Files:** `backend/src/middleware/auth.ts:25-39`, `backend/src/lib/tokens.ts:19-29`
 
-**Beschreibung:** `requireAuth` übernimmt `sub` und `role` ungeprüft aus dem Access-Token. Ob der
-Benutzer noch existiert oder noch Admin ist, wird nicht geprüft. „Sitzungen beenden“
-(`/users/:id/sessions/revoke`, Wartungsaufgabe `end-sessions`) widerruft nur Refresh-Tokens.
+**Description:** `requireAuth` takes `sub` and `role` from the access token without checking them. Whether the user still exists or is still an admin is not checked. "End sessions" (`/users/:id/sessions/revoke`, maintenance task `end-sessions`) only revokes refresh tokens.
 
-**Angriffsszenario:** Einem kompromittierten Admin-Konto wird die Rolle entzogen oder es wird
-gelöscht und seine Sitzungen beendet. Der Angreifer arbeitet mit dem vorhandenen Access-Token bis
-zu 15 Minuten (bzw. `JWT_ACCESS_TTL`, frei konfigurierbar) weiter als Admin – legt z. B. ein neues
-Admin-Konto an und sichert sich so dauerhaften Zugang.
+**Attack scenario:** A compromised admin account loses its role or is deleted and its sessions are ended. The attacker keeps working as admin with the existing access token for up to 15 minutes (or `JWT_ACCESS_TTL`, freely configurable) – for example creates a new admin account and so secures permanent access.
 
-**Empfohlener Fix:** In `requireAuth` den Benutzer per ID laden; fehlt er → 401, sonst die
-**aktuelle** Rolle aus der Datenbank verwenden.
+**Recommended fix:** Load the user by ID in `requireAuth`; if missing → 401, otherwise use the **current** role from the database.
 
-## 5. Schwache bzw. Platzhalter-JWT-Secrets, Algorithmus nicht festgelegt — **Medium**
+## 5. Weak or placeholder JWT secrets, algorithm not fixed — **Medium**
 
-**Dateien:** `backend/src/config.ts:36-37`, `backend/.env.example:2-3`,
-`backend/src/lib/tokens.ts:14,20`
+**Files:** `backend/src/config.ts:36-37`, `backend/.env.example:2-3`, `backend/src/lib/tokens.ts:14,20`
 
-**Beschreibung:** Jeder nicht-leere Wert wird als `JWT_ACCESS_SECRET` akzeptiert, auch der
-Platzhalter `change-me-access-secret` aus `.env.example` (README: „.env.example kopieren“).
-`jwt.verify` legt die erlaubten Algorithmen nicht fest.
+**Description:** Any non-empty value is accepted as `JWT_ACCESS_SECRET`, including the placeholder `change-me-access-secret` from `.env.example` (README: "copy .env.example"). `jwt.verify` does not fix the allowed algorithms.
 
-**Angriffsszenario:** Eine Installation wird mit kopierter `.env.example` betrieben. Der Angreifer
-kennt das Secret aus dem öffentlichen Repository und signiert ein Token
-`{ sub: "<beliebig>", role: "ADMIN" }` → voller Admin-Zugriff ohne Anmeldung. (In Kombination mit
-Finding 4 muss `sub` nicht einmal existieren.)
+**Attack scenario:** An installation runs with a copied `.env.example`. The attacker knows the secret from the public repository and signs a token `{ sub: "<anything>", role: "ADMIN" }` → full admin access without signing in. (Combined with finding 4, `sub` does not even have to exist.)
 
-**Empfohlener Fix:** Beim Start Secrets mit weniger als 32 Zeichen oder mit `change-me`-Präfix
-ablehnen (in Produktion Abbruch, in Entwicklung Warnung). `algorithms: ["HS256"]` bei Signatur und
-Prüfung festlegen.
+**Recommended fix:** At start, refuse secrets shorter than 32 characters or with the `change-me` prefix (abort in production, warning in development). Fix `algorithms: ["HS256"]` for signing and verifying.
 
-## 6. Seed legt Admin-Konto mit bekanntem Passwort an — **Medium**
+## 6. Seed creates an admin account with a known password — **Medium**
 
-**Dateien:** `backend/prisma/seed.ts:7-30`
+**Files:** `backend/prisma/seed.ts:7-30`
 
-**Beschreibung:** `npm run prisma:seed` (und `db:setup`, sowie `prisma migrate reset`) legt
-`admin@lendline.local` / `Admin123!` an – unabhängig von `NODE_ENV`.
+**Description:** `npm run prisma:seed` (and `db:setup`, as well as `prisma migrate reset`) creates `admin@lendline.local` / `Admin123!` – regardless of `NODE_ENV`.
 
-**Angriffsszenario:** Der Betreiber führt bei der Produktionseinrichtung den im README
-beschriebenen Seed aus. Jeder, der das README kennt, meldet sich als Admin an.
+**Attack scenario:** The operator runs the seed described in the README while setting up production. Anyone who knows the README signs in as admin.
 
-**Empfohlener Fix:** Seed in Produktion (`NODE_ENV=production`) verweigern.
+**Recommended fix:** Refuse the seed in production (`NODE_ENV=production`).
 
-## 7. PostgreSQL mit Standard-Zugangsdaten auf allen Interfaces — **Medium**
+## 7. PostgreSQL with default credentials on all interfaces — **Medium**
 
-**Dateien:** `docker-compose.yml:5-9`
+**Files:** `docker-compose.yml:5-9`
 
-**Beschreibung:** `ports: "5432:5432"` bindet an `0.0.0.0`; Benutzer/Passwort sind `lendline`.
-Docker umgeht dabei zudem häufig die Host-Firewall.
+**Description:** `ports: "5432:5432"` binds to `0.0.0.0`; user/password are `lendline`. Docker also often bypasses the host firewall.
 
-**Angriffsszenario:** Ein Gerät im selben Netz (z. B. Firmen-WLAN) verbindet sich mit
-`psql -h <host> -U lendline` und liest/ändert alle Daten, setzt z. B. `role = 'ADMIN'` für ein
-eigenes Konto oder liest Passwort-Hashes.
+**Attack scenario:** A device in the same network (e.g. company Wi-Fi) connects with `psql -h <host> -U lendline` and reads/changes all data, e.g. sets `role = 'ADMIN'` for an own account or reads password hashes.
 
-**Empfohlener Fix:** Port nur an `127.0.0.1` binden. Passwort über Umgebungsvariable
-überschreibbar machen.
+**Recommended fix:** Bind the port to `127.0.0.1` only. Make the password overridable through an environment variable.
 
-## 8. Passwort-Reset durch Admin beendet bestehende Sitzungen nicht — **Medium**
+## 8. Password reset by an admin does not end existing sessions — **Medium**
 
-**Dateien:** `backend/src/services/userAdminService.ts:61-81`
+**Files:** `backend/src/services/userAdminService.ts:61-81`
 
-**Beschreibung:** Setzt ein Admin ein neues Passwort (typisch nach Kompromittierung), bleiben alle
-Refresh-Tokens des Kontos gültig. Dasselbe gilt für eine Rollenänderung.
+**Description:** When an admin sets a new password (typically after a compromise), all refresh tokens of the account stay valid. The same applies to a role change.
 
-**Angriffsszenario:** Ein Angreifer hat das Passwort eines Nutzers erraten und eine Sitzung. Der
-Admin setzt das Passwort zurück – der Angreifer bleibt bis zu 7 Tage (bzw. unbegrenzt durch
-Rotation) angemeldet.
+**Attack scenario:** An attacker has guessed a user's password and has a session. The admin resets the password – the attacker stays signed in for up to 7 days (or indefinitely through rotation).
 
-**Empfohlener Fix:** Bei Passwortänderung alle Refresh-Tokens des Kontos widerrufen.
+**Recommended fix:** Revoke all refresh tokens of the account on a password change.
 
-## 9. Benutzer-Enumeration über Antwortzeit des Logins — **Low**
+## 9. User enumeration through the login's response time — **Low**
 
-**Dateien:** `backend/src/services/authService.ts:214-221`
+**Files:** `backend/src/services/authService.ts:214-221`
 
-**Beschreibung:** Existiert die E-Mail nicht (oder ist es ein LDAP-Konto), antwortet der Server
-sofort; sonst erst nach dem bcrypt-Vergleich (~250 ms).
+**Description:** If the e-mail does not exist (or it is an LDAP account), the server answers at once; otherwise only after the bcrypt comparison (~250 ms).
 
-**Angriffsszenario:** Ein Angreifer misst Antwortzeiten und erhält so eine Liste gültiger
-Konten als Grundlage für gezieltes Passwort-Raten (Finding 1) oder Phishing.
+**Attack scenario:** An attacker measures response times and so gets a list of valid accounts as the basis for targeted password guessing (finding 1) or phishing.
 
-**Empfohlener Fix:** Bei fehlendem Konto gegen einen Dummy-Hash vergleichen, damit die Laufzeit
-gleich ist. (Die 409 bei der Registrierung bleibt als bewusst hingenommene UX-Abwägung bestehen.)
+**Recommended fix:** For a missing account, compare against a dummy hash so the runtime is the same. (The 409 on registration stays as a deliberately accepted UX trade-off.)
 
-## 10. Refresh-Token-Rotation nicht atomar — **Low**
+## 10. Refresh token rotation not atomic — **Low**
 
-**Dateien:** `backend/src/services/authService.ts:238-251`
+**Files:** `backend/src/services/authService.ts:238-251`
 
-**Beschreibung:** Das Token wird gelesen, geprüft und dann per `update` ohne Bedingung widerrufen.
-Zwei gleichzeitige Aufrufe mit demselben Token erhalten beide ein neues Token-Paar. Eine
-Wiederverwendung bereits rotierter Tokens wird nicht erkannt.
+**Description:** The token is read, checked and then revoked with an unconditional `update`. Two simultaneous calls with the same token both get a new token pair. Reuse of already rotated tokens is not detected.
 
-**Angriffsszenario:** Ein gestohlenes Refresh-Token, das der Angreifer zeitgleich mit dem Opfer
-einsetzt, erzeugt eine zweite, unabhängige Sitzungskette, die der Nutzer beim Abmelden nicht
-beendet.
+**Attack scenario:** A stolen refresh token that the attacker uses at the same time as the victim creates a second, independent session chain that the user does not end by signing out.
 
-**Empfohlener Fix:** Widerruf atomar per `updateMany({ where: { id, revokedAt: null } })` und nur
-bei `count === 1` neue Tokens ausgeben.
+**Recommended fix:** Revoke atomically with `updateMany({ where: { id, revokedAt: null } })` and only issue new tokens when `count === 1`.
 
-## 11. Race Condition bei der „letzter Administrator“-Prüfung — **Low**
+## 11. Race condition in the "last administrator" check — **Low**
 
-**Dateien:** `backend/src/services/userAdminService.ts:66-81`, `111-122`, `137-142`
+**Files:** `backend/src/services/userAdminService.ts:66-81`, `111-122`, `137-142`
 
-**Beschreibung:** Anzahl der Admins wird gezählt und danach in einer separaten Abfrage geändert.
+**Description:** The number of admins is counted and then changed in a separate query.
 
-**Angriffsszenario:** Zwei Admins entziehen sich gleichzeitig gegenseitig die Rolle (oder löschen
-sich) – beide Prüfungen sehen 2 Admins, danach gibt es keinen Admin mehr. Die Instanz ist nicht
-mehr verwaltbar (Wiederherstellung nur per Datenbankzugriff).
+**Attack scenario:** Two admins remove each other's role (or delete each other) at the same time – both checks see 2 admins, afterwards there is no admin left. The instance can no longer be administered (recovery only through database access).
 
-**Empfohlener Fix:** Prüfung und Änderung in einer `Serializable`-Transaktion.
+**Recommended fix:** Check and change in a `Serializable` transaction.
 
-## 12. Fehlende Security-Header, `X-Powered-By` — **Low**
+## 12. Missing security headers, `X-Powered-By` — **Low**
 
-**Dateien:** `backend/src/app.ts:19-27`
+**Files:** `backend/src/app.ts:19-27`
 
-**Beschreibung:** Die API setzt außer unter `/api/uploads` keine Security-Header
-(`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`); Express sendet
-`X-Powered-By: Express`.
+**Description:** Except under `/api/uploads` the API sets no security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`); Express sends `X-Powered-By: Express`.
 
-**Angriffsszenario:** Fingerprinting der Serversoftware; JSON-Antworten könnten in alten Browsern
-per MIME-Sniffing als HTML interpretiert werden.
+**Attack scenario:** Fingerprinting of the server software; in old browsers JSON responses could be interpreted as HTML through MIME sniffing.
 
-**Empfohlener Fix:** `app.disable("x-powered-by")` und Basis-Header global setzen.
+**Recommended fix:** `app.disable("x-powered-by")` and set basic headers globally.
 
-## 13. Fehlerhafte JSON-Bodies erzeugen 500 und Stacktrace im Log — **Low**
+## 13. Malformed JSON bodies cause a 500 and a stack trace in the log — **Low**
 
-**Dateien:** `backend/src/middleware/errorHandler.ts:7-23`
+**Files:** `backend/src/middleware/errorHandler.ts:7-23`
 
-**Beschreibung:** Fehler von `express.json()` (ungültiges JSON, Body > 100 kB) sind keine
-`HttpError` und werden als 500 „Interner Serverfehler“ beantwortet und mit Stacktrace geloggt.
-Der Client sieht keinen Stacktrace (kein Info-Leak), aber das Log lässt sich fluten und
-Monitoring meldet Serverfehler.
+**Description:** Errors from `express.json()` (invalid JSON, body > 100 kB) are not `HttpError`s and are answered as 500 "Internal server error" and logged with a stack trace. The client sees no stack trace (no information leak), but the log can be flooded and monitoring reports server errors.
 
-**Angriffsszenario:** Ein Angreifer sendet massenhaft kaputtes JSON und füllt damit das Log mit
-Stacktraces, echte Fehler gehen darin unter.
+**Attack scenario:** An attacker sends broken JSON in bulk and so fills the log with stack traces; real errors get lost in it.
 
-**Empfohlener Fix:** Body-Parser-Fehler (`type` beginnt mit `entity.`/ `status` 4xx) mit deren
-Status und einer allgemeinen Meldung beantworten, ohne Stacktrace zu loggen.
+**Recommended fix:** Answer body parser errors (`type` starting with `entity.` / `status` 4xx) with their status and a general message, without logging a stack trace.
 
-## 14. Keine Längenbegrenzung des Login-Passworts, bcrypt-Kürzung — **Low**
+## 14. No length limit on the login password, bcrypt truncation — **Low**
 
-**Dateien:** `backend/src/validators/auth.ts:11`, `backend/src/lib/password.ts`
+**Files:** `backend/src/validators/auth.ts:11`, `backend/src/lib/password.ts`
 
-**Beschreibung:** Das Login-Passwort ist unbegrenzt (bis 100 kB Body). bcrypt verwendet nur die
-ersten 72 Byte, Passwörter bis 200 Zeichen werden bei der Registrierung aber akzeptiert.
+**Description:** The login password is unlimited (up to a 100 kB body). bcrypt only uses the first 72 bytes, but registration accepts passwords of up to 200 characters.
 
-**Angriffsszenario:** Nutzer mit langen Passphrasen (> 72 Byte) haben faktisch ein kürzeres
-Passwort als gedacht; zwei Passwörter mit gleichem 72-Byte-Anfang sind gleichwertig.
+**Attack scenario:** Users with long passphrases (> 72 bytes) effectively have a shorter password than they think; two passwords with the same first 72 bytes are equivalent.
 
-**Empfohlener Fix:** Passwörter (Login, Registrierung, Admin-Formular) auf 72 Byte UTF-8
-begrenzen.
+**Recommended fix:** Limit passwords (login, registration, admin form) to 72 bytes UTF-8.
 
-## 15. Refresh/Logout ohne Origin-Prüfung — **Low**
+## 15. Refresh/logout without origin check — **Low**
 
-**Dateien:** `backend/src/routes/auth.ts:66-82`
+**Files:** `backend/src/routes/auth.ts:66-82`
 
-**Beschreibung:** Die Cookie-basierten Endpunkte `/auth/refresh` und `/auth/logout` sind nur durch
-`SameSite=Lax` gegen CSRF geschützt. Same-Site-Angreifer (andere Subdomain derselben Domain) oder
-Browser ohne SameSite-Unterstützung werden nicht abgewehrt.
+**Description:** The cookie-based endpoints `/auth/refresh` and `/auth/logout` are only protected against CSRF by `SameSite=Lax`. Same-site attackers (another subdomain of the same domain) or browsers without SameSite support are not stopped.
 
-**Angriffsszenario:** Eine Seite auf `evil.firma.de` sendet `POST /api/auth/logout` → Login-CSRF /
-Zwangsabmeldung aller Besucher. Das Access-Token selbst kann wegen CORS nicht gelesen werden.
+**Attack scenario:** A page on `evil.company.com` sends `POST /api/auth/logout` → login CSRF / forced sign-out of all visitors. The access token itself cannot be read because of CORS.
 
-**Empfohlener Fix:** Bei diesen Endpunkten einen vorhandenen `Origin`-Header gegen
-`FRONTEND_ORIGIN` prüfen und bei Abweichung 403 antworten.
+**Recommended fix:** On these endpoints, check an `Origin` header, if present, against `FRONTEND_ORIGIN` and answer 403 on a mismatch.
 
-## 16. Verwundbare Dev-Abhängigkeit `deepmerge-ts` — **Low**
+## 16. Vulnerable dev dependency `deepmerge-ts` — **Low**
 
-**Dateien:** `backend/package.json:57` (`prisma`)
+**Files:** `backend/package.json:57` (`prisma`)
 
-**Beschreibung:** `prisma` → `@prisma/config` → `deepmerge-ts < 8.0.0` (GHSA-ggr8-5vv4-36mx, Stack
-Exhaustion). Betrifft nur das Prisma-CLI (Migration/Generate), nicht die laufende API; die
-verarbeiteten Daten (eigene Konfiguration) sind nicht angreiferkontrolliert.
+**Description:** `prisma` → `@prisma/config` → `deepmerge-ts < 8.0.0` (GHSA-ggr8-5vv4-36mx, stack exhaustion). Only affects the Prisma CLI (migrate/generate), not the running API; the processed data (own configuration) is not controlled by an attacker.
 
-**Angriffsszenario:** Praktisch keines im Betrieb.
+**Attack scenario:** Practically none in operation.
 
-**Empfohlener Fix:** Prisma aktualisieren, sobald eine Version mit `deepmerge-ts ≥ 8` erscheint.
+**Recommended fix:** Update Prisma once a version with `deepmerge-ts ≥ 8` is released.
 
-## 17. Upload-Inhalt wird nicht geprüft — **Low**
+## 17. Upload content is not checked — **Low**
 
-**Dateien:** `backend/src/middleware/upload.ts:25-57`
+**Files:** `backend/src/middleware/upload.ts:25-57`
 
-**Beschreibung:** Nur Dateiendung und der vom Client gesendete MIME-Typ werden geprüft, nicht der
-Inhalt (Magic Bytes). Durch `nosniff` und die `sandbox`-CSP unter `/api/uploads` (`app.ts:29-42`)
-kann eine getarnte HTML-/Script-Datei jedoch nicht ausgeführt werden. Uploads sind Admins
-vorbehalten.
+**Description:** Only the file extension and the MIME type sent by the client are checked, not the content (magic bytes). Thanks to `nosniff` and the `sandbox` CSP under `/api/uploads` (`app.ts:29-42`), a disguised HTML/script file cannot be executed, however. Uploads are reserved for admins.
 
-**Angriffsszenario:** Ein Admin lädt (versehentlich) eine beliebige Datei als `.png` hoch, die dann
-öffentlich abrufbar ist (Ablage fremder Inhalte).
+**Attack scenario:** An admin (accidentally) uploads an arbitrary file as `.png`, which is then publicly available (hosting of foreign content).
 
-**Empfohlener Fix:** Optional Magic-Byte-Prüfung. Wird wegen geringem Risiko nicht umgesetzt.
+**Recommended fix:** Optionally a magic-byte check. Not implemented because of the low risk.
 
-## 18. E-Mail-Adresse bei Registrierung wird nicht verifiziert — **Low**
+## 18. E-mail address not verified on registration — **Low**
 
-**Dateien:** `backend/src/services/authService.ts:54-91`
+**Files:** `backend/src/services/authService.ts:54-91`
 
-**Beschreibung:** Jeder kann sich mit einer beliebigen (fremden) Adresse registrieren; der
-Adressinhaber erhält später Benachrichtigungen. In Verbindung mit LDAP siehe Finding 2.
+**Description:** Anyone can register with any (foreign) address; the owner of the address later receives notifications. Combined with LDAP see finding 2.
 
-**Angriffsszenario:** Belästigung durch Benachrichtigungen an fremde Adressen; Identitätsvortäuschung
-gegenüber der Verwaltung („Max Mustermann“ bestellt Geräte).
+**Attack scenario:** Nuisance through notifications to foreign addresses; impersonation towards the administration ("John Doe" orders devices).
 
-**Empfohlener Fix:** E-Mail-Bestätigung per Link bei der Registrierung bzw. Registrierung auf
-Firmen-Domains begrenzen. (Größeres Feature, siehe Fix-Report.)
+**Recommended fix:** E-mail confirmation by link on registration, or limit registration to company domains. (Larger feature, see the fix report.)

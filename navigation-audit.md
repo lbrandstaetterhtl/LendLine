@@ -1,179 +1,142 @@
-# Navigations-Audit – LendLine
+# Navigation audit – LendLine
 
-Stand: 2026-09-25, Commit `df15966`. Geprüft wurde, wie man sich durch LendLine bewegt: Seitenleiste,
-Wege zu den häufigsten Aufgaben, Dialoge, Weiterleitungen, Links aus E-Mails und der Übersicht.
+As of 2026-09-25, commit `df15966`. Reviewed: how one moves through LendLine – sidebar, paths to the most frequent tasks, dialogs, redirects, links from e-mails and from the overview. UI names are given in English; at the time of the audit the interface was German only.
 
-**Methode:** Code-Review aller Seiten und Routen (`App.tsx`, `Layout.tsx`, alle `pages/`) und ein
-Durchgang im Browser (Edge headless) mit den Demo-Konten, auf einem typischen Laptop-Bildschirm
-(1366 × 768) und einem Handy (390 × 844). Gezählt wurden Klicks bis zum Ziel und gleichzeitig
-offene Dialoge.
+**Method:** Code review of all pages and routes (`App.tsx`, `Layout.tsx`, all `pages/`) and a walk-through in the browser (headless Edge) with the demo accounts, on a typical laptop screen (1366 × 768) and a phone (390 × 844). Counted: clicks to the goal and dialogs open at the same time.
 
-## Ausgangslage (gemessen)
+## Starting point (measured)
 
-| Aufgabe                                          | Weg heute                                                                                            | Klicks bis Formular | Dialoge übereinander |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------- | -------------------- |
-| Nutzer bucht über die Suche                      | Suche (Ergebnisse für morgen sind schon da) → „Kalender & anfragen“ → „Für diesen Zeitraum anfragen“ | 2                   | **2**                |
-| Nutzer bucht über den Katalog                    | Katalog → „Stücke“ → „Kalender“ → Tag wählen                                                         | 3                   | **3**                |
-| Nutzer öffnet einen Link, ist abgemeldet         | `/my-requests` → Anmeldung → landet auf `/search`                                                    | –                   | –                    |
-| Nutzer will nach Bestätigungs-E-Mail zur App     | E-Mail enthält keinen Link                                                                           | –                   | –                    |
-| Verwaltung prüft eine Anfrage aus der Übersicht  | Übersicht zeigt sie → „Alle prüfen“ → Anfrage in der Liste suchen → Bestätigen                       | 2 + Suchen          | –                    |
-| Verwaltung ändert Registrierung/E-Mail-Text/Logo | drei verschiedene Menüpunkte (Einstellungen, E-Mails, Erscheinungsbild)                              | 1                   | –                    |
+| Task                                                  | Path today                                                                                         | Clicks to the form | Stacked dialogs |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------ | --------------- |
+| User books through the search                         | Search (results for tomorrow are already there) → "Calendar & request" → "Request for this period" | 2                  | **2**           |
+| User books through the catalogue                      | Catalogue → "Pieces" → "Calendar" → choose a day                                                   | 3                  | **3**           |
+| User opens a link while signed out                    | `/my-requests` → sign-in → lands on `/search`                                                      | –                  | –               |
+| User wants to get to the app after an approval e-mail | The e-mail contains no link                                                                        | –                  | –               |
+| Administration reviews a request from the overview    | Overview shows it → "Review all" → look for the request in the list → Approve                      | 2 + searching      | –               |
+| Administration changes registration/e-mail text/logo  | three different menu entries (Settings, E-mails, Appearance)                                       | 1                  | –               |
 
-Seitenleiste der Verwaltung: **16 Einträge in 5 Gruppen**. Auf 1366 × 768 sind 202 px verdeckt;
-„Einstellungen“, „E-Mails“, „Wartung“ und „Bedienung“ sind erst nach Scrollen zu sehen.
+Administration sidebar: **16 entries in 5 groups**. On 1366 × 768, 202 px are hidden; "Settings", "E-mails", "Maintenance" and "Usage" only become visible after scrolling.
 
 ## Findings
 
-| #   | Finding                                                                   | Schweregrad | Status    |
-| --- | ------------------------------------------------------------------------- | ----------- | --------- |
-| 1   | Buchen über den Katalog stapelt drei Dialoge                              | Hoch        | umgesetzt |
-| 2   | Buchen über die Suche stapelt zwei Dialoge, obwohl der Zeitraum feststeht | Mittel      | umgesetzt |
-| 3   | Seitenleiste der Verwaltung zu lang, Einträge nur nach Scrollen sichtbar  | Mittel      | umgesetzt |
-| 4   | Einstellungen auf drei Menüpunkte verteilt, Grenzen unklar                | Mittel      | umgesetzt |
-| 5   | Nach der Anmeldung geht die ursprünglich geöffnete Seite verloren         | Mittel      | umgesetzt |
-| 6   | E-Mails enthalten keinen Link zurück in die App                           | Mittel      | umgesetzt |
-| 7   | Nach dem Absenden einer Anfrage kein Weg zu „Meine Anfragen“              | Niedrig     | umgesetzt |
-| 8   | Einträge der Übersicht führen nur zur Liste, nicht zur Anfrage            | Niedrig     | umgesetzt |
-| 9   | Verwaltung sieht die Ausleihe-Gruppe vor ihrer eigenen Arbeit             | Niedrig     | umgesetzt |
-| 10  | Unbekannte Adressen führen auch Admins auf die Suche                      | Niedrig     | umgesetzt |
-| 11  | Registrierung wird auf der Benutzerseite nicht erwähnt                    | Niedrig     | umgesetzt |
+| #   | Finding                                                                    | Severity | Status      |
+| --- | -------------------------------------------------------------------------- | -------- | ----------- |
+| 1   | Booking through the catalogue stacks three dialogs                         | High     | implemented |
+| 2   | Booking through the search stacks two dialogs although the period is known | Medium   | implemented |
+| 3   | Administration sidebar too long, entries only visible after scrolling      | Medium   | implemented |
+| 4   | Settings spread over three menu entries, unclear boundaries                | Medium   | implemented |
+| 5   | The page originally opened is lost after signing in                        | Medium   | implemented |
+| 6   | E-mails contain no link back into the app                                  | Medium   | implemented |
+| 7   | No way to "My requests" after sending a request                            | Low      | implemented |
+| 8   | Overview entries only lead to the list, not to the request                 | Low      | implemented |
+| 9   | The administration sees the borrowing group before its own work            | Low      | implemented |
+| 10  | Unknown addresses lead admins to the search too                            | Low      | implemented |
+| 11  | Registration is not mentioned on the users page                            | Low      | implemented |
 
-## Nach den Änderungen (gemessen)
+## After the changes (measured)
 
-Gleicher Durchgang im Browser nach den Änderungen, gleiche Bildschirmgrößen:
+The same walk-through in the browser after the changes, same screen sizes:
 
-| Aufgabe                                    | Vorher                                   | Nachher                                                                 |
-| ------------------------------------------ | ---------------------------------------- | ----------------------------------------------------------------------- |
-| Nutzer bucht über die Suche                | 2 Klicks, 2 Dialoge übereinander         | **1 Klick** („Anfragen“), 1 Dialog; Kalender im selben Fenster          |
-| Nutzer bucht über den Katalog              | 3 Klicks, 3 Dialoge übereinander         | 2 Klicks, **1 Dialog**; bei nur einem Stück direkt der Kalender         |
-| Nach dem Absenden                          | Kalender bleibt offen, Hinweis ohne Link | Dialog schließt, Seite zeigt Bestätigung mit „Zu meinen Anfragen“       |
-| Abgemeldet `/my-requests` öffnen, anmelden | landet auf `/search`                     | landet auf `/my-requests`                                               |
-| Unbekannte Adresse (Verwaltung)            | `/search`                                | `/admin`                                                                |
-| E-Mail → App                               | kein Link                                | „Meine Anfragen öffnen“ in Bestätigung, Ablehnung, Rückgabe             |
-| Anfrage aus der Übersicht prüfen           | Liste öffnen, Eintrag suchen             | Klick auf den Eintrag springt zur hervorgehobenen Zeile                 |
-| Seitenleiste der Verwaltung (1366 × 768)   | 16 Einträge, 202 px verdeckt             | **12 Einträge, nichts verdeckt**; „Verwaltung“ zuerst, „Hilfe“ im Fuß   |
-| Einstellungen                              | 4 Menüpunkte                             | 1 Menüpunkt mit 4 Reitern; alte Adressen und Tastenkürzel gelten weiter |
+| Task                                    | Before                                     | After                                                                        |
+| --------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| User books through the search           | 2 clicks, 2 stacked dialogs                | **1 click** ("Request"), 1 dialog; calendar in the same window               |
+| User books through the catalogue        | 3 clicks, 3 stacked dialogs                | 2 clicks, **1 dialog**; with only one piece straight to the calendar         |
+| After sending                           | Calendar stays open, notice without a link | Dialog closes, the page shows a confirmation with "Go to my requests"        |
+| Open `/my-requests` signed out, sign in | lands on `/search`                         | lands on `/my-requests`                                                      |
+| Unknown address (administration)        | `/search`                                  | `/admin`                                                                     |
+| E-mail → app                            | no link                                    | "Open my requests" in approval, rejection, return                            |
+| Review a request from the overview      | open the list, look for the entry          | a click on the entry jumps to the highlighted row                            |
+| Administration sidebar (1366 × 768)     | 16 entries, 202 px hidden                  | **12 entries, nothing hidden**; "Administration" first, "Help" in the footer |
+| Settings                                | 4 menu entries                             | 1 menu entry with 4 tabs; old addresses and shortcuts keep working           |
 
-`npm run check` ist in Backend, Frontend und Doku grün. Die Test-Anfrage aus dem Durchgang wurde
-wieder zurückgezogen.
+`npm run check` is green in backend, frontend and docs. The test request from the walk-through was withdrawn again.
 
-Geprüft ohne Befund: „Mein Konto“ (Name unten in der Seitenleiste, beschriftet mit „Mein Konto“),
-Tastenkürzel (`g` + Buchstabe, `/`, `n`, `?`), mobiles Menü (öffnet mit Fokus, schließt mit Escape),
-Wartungsbanner mit Link, Zähler an „Anfragen“ und „Ausleihen“, Kacheln der Übersicht als Links.
+Checked without finding: "My account" (name at the bottom of the sidebar, labelled "My account"), keyboard shortcuts (`g` + letter, `/`, `n`, `?`), mobile menu (opens with focus, closes with Escape), maintenance banner with a link, counters on "Requests" and "Loans", overview tiles as links.
 
-## 1. Buchen über den Katalog stapelt drei Dialoge — **Hoch**
+## 1. Booking through the catalogue stacks three dialogs — **High**
 
-**Dateien:** `frontend/src/pages/DevicesPage.tsx`, `frontend/src/components/DeviceImages.tsx`
-(`PieceListDialog` → `PieceCalendarDialog` → Anfrage-Modal)
+**Files:** `frontend/src/pages/DevicesPage.tsx`, `frontend/src/components/DeviceImages.tsx` (`PieceListDialog` → `PieceCalendarDialog` → request modal)
 
-**Beschreibung:** „Stücke“ öffnet eine Liste der Stücke, „Kalender“ darin einen zweiten Dialog,
-ein Tag darin einen dritten mit dem Formular. Im Browser liegen dann „Logitech Presenter“,
-„Stück ZB-4001“ und „Ausleihe anfragen“ übereinander. Schließen führt schrittweise zurück, der
-Hintergrund ist dreifach abgedunkelt, und auf dem Handy ist nur der oberste Dialog sichtbar. Auch
-bei Geräten mit genau einem Stück muss man durch die Stückliste. Der Button heißt im Katalog
-„Stücke“, in der Suche „Kalender & anfragen“ – für dieselbe Handlung.
+**Description:** "Pieces" opens a list of the pieces, "Calendar" in it a second dialog, a day in it a third one with the form. In the browser, "Logitech Presenter", "Piece ZB-4001" and "Request a loan" then lie on top of each other. Closing goes back step by step, the background is darkened three times, and on the phone only the top dialog is visible. Even for devices with exactly one piece one has to go through the piece list. The button is called "Pieces" in the catalogue and "Calendar & request" in the search – for the same action.
 
-**Verbesserung:** Ein Dialog mit Schritten statt Stapel: Stückliste → Kalender → Formular im
-selben Fenster, mit „Zurück“. Bei nur einem verfügbaren Stück direkt zum Kalender. Einheitlicher
-Button „Kalender & anfragen“.
+**Improvement:** One dialog with steps instead of a stack: piece list → calendar → form in the same window, with "Back". With only one available piece, straight to the calendar. A uniform "Calendar & request" button.
 
-## 2. Buchen über die Suche stapelt zwei Dialoge — **Mittel**
+## 2. Booking through the search stacks two dialogs — **Medium**
 
-**Dateien:** `frontend/src/pages/SearchPage.tsx`, `frontend/src/components/DeviceImages.tsx`
+**Files:** `frontend/src/pages/SearchPage.tsx`, `frontend/src/components/DeviceImages.tsx`
 
-**Beschreibung:** Wer in der Suche schon einen Zeitraum gewählt hat, muss trotzdem erst den
-Kalender öffnen und dort „Für diesen Zeitraum anfragen“ klicken; das Formular öffnet sich als
-zweiter Dialog über dem Kalender.
+**Description:** Whoever has already chosen a period in the search must still first open the calendar and click "Request for this period" there; the form opens as a second dialog above the calendar.
 
-**Verbesserung:** „Anfragen“ öffnet direkt das Formular mit dem Zeitraum der Suche. Den Kalender
-erreicht man im selben Dialog über „Anderen Zeitraum im Kalender wählen“.
+**Improvement:** "Request" opens the form directly with the period of the search. The calendar is reached in the same dialog via "Choose another period in the calendar".
 
-## 3. Seitenleiste der Verwaltung zu lang — **Mittel**
+## 3. Administration sidebar too long — **Medium**
 
-**Dateien:** `frontend/src/components/Layout.tsx`
+**Files:** `frontend/src/components/Layout.tsx`
 
-**Beschreibung:** 16 Einträge und 5 Gruppenüberschriften. Auf einem 768 px hohen Bildschirm sind
-die letzten vier Einträge verdeckt. „Bedienung“ steht allein in einer eigenen Gruppe „Hilfe“.
+**Description:** 16 entries and 5 group headings. On a 768 px high screen the last four entries are hidden. "Usage" stands alone in its own "Help" group.
 
-**Verbesserung:** Einstellungen zusammenfassen (Finding 4), „Bedienung“ als Symbol neben
-„Darstellung“ in den Fuß der Seitenleiste. Ergebnis: 12 Einträge in 4 Gruppen. Auf niedrigen
-Bildschirmen etwas kompaktere Einträge.
+**Improvement:** Combine the settings (finding 4), move "Usage" as an icon next to "Theme" into the sidebar footer. Result: 12 entries in 4 groups. Slightly more compact entries on low screens.
 
-## 4. Einstellungen auf drei Menüpunkte verteilt — **Mittel**
+## 4. Settings spread over three menu entries — **Medium**
 
-**Dateien:** `Layout.tsx`, `AdminBrandingPage.tsx`, `AdminSettingsPage.tsx`, `AdminEmailsPage.tsx`,
-`AdminMaintenancePage.tsx`
+**Files:** `Layout.tsx`, `AdminBrandingPage.tsx`, `AdminSettingsPage.tsx`, `AdminEmailsPage.tsx`, `AdminMaintenancePage.tsx`
 
-**Beschreibung:** „Erscheinungsbild“, „Einstellungen“, „E-Mails“ und „Wartung“ sind vier Einträge,
-obwohl alle die Installation konfigurieren. Wo etwas liegt, ist nicht vorhersehbar (Registrierung
-unter „Einstellungen“, Logo in E-Mails unter „Erscheinungsbild“, Absender unter „E-Mails“).
+**Description:** "Appearance", "Settings", "E-mails" and "Maintenance" are four entries, although all of them configure the installation. Where something lives is not predictable (registration under "Settings", logo in e-mails under "Appearance", sender under "E-mails").
 
-**Verbesserung:** Ein Eintrag „Einstellungen“ mit Reitern „Erscheinungsbild“, „Regeln & Formular“,
-„E-Mails“, „Wartung“. Die bisherigen Adressen bleiben gültig (Lesezeichen, Tastenkürzel,
-Wartungsbanner) und öffnen den passenden Reiter.
+**Improvement:** One entry "Settings" with the tabs "Appearance", "Rules & form", "E-mails", "Maintenance". The previous addresses stay valid (bookmarks, shortcuts, maintenance banner) and open the matching tab.
 
-## 5. Nach der Anmeldung geht die ursprüngliche Seite verloren — **Mittel**
+## 5. The original page is lost after signing in — **Medium**
 
-**Dateien:** `frontend/src/App.tsx` (`Protected`), `frontend/src/pages/LoginPage.tsx`
+**Files:** `frontend/src/App.tsx` (`Protected`), `frontend/src/pages/LoginPage.tsx`
 
-**Beschreibung:** Wer abgemeldet `/my-requests` öffnet (Lesezeichen, abgelaufene Sitzung, Link aus
-einer Nachricht), landet nach der Anmeldung auf `/search` bzw. `/admin`.
+**Description:** Whoever opens `/my-requests` while signed out (bookmark, expired session, link from a message) lands on `/search` or `/admin` after signing in.
 
-**Verbesserung:** Die angefragte Adresse wird an die Anmeldung übergeben; danach geht es genau
-dorthin (nur interne Pfade, keine fremden Adressen).
+**Improvement:** The requested address is passed to the sign-in; afterwards it goes exactly there (internal paths only, no foreign addresses).
 
-## 6. E-Mails ohne Link zurück — **Mittel**
+## 6. E-mails without a link back — **Medium**
 
-**Dateien:** `backend/src/emails/format.ts`, `backend/src/emails/templates.ts`
+**Files:** `backend/src/emails/format.ts`, `backend/src/emails/templates.ts`
 
-**Beschreibung:** Bestätigung, Ablehnung und Rückgabe nennen keine Adresse der App. Wer den Stand
-prüfen oder eine neue Anfrage stellen will, muss LendLine selbst finden.
+**Description:** Approval, rejection and return name no address of the app. Whoever wants to check the status or make a new request has to find LendLine themselves.
 
-**Verbesserung:** Link „Meine Anfragen öffnen“ (aus `FRONTEND_ORIGIN`) in jeder Benachrichtigung;
-mit Finding 5 führt er auch nach einer Anmeldung auf die richtige Seite.
+**Improvement:** A link "Open my requests" (from `FRONTEND_ORIGIN`) in every notification; together with finding 5 it also leads to the right page after a sign-in.
 
-## 7. Nach dem Absenden kein Weg zu „Meine Anfragen“ — **Niedrig**
+## 7. No way to "My requests" after sending — **Low**
 
-**Dateien:** `DeviceImages.tsx`, `SearchPage.tsx`, `DevicesPage.tsx`
+**Files:** `DeviceImages.tsx`, `SearchPage.tsx`, `DevicesPage.tsx`
 
-**Beschreibung:** Nach „Anfrage senden“ bleibt der Kalender offen, der Hinweis „Den Stand sehen Sie
-unter ‚Meine Anfragen‘“ ist kein Link.
+**Description:** After "Send request" the calendar stays open; the notice "You can see the status under 'My requests'" is not a link.
 
-**Verbesserung:** Der Dialog schließt sich, die Seite zeigt die Bestätigung mit Link „Zu meinen
-Anfragen“.
+**Improvement:** The dialog closes, the page shows the confirmation with a link "Go to my requests".
 
-## 8. Übersicht führt nur zur Liste — **Niedrig**
+## 8. The overview only leads to the list — **Low**
 
-**Dateien:** `AdminHomePage.tsx`, `AdminRequestsPage.tsx`, `AdminBorrowedPage.tsx`
+**Files:** `AdminHomePage.tsx`, `AdminRequestsPage.tsx`, `AdminBorrowedPage.tsx`
 
-**Beschreibung:** Die Übersicht zeigt die ältesten offenen Anfragen und fällige Rückgaben, aber
-ein Klick führt nur auf die ganze Liste; dort muss man den Eintrag wieder suchen.
+**Description:** The overview shows the oldest open requests and due returns, but a click only leads to the whole list; there one has to look for the entry again.
 
-**Verbesserung:** Jeder Eintrag verlinkt auf seine Zeile; sie wird in der Liste angesprungen und
-hervorgehoben.
+**Improvement:** Every entry links to its row; the list jumps to it and highlights it.
 
-## 9. Verwaltung sieht zuerst die Ausleihe — **Niedrig**
+## 9. The administration sees borrowing first — **Low**
 
-**Dateien:** `Layout.tsx`
+**Files:** `Layout.tsx`
 
-**Beschreibung:** Admins landen auf der Übersicht, die Seitenleiste zeigt aber zuerst „Stück
-suchen / Katalog / Meine Anfragen“. Die eigentliche Arbeit (Anfragen, Ausleihen) steht darunter.
+**Description:** Admins land on the overview, but the sidebar first shows "Find piece / Catalogue / My requests". The actual work (requests, loans) comes below.
 
-**Verbesserung:** Für Admins steht die Gruppe „Verwaltung“ oben, „Ausleihe“ darunter.
+**Improvement:** For admins the "Administration" group comes first, "Borrowing" below it.
 
-## 10. Unbekannte Adressen führen Admins auf die Suche — **Niedrig**
+## 10. Unknown addresses lead admins to the search — **Low**
 
-**Dateien:** `App.tsx`
+**Files:** `App.tsx`
 
-**Beschreibung:** Jede unbekannte Adresse leitet auf `/search`, auch für die Verwaltung.
+**Description:** Every unknown address redirects to `/search`, for the administration too.
 
-**Verbesserung:** Weiterleitung auf die Startseite der Rolle (`/admin` bzw. `/search`).
+**Improvement:** Redirect to the start page of the role (`/admin` or `/search`).
 
-## 11. Registrierung auf der Benutzerseite nicht erwähnt — **Niedrig**
+## 11. Registration not mentioned on the users page — **Low**
 
-**Dateien:** `AdminUsersPage.tsx`
+**Files:** `AdminUsersPage.tsx`
 
-**Beschreibung:** Wer auf „Benutzer“ nach der Selbstregistrierung sucht, findet sie nicht; sie liegt
-unter den Einstellungen.
+**Description:** Whoever looks for self-registration on "Users" does not find it; it lives under the settings.
 
-**Verbesserung:** Hinweis mit aktuellem Stand und Link zur Einstellung auf der Benutzerseite.
+**Improvement:** A note with the current status and a link to the setting on the users page.

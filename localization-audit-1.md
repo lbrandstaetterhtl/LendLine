@@ -1,132 +1,84 @@
-# Lokalisierungs-Audit 1 – Bestandsaufnahme der Texte
+# Localization audit 1 – inventory of the texts
 
-Stand: 2026-09-25, Commit `e377461`. Ziel: LendLine in **Deutsch, Englisch, Spanisch,
-Mandarin (vereinfachtes Chinesisch) und Hindi**. Dieses Audit erfasst, wo überall Text entsteht,
-bevor lokalisiert wird; `localization-audit-2.md` prüft danach das Ergebnis.
+As of 2026-09-25, commit `e377461`. Goal: LendLine in **German, English, Spanish, Mandarin (Simplified Chinese) and Hindi**. This audit records everywhere text is produced before localizing; `localization-audit-2.md` then checks the result.
 
-**Methode:** Ein Skript zählt sichtbaren Text im Quellcode (JSX-Text, Attribute wie `label`,
-`title`, `placeholder`, `aria-label`, String- und Template-Literale mit Wörtern). Mehrzeilige
-JSX-Texte erkennt es nicht vollständig; die Zahlen sind deshalb **Untergrenzen**. Danach wurden alle
-Dateien mit Treffern gelesen und die Stellen eingeordnet, die ein Textsuchlauf nicht findet
-(Formate, gespeicherte Texte, Grammatik).
+**Method:** A script counts visible text in the source code (JSX text, attributes such as `label`, `title`, `placeholder`, `aria-label`, string and template literals with words). It does not fully recognize multi-line JSX texts; the numbers are therefore **lower bounds**. Afterwards all files with hits were read, and the places a text search does not find (formats, stored texts, grammar) were classified.
 
-## Überblick
+## Overview
 
-| Bereich                                 | Fundstellen (mind.) | Wo                                                                      |
-| --------------------------------------- | ------------------- | ----------------------------------------------------------------------- |
-| Oberfläche (Seiten, Komponenten)        | ~480                | 23 Seiten, 14 Komponenten in `frontend/src`                             |
-| Fehlermeldungen der API                 | 127 `HttpError`     | 25 Dateien in `backend/src` (Services, Routen, Middleware)              |
-| Validierungsmeldungen                   | ~35 + Zod-Standard  | `backend/src/validators`, Schemas in Services und Routen, Formulare     |
-| E-Mails                                 | 4 Vorlagen + Rahmen | `backend/src/emails/templates.ts`, `format.ts`, Standardtexte           |
-| Protokoll (gespeichert)                 | 39 `recordAudit`    | Zusammenfassung + Feldnamen + Werte als deutscher Text in der Datenbank |
-| Kataloge vom Server                     | 32 + 10             | Rechte (`lib/permissions.ts`), Modus-Bereiche (`lib/uiFeatures.ts`)     |
-| Standardwerte (gespeichert/als Vorgabe) | ~25                 | Einstellungen, E-Mail-Texte, Begriffe, Anmeldeseite, Wartungshinweis    |
-| Datums-/Zahlenformate, Sortierung       | 16                  | `de-DE`, `Europe/Berlin`, Wochentage, `localeCompare("de")`             |
-| Statische Seite                         | 2                   | `index.html`: `lang="de"`, `<title>`                                    |
+| Area                                 | Hits (at least)     | Where                                                                |
+| ------------------------------------ | ------------------- | -------------------------------------------------------------------- |
+| Interface (pages, components)        | ~480                | 23 pages, 14 components in `frontend/src`                            |
+| API error messages                   | 127 `HttpError`     | 25 files in `backend/src` (services, routes, middleware)             |
+| Validation messages                  | ~35 + Zod defaults  | `backend/src/validators`, schemas in services and routes, forms      |
+| E-mails                              | 4 templates + frame | `backend/src/emails/templates.ts`, `format.ts`, default texts        |
+| Audit log (stored)                   | 39 `recordAudit`    | Summary + field names + values as German text in the database        |
+| Catalogues from the server           | 32 + 10             | Permissions (`lib/permissions.ts`), mode areas (`lib/uiFeatures.ts`) |
+| Default values (stored/as a default) | ~25                 | Settings, e-mail texts, terms, sign-in page, maintenance notice      |
+| Date/number formats, sorting         | 16                  | `de-DE`, `Europe/Berlin`, weekdays, `localeCompare("de")`            |
+| Static page                          | 2                   | `index.html`: `lang="de"`, `<title>`                                 |
 
-Summe laut Skript: 785 Textstellen (Frontend 479, Backend 306), dazu die gespeicherten Texte.
+Total according to the script: 785 text spots (frontend 479, backend 306), plus the stored texts.
 
-## A. Oberfläche (Frontend)
+## A. Interface (frontend)
 
-Größte Dateien (Skript-Treffer): `AdminBrandingPage` 40, `AdminUsersPage` 35, `AdminGroupsPage` 34,
-`HelpPage` 33, `AuditTimeline` 29, `AdminDevicesPage` 28, `DeviceImages` (Kalender, Anfrageformular)
-25, `AdminSettingsPage` 24, `AdminMaintenancePage` 21, `AdminEmailsPage` 18, `AdminRoomsPage` 18,
-`SearchPage` 17, `AdminAuditPage` 16, `AccountPage` 15, `AdminHomePage` 13, `AdminRequestsPage` 12,
-`AdminCategoriesPage` 11, `DevicesPage` 11, `Layout` 10, `MyRequestsPage` 8, `BrandingContext` 8,
-`AdminModePage` 7, `AdminBorrowedPage` 7, `RegisterPage` 7, `DeviceFields` 7, `LoginPage` 5,
-`appearance` 5, `types` 4 (Statusnamen), `SettingsTabs` 4, `shortcuts` 17 (Menünamen), `ui.tsx`
-(„optional“, Schließen), `CategorySelect`, `RequestSent`, `Logo` (Alt-Texte).
+Largest files (script hits): `AdminBrandingPage` 40, `AdminUsersPage` 35, `AdminGroupsPage` 34, `HelpPage` 33, `AuditTimeline` 29, `AdminDevicesPage` 28, `DeviceImages` (calendar, request form) 25, `AdminSettingsPage` 24, `AdminMaintenancePage` 21, `AdminEmailsPage` 18, `AdminRoomsPage` 18, `SearchPage` 17, `AdminAuditPage` 16, `AccountPage` 15, `AdminHomePage` 13, `AdminRequestsPage` 12, `AdminCategoriesPage` 11, `DevicesPage` 11, `Layout` 10, `MyRequestsPage` 8, `BrandingContext` 8, `AdminModePage` 7, `AdminBorrowedPage` 7, `RegisterPage` 7, `DeviceFields` 7, `LoginPage` 5, `appearance` 5, `types` 4 (status names), `SettingsTabs` 4, `shortcuts` 17 (menu names), `ui.tsx` ("optional", close), `CategorySelect`, `RequestSent`, `Logo` (alt texts).
 
-Arten: sichtbarer Text, Überschriften, Beschriftungen, Hinweise, Platzhalter, Tooltips (`title`),
-Screenreader-Texte (`aria-label`, `sr-only`), `window.confirm`-Rückfragen, Erfolgsmeldungen,
-Fehlermeldungen der Oberfläche, Statusnamen (`types.ts`), Menüeinträge und Tastenkürzel
-(`shortcuts.ts`).
+Kinds: visible text, headings, labels, hints, placeholders, tooltips (`title`), screen reader texts (`aria-label`, `sr-only`), `window.confirm` questions, success messages, interface error messages, status names (`types.ts`), menu entries and keyboard shortcuts (`shortcuts.ts`).
 
-**Sonderfälle:**
+**Special cases:**
 
-- **Zusammengesetzte Sätze** mit Zahlen und Namen: „4 Stücke frei“, „Anfrage für „X“ zurückziehen?“,
-  „{n} von {m} Rechten“. Hart kodierte Plurale (`=== 1 ? "" : "e"`) funktionieren nur im Deutschen.
-- **Firmenbegriffe** (`useTerms`): „Gerät“, „Stück“, „Raum“ … sind als deutsche Vorgaben gespeichert
-  und werden in Sätze eingesetzt.
-- **Tastenkürzel** sind an deutsche Wörter angelehnt (`g` + `k` = Katalog). Sie bleiben gleich; nur
-  die Beschriftung wird übersetzt.
-- **Wochenbeginn und Schnellauswahl** („Heute“, „Nächste Woche“, Kalender ab Montag) sind in der
-  Logik deutsch geprägt.
+- **Composed sentences** with numbers and names: "4 Stücke frei" (4 pieces free), "Anfrage für „X“ zurückziehen?" (withdraw the request for "X"?), "{n} von {m} Rechten" ({n} of {m} permissions). Hard-coded plurals (`=== 1 ? "" : "e"`) only work in German.
+- **Company terms** (`useTerms`): "Gerät", "Stück", "Raum" … are stored as German defaults and inserted into sentences.
+- **Keyboard shortcuts** are based on German words (`g` + `k` = Katalog). They stay the same; only the labels are translated.
+- **Start of the week and quick selection** ("Heute", "Nächste Woche", calendar from Monday) are German in their logic.
 
-## B. Fehlermeldungen der API
+## B. API error messages
 
-127 `throw new HttpError(status, "…")` in 25 Dateien, dazu Meldungen in der Fehlerbehandlung
-(„Interner Serverfehler“, „Ungültiger Anfrage-Inhalt“), im Rate Limit („Zu viele Versuche …“) und
-beim Upload. Das Frontend zeigt `error` **wörtlich** an; die Sprache des Servers ist also die
-Sprache, die Nutzer sehen. Viele Meldungen enthalten Werte („Stück LT-1001 ist ausgeliehen …“,
-„Eine Ausleihe dauert höchstens 30 Tage“).
+127 `throw new HttpError(status, "…")` in 25 files, plus messages in the error handling ("Interner Serverfehler", "Ungültiger Anfrage-Inhalt"), in the rate limit ("Zu viele Versuche …") and for uploads. The frontend shows `error` **verbatim**; the server's language is therefore the language users see. Many messages contain values ("Stück LT-1001 ist ausgeliehen …", "Eine Ausleihe dauert höchstens 30 Tage").
 
-## C. Validierung
+## C. Validation
 
-- Eigene Zod-Meldungen (~35): Namenslängen, E-Mail, Passwort, Zeitformat, Farbe, Domains.
-- **Zod-Standardmeldungen** sind Englisch („Required“, „Invalid input“, „Expected string“) und
-  erscheinen bei Feldern ohne eigene Meldung – schon heute ein Sprachmix.
-- Browser-Validierung (`required`, `minLength`) spricht die Sprache des Browsers, nicht der App.
+- Own Zod messages (~35): name lengths, e-mail, password, time format, colour, domains.
+- **Zod's default messages** are English ("Required", "Invalid input", "Expected string") and appear for fields without an own message – already a mix of languages today.
+- Browser validation (`required`, `minLength`) speaks the browser's language, not the app's.
 
-## D. E-Mails
+## D. E-mails
 
-Vier Nachrichten (Bestätigung, Ablehnung, Rückgabe, Test) aus `emails/templates.ts`: Betreff,
-Überschrift, Einleitung, Tabellenbeschriftungen („Kategorie“, „Seriennummer“, „Zeitraum“), Link-Text,
-Datumsformat. Dazu die **Firmentexte** (Anrede, Signatur, Fußzeile, Text je Nachricht) mit deutschen
-Vorgaben. **Problem:** Beim Versand ist unbekannt, welche Sprache der Empfänger spricht – es gibt
-keine Spracheinstellung pro Person.
+Four messages (approval, rejection, return, test) from `emails/templates.ts`: subject, heading, introduction, table labels ("Kategorie", "Seriennummer", "Zeitraum"), link text, date format. Plus the **company texts** (greeting, signature, footer, text per message) with German defaults. **Problem:** when sending, it is unknown which language the recipient speaks – there is no language setting per person.
 
-## E. Protokoll
+## E. Audit log
 
-39 Aufrufe von `recordAudit` speichern die Zusammenfassung („Ausleihe von „X“ … bestätigt“), die
-Feldnamen der Änderungen („Name“, „Kategorie“, „Status“) und Kontext („Grund“, „Zeitraum“) als
-**deutschen Text in der Datenbank**. Aktionsnamen („Anfrage bestätigt“) übersetzt das Frontend
-selbst (`AuditTimeline.tsx`). Bestehende Einträge bleiben deutsch, egal was später passiert; die
-Textsuche im Protokoll durchsucht die deutsche Zusammenfassung.
+39 calls of `recordAudit` store the summary ("Ausleihe von „X“ … bestätigt"), the field names of the changes ("Name", "Kategorie", "Status") and context ("Grund", "Zeitraum") as **German text in the database**. Action names ("Anfrage bestätigt") are translated by the frontend itself (`AuditTimeline.tsx`). Existing entries stay German whatever happens later; the text search in the audit log searches the German summary.
 
-## F. Kataloge und Standardwerte vom Server
+## F. Catalogues and default values from the server
 
-- **Rechte** (`lib/permissions.ts`): 5 Abschnitte, 23 Rechte mit Name und Hinweis, per
-  `GET /api/groups/permissions` an die Gruppenseite.
-- **Modus-Bereiche** (`lib/uiFeatures.ts`): 9 Bereiche mit Name und Beschreibung, per `GET /api/ui`.
-- **Standardwerte**, die in der Datenbank landen, sobald eine Einstellung gespeichert wird:
-  E-Mail-Anrede, Signatur, Fußzeile, Texte je Nachricht; Name und Beispiel des Kommentarfelds;
-  Begriffe und Untertitel; Überschrift der Anmeldeseite; Wartungshinweis. Gespeichert sind sie von
-  echten Firmentexten nicht zu unterscheiden.
-- **Firmentexte** (von der Verwaltung eingegeben) sind einsprachig. Sie werden nicht übersetzt.
+- **Permissions** (`lib/permissions.ts`): 5 sections, 23 permissions with name and hint, sent to the groups page via `GET /api/groups/permissions`.
+- **Mode areas** (`lib/uiFeatures.ts`): 9 areas with name and description, via `GET /api/ui`.
+- **Default values** that end up in the database as soon as a setting is saved: e-mail greeting, signature, footer, texts per message; name and example of the comment field; terms and subtitle; heading of the sign-in page; maintenance notice. Once stored they cannot be told apart from real company texts.
+- **Company texts** (entered by the administration) are single-language. They are not translated.
 
-## G. Formate
+## G. Formats
 
-- Datum/Zeit: `Intl.DateTimeFormat("de-DE", …, timeZone: "Europe/Berlin")` in Frontend und E-Mails,
-  `toLocaleDateString("de-DE")` im Kalender und Protokoll (8 Stellen), Monatsname im Kalender.
-- Wochentagskürzel `["Mo", "Di", …]` fest im Kalender.
-- Sortierung `localeCompare(…, "de")` im Backend (3 Stellen): für Gerätenamen unkritisch, bleibt.
-- Zahlen (MB, Anzahlen) ohne Formatierung; Dezimaltrennzeichen im Wartungsbereich („1.2 MB“).
+- Date/time: `Intl.DateTimeFormat("de-DE", …, timeZone: "Europe/Berlin")` in the frontend and e-mails, `toLocaleDateString("de-DE")` in the calendar and audit log (8 places), month name in the calendar.
+- Weekday abbreviations `["Mo", "Di", …]` hard-coded in the calendar.
+- Sorting `localeCompare(…, "de")` in the backend (3 places): uncritical for device names, stays.
+- Numbers (MB, counts) without formatting; decimal separator in the maintenance area ("1.2 MB").
 
-## H. Statisch
+## H. Static
 
-`index.html`: `lang="de"` (Screenreader lesen jede Sprache mit deutscher Aussprache) und der
-Seitentitel.
+`index.html`: `lang="de"` (screen readers read every language with German pronunciation) and the page title.
 
-## Nicht zu lokalisieren
+## Not to be localized
 
-Inhalte der Firma (Gerätenamen, Kategorien, Räume, Beschreibungen, Eigenschaften, Personennamen),
-Server-Logs in der Konsole, Kommentare im Code, die Doku in `doc/` (englisch) und die Audits.
+Company content (device names, categories, rooms, descriptions, properties, person names), server logs in the console, comments in the code, the documentation in `doc/` (English) and the audits.
 
-## Vorgehen (aus diesem Audit abgeleitet)
+## Approach (derived from this audit)
 
-1. **Wörterbücher mit Typprüfung:** Deutsch ist die Quelle; jede andere Sprache muss dieselben
-   Schlüssel haben – fehlt einer, schlägt `npm run check` fehl. Platzhalter `{name}`, Plural über
-   `Intl.PluralRules` (Chinesisch kennt keinen Plural, Hindi one/other).
-2. **Sprache der Anfrage:** Frontend schickt die gewählte Sprache mit (`Accept-Language`); der Server
-   übersetzt Fehler- und Validierungsmeldungen je Anfrage (inkl. Zod-Standardmeldungen).
-3. **Sprache pro Person** (`User.locale`) für E-Mails; Auswahl in der Seitenleiste, auf der
-   Anmeldeseite und unter „Mein Konto“, Vorgabe aus dem Browser.
-4. **Protokoll:** neue Einträge speichern zusätzlich Schlüssel + Werte und werden in der
-   Sprache der Lesenden gezeigt; Feld- und Wertnamen über eine Zuordnungstabelle – so werden auch
-   alte Einträge größtenteils übersetzt.
-5. **Standardwerte:** Ein gespeicherter Wert, der der deutschen Vorgabe entspricht, gilt als „nicht
-   angepasst“ und wird in der jeweiligen Sprache gezeigt; nur echte Firmentexte bleiben wörtlich.
-6. **Formate** aus der gewählten Sprache (`Intl`), Zeitzone weiter `Europe/Berlin`.
-7. **Übersetzungen** von Mandarin und Hindi sollten vor dem Einsatz bei Kunden von
-   Muttersprachlern geprüft werden.
+1. **Dictionaries with a type check:** German is the source; every other language must have the same keys – if one is missing, `npm run check` fails. Placeholders `{name}`, plurals via `Intl.PluralRules` (Chinese has no plural, Hindi one/other).
+2. **Language of the request:** the frontend sends the chosen language (`Accept-Language`); the server translates error and validation messages per request (including Zod's default messages).
+3. **Language per person** (`User.locale`) for e-mails; choice in the sidebar, on the sign-in page and under "My account", default from the browser (since `bb004bc`: English).
+4. **Audit log:** new entries also store key + values and are shown in the reader's language; field and value names via a mapping table – so old entries are largely translated too.
+5. **Default values:** a stored value equal to the German default counts as "not adapted" and is shown in the respective language; only real company texts stay verbatim.
+6. **Formats** from the chosen language (`Intl`), time zone still `Europe/Berlin`.
+7. **Translations** of Mandarin and Hindi should be reviewed by native speakers before customers use them.
