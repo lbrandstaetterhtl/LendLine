@@ -38,6 +38,16 @@ npm run dev
 Frontend: http://localhost:5173  
 API: http://localhost:3001
 
+### Starting everything at once
+
+After the first setup, one command starts the database, the API and the frontend:
+
+```bash
+npm run dev
+```
+
+It uses the database from `DATABASE_URL` if it is reachable; otherwise it starts the Docker container (`docker compose up -d`) or, on Windows without Docker, the local PostgreSQL service. It installs missing dependencies, applies pending migrations (never resets data) and runs API and frontend with prefixed output. Ctrl+C stops both. If port 3001 is already in use, it does not start a second API.
+
 ## LDAP
 
 LDAP is off as long as `LDAP_URL` is empty. To turn it on, in `backend/.env`:

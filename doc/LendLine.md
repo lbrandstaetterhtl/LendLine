@@ -51,7 +51,8 @@ LendLine/
 ├── README.md                  Quick start
 ├── docker-compose.yml         PostgreSQL 16 container on 127.0.0.1:5432 (user/db = lendline, password from POSTGRES_PASSWORD, default lendline)
 ├── .gitignore                 node_modules, dist, .env, backend/uploads, .idea, .venv
-├── package.json               Root scripts: check (everything), format:docs (Prettier)
+├── package.json               Root scripts: dev (database + API + frontend), check (everything), format:docs (Prettier)
+├── scripts/start-dev.mjs      `npm run dev`: starts the database if needed, applies migrations, runs API and frontend
 ├── .oxfmtrc.json              Code formatting (oxfmt), used by the backend
 ├── .prettierignore            Prettier formats only Markdown/JSON/YAML
 ├── doc/                       This documentation
