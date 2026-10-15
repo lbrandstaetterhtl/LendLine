@@ -130,8 +130,8 @@ const db = state.db ?? "external";
 if (keepDb) {
   log("Database left running (--keep-db).");
 } else if (db === "docker") {
-  log(`${dryRun ? "Would stop" : "Stopping"} the PostgreSQL container (docker compose stop).`);
-  if (!dryRun) spawnSync("docker", ["compose", "stop"], { cwd: root, stdio: "inherit", shell: windows });
+  log(`${dryRun ? "Would stop" : "Stopping"} the PostgreSQL container (docker compose stop db).`);
+  if (!dryRun) spawnSync("docker", ["compose", "stop", "db"], { cwd: root, stdio: "inherit", shell: windows });
 } else if (db.startsWith("service:")) {
   const service = db.slice("service:".length);
   log(`${dryRun ? "Would stop" : "Stopping"} the Windows service ${service}.`);

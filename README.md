@@ -12,7 +12,7 @@ Project documentation: [`doc/LendLine.md`](doc/LendLine.md).
 ## Setup
 
 ```bash
-docker compose up -d
+docker compose up -d db
 cd backend
 copy .env.example .env
 npm install
@@ -46,7 +46,7 @@ After the first setup, one command starts the database, the API and the frontend
 npm run dev
 ```
 
-It uses the database from `DATABASE_URL` if it is reachable; otherwise it starts the Docker container (`docker compose up -d`) or, on Windows without Docker, the local PostgreSQL service. It installs missing dependencies, applies pending migrations (never resets data) and runs API and frontend with prefixed output. Ctrl+C stops both. If port 3001 is already in use, it does not start a second API.
+It uses the database from `DATABASE_URL` if it is reachable; otherwise it starts the Docker container (`docker compose up -d db`) or, on Windows without Docker, the local PostgreSQL service. It installs missing dependencies, applies pending migrations (never resets data) and runs API and frontend with prefixed output. Ctrl+C stops both. If port 3001 is already in use, it does not start a second API.
 
 To stop everything again (for example from another terminal):
 
@@ -55,6 +55,22 @@ npm run stop-dev
 ```
 
 It stops running `npm run dev` processes and other LendLine dev servers of this repository (Vite, tsx). The database is only stopped if `npm run dev` started it (noted in `.dev-state.json`); a database that was running before stays untouched. Options: `-- --script-only` (only what `npm run dev` started), `-- --keep-db`, `-- --dry-run` (only show what would be stopped).
+
+### Running in Docker
+
+The `app` service builds the `Dockerfile` (frontend, API and nginx in one image) and serves LendLine on port 9000, together with the database:
+
+```bash
+docker compose up -d --build
+```
+
+Then open http://localhost:9000. Secrets, SMTP and LDAP come from `backend/.env` (`JWT_ACCESS_SECRET` is required); `docker-compose.yml` overrides the database address and the origin. Pending migrations are applied on every start. Settings in a `.env` next to `docker-compose.yml`:
+
+- `FRONTEND_ORIGIN`: the address users open, if it is not `http://localhost:9000`
+- `SEED_DEMO_DATA=true`: creates the demo accounts on start (local origins only)
+- `POSTGRES_PASSWORD`: the database password
+
+Uploads are kept in the `lendline_uploads` volume.
 
 ## LDAP
 

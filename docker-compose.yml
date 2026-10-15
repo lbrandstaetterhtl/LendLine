@@ -8,9 +8,39 @@ services:
       POSTGRES_DB: lendline
     ports:
       # Loopback only: the database must not be reachable from the network.
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - lendline_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lendline -d lendline"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    # Secrets, SMTP and LDAP come from backend/.env (JWT_ACCESS_SECRET is required); the values below
+    # override what the file says for local development.
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://lendline:${POSTGRES_PASSWORD:-lendline}@db:5432/lendline
+      PORT: "3001"
+      # The address users open in the browser (CORS, links in e-mails, Secure cookies on https://).
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:9000}
+      # true: creates the demo accounts from the README on start (only for a local origin).
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+    volumes:
+      - lendline_uploads:/app/backend/uploads
 
 volumes:
   lendline_pg:
+  lendline_uploads:

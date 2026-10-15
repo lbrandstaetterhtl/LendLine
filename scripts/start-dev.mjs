@@ -101,8 +101,8 @@ if (await reachable(dbHost, dbPort)) {
   // Still running from an earlier `npm run dev`: stop-dev may stop it later.
   if (previous.db && previous.db !== "external") startedDb = previous.db;
 } else if (run("docker", ["--version"], root, { quiet: true })) {
-  log("db", "Starting the PostgreSQL container (docker compose up -d) …");
-  if (!run("docker", ["compose", "up", "-d"], root)) fail("docker compose up failed.");
+  log("db", "Starting the PostgreSQL container (docker compose up -d db) …");
+  if (!run("docker", ["compose", "up", "-d", "db"], root)) fail("docker compose up failed.");
   if (!(await waitFor(dbHost, dbPort, 60))) fail("The database container did not come up within 60 s.");
   startedDb = "docker";
   log("db", "PostgreSQL is running.");
