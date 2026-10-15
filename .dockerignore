@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.env
+backend/uploads
+.git
+.idea
+.venv
+*.log
+*.zip
+*.md
+.dev-state.json
